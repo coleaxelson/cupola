@@ -162,7 +162,7 @@ void main() {
       // where the queue keeps them, so the queue's extractor could not be
       // reused and the failed row said "Failed" and stopped.
       final failed = resolveHistoryStatus(const {
-        'eventType': 'importFailed',
+        'eventType': 'downloadFailed',
         'data': {
           'statusMessages': [
             {

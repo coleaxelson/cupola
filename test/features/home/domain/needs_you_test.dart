@@ -288,10 +288,6 @@ void main() {
         'Sintel needs a manual import',
       );
       expect(
-        line(decision(DecisionKind.failedImport, 'Sintel')),
-        'Could not import Sintel',
-      );
-      expect(
         line(decision(DecisionKind.failingIndexer, 'NZBgeek')),
         'The NZBgeek indexer is failing',
       );
@@ -415,8 +411,8 @@ void main() {
       silent: const [],
       decisions: [
         decision(DecisionKind.importBlocked, 'x', count: 18),
-        decision(DecisionKind.failedImport, 'Sintel'),
-        decision(DecisionKind.failedImport, 'Spring'),
+        decision(DecisionKind.storageAlert, 'Sintel'),
+        decision(DecisionKind.storageAlert, 'Spring'),
       ],
       now: now,
       moreFloor: true,
@@ -432,7 +428,7 @@ void main() {
       silent: const [],
       decisions: [
         decision(DecisionKind.importBlocked, 'x', count: 18),
-        decision(DecisionKind.failedImport, 'Sintel'),
+        decision(DecisionKind.storageAlert, 'Sintel'),
       ],
       now: now,
     )!;

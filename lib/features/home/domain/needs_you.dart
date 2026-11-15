@@ -227,9 +227,6 @@ String needsYouLine(
         decision.transferFailed
             ? '$count downloads failed'
             : '$count downloads are stuck',
-      // Never grouped (see `groupDecisions`); said anyway, so the switch is
-      // total.
-      DecisionKind.failedImport => '$count imports failed',
       DecisionKind.storageAlert => '$count storage alerts',
       DecisionKind.connectionFault => '$count connections have a fault',
       DecisionKind.serviceHealth => '$count health checks are failing',
@@ -244,7 +241,6 @@ String needsYouLine(
     DecisionKind.importBlocked => '$title needs a manual import',
     DecisionKind.stalledDownload =>
       decision.transferFailed ? 'Could not download $title' : '$title is stuck',
-    DecisionKind.failedImport => 'Could not import $title',
     // Each of these titles is already a sentence: TrueNAS's alert in plain
     // words, the fault's headline, the \*arr's own check.
     DecisionKind.storageAlert || DecisionKind.connectionFault => title,

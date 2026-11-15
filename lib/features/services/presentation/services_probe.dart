@@ -302,7 +302,7 @@ typedef MergeConnection = ({
 /// region that reads them all.
 ///
 /// Home folds every connection of a service, the way its header does: a
-/// stall, a failed import or a request on the second Radarr is the user's as
+/// stall, a blocked import or a request on the second Radarr is the user's as
 /// much as one on the first. Each connection is watched on its own narrow
 /// key, so editing one re-reads it and a theme toggle re-reads nothing. The
 /// lens is watched too, because which connection the shared lens providers

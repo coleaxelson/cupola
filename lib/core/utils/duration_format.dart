@@ -69,6 +69,17 @@ String formatTimeSpan(Duration span, {bool seconds = false}) {
   return withUnit(rest, 's');
 }
 
+/// [span] as an estimate that says "about" reads it, for [formatTimeSpan]:
+/// as it is under an hour, to the nearest ten minutes from an hour on.
+///
+/// A delay profile lets a release go at 17:45, so from 14:48 the estimate is
+/// `about 3 h`, never `about 2 h 57 min`: a figure to the minute, hours ahead,
+/// claims a precision the word "about" takes back.
+Duration aboutSpan(Duration span) {
+  if (span < const Duration(hours: 1)) return span;
+  return Duration(minutes: (span.inSeconds / 600).round() * 10);
+}
+
 /// Formats a remaining window: `29 min`, `4 min 30 s`, `0 s`.
 ///
 /// Always carries a unit, at every magnitude. A bare `4:30` in the same slot as

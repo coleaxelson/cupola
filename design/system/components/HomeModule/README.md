@@ -150,8 +150,8 @@ answering` already answers) or before anything answered (no space is held for it
   title's fanart, else its poster), the title, then `2 h ago · Radarr 4K` (the connection only while the service has
   two). A movie on two Radarrs is one card; a series is a card when it is new to the library, not with each new
   episode; an album is one card. The line under the name is `Last 7 days · 4 new`, never "this week"; with a library
-  silent, who the count is from, `Last 7 days · 2 from Radarr`, and the silent one named over the rail. A failed import
-  is not an arrival: Needs you has it. Absent when nothing arrived and every library answered.
+  silent, who the count is from, `Last 7 days · 2 from Radarr`, and the silent one named over the rail. A failed download
+  is not an arrival: History has it. Absent when nothing arrived and every library answered.
 
 ## Downloads, Requests, Now playing
 

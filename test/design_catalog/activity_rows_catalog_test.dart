@@ -109,6 +109,20 @@ final _stuck = _download(
   stalledSince: _now.subtract(const Duration(hours: 3)),
 );
 
+/// A release the arr's delay profile holds: no client has it yet, and the arr
+/// says when the delay ends.
+final _delayed = _download(
+  'Tulsa King · S4 E5',
+  'Tulsa.King.S04E05.Dinosaurs.720p.AMZN.WEB-DL',
+  id: '6',
+  progress: 0,
+  queued: true,
+  startsIn: const Duration(hours: 3).inSeconds,
+  service: ServiceKey.sonarr,
+  client: null,
+  clientLabel: 'Sonarr',
+);
+
 final _queued = _download(
   'Sintel',
   'Sintel.2010.2160p.UHD.BluRay',
@@ -262,6 +276,13 @@ void main() {
             request: _annaAsked,
           ),
         ]),
+        width: 390,
+      ),
+      CatalogScene(
+        'ActivityDownloadRow.queued() · a release the arr holds in a delay '
+        'profile: Queued · starts in about 3 h in blue, the arr alone as the '
+        'route',
+        (_) => _slab([ActivityDownloadRow.queued(item: _delayed, now: _now)]),
         width: 390,
       ),
       CatalogScene(

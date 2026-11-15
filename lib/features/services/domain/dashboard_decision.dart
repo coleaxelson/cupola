@@ -15,8 +15,8 @@
 /// kinds, ranked by urgency:
 ///
 ///  * **faults before backlog.** A stalled download, a failing indexer, an
-///    expiring certificate and a failed import are things that were meant to be
-///    working and are not. A pending request is somebody
+///    expiring certificate and an import the arr will not do are things that
+///    were meant to be working and are not. A pending request is somebody
 ///    politely waiting: it is *backlog*, the same category as 34 missing films,
 ///    and the tone rule files backlog under neutral. It still belongs in this
 ///    region (it needs a decision, which is the whole criterion) and it belongs
@@ -70,9 +70,6 @@ enum DecisionSource {
     ServiceKey.sabnzbd,
     ServiceKey.nzbget,
   ]),
-
-  /// The imports the \*arrs' history says failed.
-  history([ServiceKey.radarr, ServiceKey.sonarr, ServiceKey.lidarr]),
 
   /// The storage servers' own alerts: TrueNAS's at warning or worse, and
   /// Unraid's flagged slots and unread notifications at warning or alert.
@@ -139,9 +136,6 @@ enum DecisionKind {
   /// place that cannot fix it.
   importBlocked,
 
-  /// An \*arr history record whose import failed. Action: manual import.
-  failedImport,
-
   /// A storage server's own alert: TrueNAS's at warning or worse (a disk
   /// reporting errors, a pool degraded), Unraid's flagged slot or unread
   /// notification at warning or alert. Action: open the alert, on the
@@ -190,7 +184,6 @@ extension DecisionKindRank on DecisionKind {
     DecisionKind.pendingRequest || DecisionKind.violation => false,
     DecisionKind.stalledDownload ||
     DecisionKind.importBlocked ||
-    DecisionKind.failedImport ||
     DecisionKind.storageAlert ||
     DecisionKind.connectionFault ||
     DecisionKind.serviceHealth ||
@@ -208,7 +201,6 @@ extension DecisionKindRank on DecisionKind {
     DecisionKind.storageAlert => true,
     DecisionKind.stalledDownload ||
     DecisionKind.importBlocked ||
-    DecisionKind.failedImport ||
     DecisionKind.connectionFault ||
     DecisionKind.serviceHealth ||
     DecisionKind.violation ||
@@ -377,7 +369,6 @@ class DashboardDecision {
 /// would have nothing to call them on.
 bool _groups(DecisionKind kind) => switch (kind) {
   DecisionKind.stalledDownload || DecisionKind.importBlocked => true,
-  DecisionKind.failedImport ||
   DecisionKind.storageAlert ||
   DecisionKind.connectionFault ||
   DecisionKind.serviceHealth ||
@@ -488,7 +479,6 @@ String _groupTitle(DecisionKind kind, int count) => switch (kind) {
   DecisionKind.importBlocked => needsManualImportClause(count),
   DecisionKind.stalledDownload => '$count stuck downloads',
   // Never grouped: see [_groups]. Named anyway so the switch stays total.
-  DecisionKind.failedImport => '$count failed imports',
   DecisionKind.storageAlert => '$count storage alerts',
   DecisionKind.connectionFault => '$count connections with a fault',
   DecisionKind.serviceHealth => '$count failing health checks',
@@ -578,7 +568,6 @@ String decisionActionLabel(
     target == null || target.supportsManualImport
         ? 'Manual import'
         : 'Open in ${target.title}',
-  DecisionKind.failedImport => 'Fix',
   DecisionKind.storageAlert => 'Open alert',
   // The remedy the cause names, or Retry where the same request can still
   // succeed: the classification's words, never the row's own.
@@ -609,7 +598,6 @@ String decisionUnavailableToast(DecisionKind kind, ServiceKey required) {
   final what = switch (kind) {
     DecisionKind.stalledDownload => 'open this transfer',
     DecisionKind.importBlocked => 'import these files',
-    DecisionKind.failedImport => 'fix this import',
     DecisionKind.storageAlert => 'open this alert',
     DecisionKind.connectionFault => 'fix this connection',
     DecisionKind.serviceHealth => 'open this check',

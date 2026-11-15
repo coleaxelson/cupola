@@ -125,7 +125,7 @@ void main() {
           'stall',
           at: DateTime.utc(2024),
         ),
-        _decision(DecisionKind.failedImport, 'import', at: DateTime.utc(2024)),
+        _decision(DecisionKind.importBlocked, 'import', at: DateTime.utc(2024)),
       ], cap: 2);
 
       expect(ranked.map((d) => d.title), ['stall', 'import']);

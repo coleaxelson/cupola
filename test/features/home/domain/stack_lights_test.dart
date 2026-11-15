@@ -159,7 +159,7 @@ void main() {
         ],
         faults: [
           _fault(ServiceKey.sonarr, DecisionKind.importBlocked),
-          _fault(ServiceKey.sonarr, DecisionKind.failedImport),
+          _fault(ServiceKey.sonarr, DecisionKind.stalledDownload),
           _fault(ServiceKey.sonarr, DecisionKind.serviceHealth),
         ],
       );
