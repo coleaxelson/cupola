@@ -373,7 +373,7 @@ Future<DashboardDecisions> _reportedProblemDecisions(Ref ref) async {
   Future<DashboardDecisions> from(MergeConnection source) async {
     final mayView = ref
         .watch(roleGateOfProvider(source.instanceId))
-        .mayListIssues;
+        .mayReviewIssues;
     final answered = SourceCoverage.answeredBy(
       ServiceKey.seerr,
       instanceId: source.instanceId,

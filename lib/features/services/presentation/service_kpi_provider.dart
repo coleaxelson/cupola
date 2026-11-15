@@ -1153,7 +1153,7 @@ typedef OpenProblems = ({bool shown, int? open});
 
 /// The open issues of connection [instanceId] (empty: the lens).
 Future<OpenProblems> _seerrOpenProblems(Ref ref, String instanceId) async {
-  final mayList = ref.watch(roleGateOfProvider(instanceId)).mayListIssues;
+  final mayList = ref.watch(roleGateOfProvider(instanceId)).mayReviewIssues;
   if (!mayList) return (shown: false, open: null);
   try {
     return (

@@ -199,6 +199,13 @@ final class RoleGate {
   /// no grant, since a surface with no Seerr has nothing to list.
   bool get mayListIssues => grant?.may(SeerrAbility.viewIssues) ?? false;
 
+  /// Whether the surfaces over the server's reported problems (Needs you,
+  /// the Overview, the Issues readout) may read them: an account that sees
+  /// everybody's issues (MANAGE or VIEW), or the key. CREATE_ISSUES alone
+  /// lists only one's own, which a requester reads under her requests
+  /// ([mayListIssues]), and the server's count is never hers.
+  bool get mayReviewIssues => grant?.mayReviewIssues ?? false;
+
   /// Report a problem with a title: the requester's own ability, [Live] with
   /// CREATE_ISSUES or MANAGE_ISSUES, otherwise [Dimmed] with the reason. For
   /// the operator the same, so the control is never hidden from them.

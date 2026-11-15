@@ -212,7 +212,7 @@ class _ReportedProblemsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mayList = ref.watch(roleGateProvider('')).mayListIssues;
+    final mayList = ref.watch(roleGateProvider('')).mayReviewIssues;
     if (!mayList) return const SizedBox.shrink();
     final open = ref.watch(issueCountProvider('')).asData?.value.open;
     if (open == null || open <= 0) return const SizedBox.shrink();

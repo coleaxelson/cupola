@@ -245,6 +245,18 @@ final class SeerrGrant {
   /// MANAGE_ISSUES, otherwise only an [own] issue, and only with
   /// CREATE_ISSUES (`issue.ts:329-346`: the route admits either permission,
   /// then refuses with a 401 anybody else's issue).
+  /// Whether the account sees the server's issues as a whole, not just its
+  /// own: MANAGE_ISSUES or VIEW_ISSUES (`issue.ts:18-27` limits anybody else
+  /// to their own). `GET /issue/count` counts everybody's, so a surface that
+  /// reads that count asks this, never [SeerrAbility.viewIssues], which
+  /// CREATE_ISSUES alone also satisfies.
+  bool get mayReviewIssues =>
+      permissions == null ||
+      hasSeerrPermissions(permissions!, const [
+        SeerrPermission.manageIssues,
+        SeerrPermission.viewIssues,
+      ], check: SeerrPermissionCheck.any);
+
   bool mayResolveIssue({required bool own}) {
     final value = permissions;
     if (value == null) return true;

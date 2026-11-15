@@ -469,8 +469,32 @@ class SeerrFake extends ServiceFake {
     };
   }
 
-  static JsonMap _details(ServerContext c, WorldTitle t) {
-    final media = _media(c, t);
+  static JsonMap _details(ServerContext c, WorldTitle t, SeerrCaller? caller) {
+    final held = _media(c, t);
+    // `mediaInfo.issues` (`server/routes/movie.ts`, `tv.ts`): every report of
+    // the title for an account with an issue permission, `[]` for any other,
+    // as the filtered `Issue` rows are: no comments, season or episode.
+    final media = held == null
+        ? null
+        : {
+            ...held,
+            'issues': [
+              if (caller != null && _mayReadIssues(caller))
+                for (final i in _issues(c))
+                  if (i.title == t)
+                    {
+                      'id': i.id,
+                      'issueType': i.type,
+                      'status': i.status,
+                      'createdAt': _iso(i.created),
+                      'updatedAt': _iso(i.updated),
+                      'createdBy': _user(c, i.createdBy),
+                      'modifiedBy': i.modifiedBy == null
+                          ? null
+                          : _user(c, i.modifiedBy!),
+                    },
+            ],
+          };
     return {
       'id': t.tmdbId,
       if (t.isSeries) 'name': t.title else 'title': t.title,
@@ -736,6 +760,8 @@ class SeerrFake extends ServiceFake {
     // public routes do not read it.
     final caller = seerrCallerOf(r, c);
     final everyone = caller?.seesEveryone ?? false;
+    final issues = _issueAnswer(r, c, caller);
+    if (issues != null) return issues;
     if (r.method == 'GET') {
       switch (path) {
         case '/api/v1/status':
@@ -818,54 +844,6 @@ class SeerrFake extends ServiceFake {
                 if (full) _user(c, u.id) else _user(c, u.id)..remove('email'),
             ]),
           );
-        case '/api/v1/issue':
-          return NetworkReply.json(
-            _page(r, [
-              {
-                'id': 1,
-                'issueType': 2,
-                'status': 1,
-                'problemSeason': 0,
-                'problemEpisode': 0,
-                'createdAt': c.ago(const Duration(days: 3)),
-                'updatedAt': c.ago(const Duration(days: 2)),
-                'createdBy': _user(c, 2),
-                // Seerr's issue rows name no title: the app reads it from
-                // the title's own page, which this world answers.
-                'media': _media(c, WorldTitles.tearsOfSteel),
-                'comments': [
-                  {
-                    'id': 1,
-                    'message': 'Audio drifts out of sync after about 8 minutes',
-                    'user': _user(c, 2),
-                    'createdAt': c.ago(const Duration(days: 3)),
-                  },
-                  {
-                    'id': 2,
-                    'message': 'Which device?',
-                    'user': _user(c, 1),
-                    'createdAt': c.ago(const Duration(days: 2, hours: 5)),
-                  },
-                  {
-                    'id': 3,
-                    'message': 'Living room TV',
-                    'user': _user(c, 2),
-                    'createdAt': c.ago(const Duration(days: 2)),
-                  },
-                ],
-              },
-            ]),
-          );
-        case '/api/v1/issue/count':
-          return NetworkReply.json({
-            'total': 1,
-            'video': 0,
-            'audio': 1,
-            'subtitles': 0,
-            'others': 0,
-            'open': 1,
-            'closed': 0,
-          });
         case '/api/v1/settings/radarr':
           return NetworkReply.json([
             for (final s in _known(c, ServiceKey.radarr)) _knownSettings(s, c),
@@ -1081,7 +1059,7 @@ class SeerrFake extends ServiceFake {
         if (title == null) {
           return NetworkReply.json({'message': 'Not found'}, status: 404);
         }
-        return NetworkReply.json(_details(c, title));
+        return NetworkReply.json(_details(c, title, caller));
       }
       if (path == '/api/v1/person/$personId') {
         return NetworkReply.json({
@@ -1269,33 +1247,301 @@ class SeerrFake extends ServiceFake {
       _live(c)?.removeWhere((q) => q.id == id);
       return const NetworkReply(204);
     }
-    // `issue.ts:326-372`: past the route's MANAGE_ISSUES or CREATE_ISSUES
-    // (`_needOf` in `seerr_sessions.dart`), anybody else's issue wants MANAGE_ISSUES, else a 401.
-    // The world has one issue, Anna's.
-    final status = RegExp(
-      r'^/api/v1/issue/(\d+)/(open|resolved)$',
-    ).firstMatch(path);
-    if (r.method == 'POST' && status != null) {
-      if (status.group(1) != '1') return seerrError(404, 'Issue not found.');
-      if (caller != null &&
-          !caller.byKey &&
-          !caller.has(SeerrPermission.manageIssues) &&
-          caller.user.id != WorldSeerrUsers.anna.id) {
-        return seerrError(
-          401,
-          'You do not have permission to modify this issue.',
-        );
-      }
-      return NetworkReply.json({
-        'id': 1,
-        'status': status.group(2) == 'resolved' ? 2 : 1,
-      });
-    }
     if (r.method == 'DELETE' && path.startsWith('/api/v1/')) {
       return const NetworkReply(204);
     }
     return null;
   }
+
+  // === Problem reports ===================================================
+
+  static String _iso(DateTime at) => at.toUtc().toIso8601String();
+
+  static bool _mayReadIssues(SeerrCaller caller) => caller.hasAny(const [
+    SeerrPermission.manageIssues,
+    SeerrPermission.viewIssues,
+    SeerrPermission.createIssues,
+  ]);
+
+  /// The problem reports as the world stands: Anna's one, as written, or,
+  /// once it lives, as the demo left them. A world that does not live
+  /// answers a write and forgets it, as it does for a request.
+  static List<LiveSeerrIssue> _issues(ServerContext c) {
+    List<LiveSeerrIssue> written() {
+      final reported = c.now.subtract(const Duration(days: 3));
+      final issue = LiveSeerrIssue(
+        id: 1,
+        type: 2,
+        title: WorldTitles.tearsOfSteel,
+        createdBy: WorldSeerrUsers.anna.id,
+        created: reported,
+        comments: [
+          LiveSeerrComment(
+            id: 1,
+            user: WorldSeerrUsers.anna.id,
+            message: 'Audio drifts out of sync after about 8 minutes',
+            created: reported,
+          ),
+          LiveSeerrComment(
+            id: 2,
+            user: WorldSeerrUsers.admin.id,
+            message: 'Which device?',
+            created: c.now.subtract(const Duration(days: 2, hours: 5)),
+          ),
+          LiveSeerrComment(
+            id: 3,
+            user: WorldSeerrUsers.anna.id,
+            message: 'Living room TV',
+            created: c.now.subtract(const Duration(days: 2)),
+          ),
+        ],
+      );
+      issue.updated = c.now.subtract(const Duration(days: 2));
+      return [issue];
+    }
+
+    if (c.life == null) return written();
+    return seerrStateOf(c.network, c.server.id).liveIssues ??= written();
+  }
+
+  static JsonMap _commentJson(
+    ServerContext c,
+    LiveSeerrComment comment, {
+    required bool withUser,
+  }) => {
+    'id': comment.id,
+    'message': comment.message,
+    'createdAt': _iso(comment.created),
+    'updatedAt': _iso(comment.updated),
+    // The list does not join the author; one issue's own read does.
+    if (withUser) 'user': _user(c, comment.user),
+  };
+
+  static JsonMap _issueJson(
+    ServerContext c,
+    LiveSeerrIssue issue, {
+    required bool withUsers,
+  }) => {
+    'id': issue.id,
+    'issueType': issue.type,
+    'status': issue.status,
+    'problemSeason': issue.season,
+    'problemEpisode': issue.episode,
+    'createdAt': _iso(issue.created),
+    'updatedAt': _iso(issue.updated),
+    'createdBy': _user(c, issue.createdBy),
+    'modifiedBy': issue.modifiedBy == null ? null : _user(c, issue.modifiedBy!),
+    // Seerr's issue rows name no title: the app reads it from the title's
+    // own page, which this world answers.
+    'media': _media(c, issue.title),
+    'comments': [
+      for (final comment in issue.comments)
+        _commentJson(c, comment, withUser: withUsers),
+    ],
+  };
+
+  static final _issueRoute = RegExp(
+    r'^/api/v1/issue/(\d+)(?:/(comment|open|resolved))?$',
+  );
+  static final _commentRoute = RegExp(r'^/api/v1/issueComment/(\d+)$');
+
+  /// `server/routes/issue.ts` and `issueComment.ts`: the route's own checks
+  /// past the permission the gate already asked (`_needOf`), kept in the
+  /// world so a report, a reply, a resolve or a delete reads the same
+  /// everywhere. Null for a request that is not about issues.
+  static NetworkReply? _issueAnswer(
+    NetworkRequest r,
+    ServerContext c,
+    SeerrCaller? caller,
+  ) {
+    final path = r.path;
+    if (caller == null ||
+        !(path.startsWith('/api/v1/issue/') || path == '/api/v1/issue') &&
+            !path.startsWith('/api/v1/issueComment/')) {
+      return null;
+    }
+    final issues = _issues(c);
+    final me = caller.user.id;
+    final manage = caller.has(SeerrPermission.manageIssues);
+    final sees = manage || caller.has(SeerrPermission.viewIssues);
+    final now = c.now;
+
+    if (r.method == 'GET' && path == '/api/v1/issue') {
+      // Without MANAGE_ISSUES or VIEW_ISSUES the list is the caller's own.
+      final filter = r.query['filter'] ?? 'open';
+      final rows = [
+        for (final i in issues)
+          if ((sees || i.createdBy == me) &&
+              switch (filter) {
+                'open' => i.status == 1,
+                'resolved' => i.status == 2,
+                _ => true,
+              })
+            i,
+      ];
+      rows.sort(
+        (a, b) => r.query['sort'] == 'added'
+            ? b.created.compareTo(a.created)
+            : b.updated.compareTo(a.updated),
+      );
+      return NetworkReply.json(
+        _page(r, [for (final i in rows) _issueJson(c, i, withUsers: false)]),
+      );
+    }
+    if (r.method == 'GET' && path == '/api/v1/issue/count') {
+      int type(int t) => issues.where((i) => i.type == t).length;
+      return NetworkReply.json({
+        'total': issues.length,
+        'video': type(1),
+        'audio': type(2),
+        'subtitles': type(3),
+        'others': type(4),
+        'open': issues.where((i) => i.status == 1).length,
+        'closed': issues.where((i) => i.status == 2).length,
+      });
+    }
+    if (r.method == 'POST' && path == '/api/v1/issue') {
+      final body = r.json is Map ? r.json as Map : const {};
+      final type = body['issueType'];
+      final message = body['message'];
+      final mediaId = body['mediaId'];
+      if (type is! int ||
+          type < 1 ||
+          type > 4 ||
+          message is! String ||
+          message.trim().isEmpty ||
+          mediaId is! int) {
+        return seerrError(400, 'Invalid issue.');
+      }
+      final title = (c.life == null ? WorldTitles.all : WorldTitles.catalogue)
+          .where((t) => t.tmdbId == mediaId && _media(c, t) != null)
+          .firstOrNull;
+      if (title == null) return seerrError(404, 'Media does not exist.');
+      final issue = LiveSeerrIssue(
+        id: issues.fold<int>(0, (top, i) => i.id > top ? i.id : top) + 1,
+        type: type,
+        title: title,
+        createdBy: me,
+        created: now,
+        season: title.isSeries ? (body['problemSeason'] as int? ?? 0) : 0,
+        episode: title.isSeries ? (body['problemEpisode'] as int? ?? 0) : 0,
+      );
+      issue.comments.add(
+        LiveSeerrComment(
+          id: _nextCommentId(issues),
+          user: me,
+          message: message,
+          created: now,
+        ),
+      );
+      issues.add(issue);
+      return NetworkReply.json(
+        _issueJson(c, issue, withUsers: true),
+        status: 201,
+      );
+    }
+
+    final match = _issueRoute.firstMatch(path);
+    if (match != null) {
+      final id = int.parse(match.group(1)!);
+      final issue = issues.where((i) => i.id == id).firstOrNull;
+      if (issue == null) return seerrError(404, 'Issue not found.');
+      final own = issue.createdBy == me;
+      switch ((r.method, match.group(2))) {
+        case ('GET', null):
+          if (!sees && !own) {
+            return seerrError(
+              403,
+              'You do not have permission to view this issue.',
+            );
+          }
+          return NetworkReply.json(_issueJson(c, issue, withUsers: true));
+        case ('POST', 'comment'):
+          if (!manage && !own) {
+            return seerrError(
+              401,
+              'You do not have permission to comment on this issue.',
+            );
+          }
+          final message = r.json is Map ? (r.json as Map)['message'] : null;
+          if (message is! String || message.trim().isEmpty) {
+            return seerrError(400, 'You must provide a message.');
+          }
+          issue.comments.add(
+            LiveSeerrComment(
+              id: _nextCommentId(issues),
+              user: me,
+              message: message,
+              created: now,
+            ),
+          );
+          issue.updated = now;
+          return NetworkReply.json(_issueJson(c, issue, withUsers: true));
+        case ('POST', 'open' || 'resolved'):
+          // `issue.ts:326-372`: anybody else's issue wants MANAGE_ISSUES,
+          // else a 401.
+          if (!manage && !own) {
+            return seerrError(
+              401,
+              'You do not have permission to modify this issue.',
+            );
+          }
+          issue
+            ..status = match.group(2) == 'resolved' ? 2 : 1
+            ..modifiedBy = me
+            ..updated = now;
+          return NetworkReply.json(_issueJson(c, issue, withUsers: true));
+        case ('DELETE', null):
+          // MANAGE_ISSUES, or one's own issue while nobody has replied.
+          if (!manage && !(own && issue.comments.length == 1)) {
+            return seerrError(
+              401,
+              'You do not have permission to delete this issue.',
+            );
+          }
+          issues.remove(issue);
+          return const NetworkReply(204);
+      }
+      return null;
+    }
+
+    final reply = _commentRoute.firstMatch(path);
+    if (reply != null && (r.method == 'PUT' || r.method == 'DELETE')) {
+      final id = int.parse(reply.group(1)!);
+      for (final issue in issues) {
+        final comment = issue.comments.where((m) => m.id == id).firstOrNull;
+        if (comment == null) continue;
+        final edit = r.method == 'PUT';
+        if (!manage && comment.user != me) {
+          return seerrError(
+            401,
+            'You do not have permission to ${edit ? 'edit' : 'delete'} this '
+            'comment.',
+          );
+        }
+        if (!edit) {
+          issue.comments.remove(comment);
+          return const NetworkReply(204);
+        }
+        final message = r.json is Map ? (r.json as Map)['message'] : null;
+        if (message is! String || message.trim().isEmpty) {
+          return seerrError(400, 'You must provide a message.');
+        }
+        comment
+          ..message = message
+          ..updated = now;
+        return NetworkReply.json(_commentJson(c, comment, withUser: true));
+      }
+      return seerrError(404, 'Issue comment not found.');
+    }
+    return null;
+  }
+
+  static int _nextCommentId(List<LiveSeerrIssue> issues) =>
+      issues
+          .expand((i) => i.comments)
+          .fold<int>(0, (top, m) => m.id > top ? m.id : top) +
+      1;
 
   /// The title `POST /api/v1/request` asks for, by its TMDB id and kind,
   /// from everything the world's Seerr can find.

@@ -258,7 +258,13 @@ void main() {
     final band = find.bySemanticsLabel(
       'Blender Open Movies, 5 of 8 on your server',
     );
-    await tester.ensureVisible(band);
+    // The title carries a reported problem, so the page is longer than the
+    // viewport builds: scroll to the band.
+    await tester.scrollUntilVisible(
+      band,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(band, findsOneWidget);
     expect(find.text('Collection'), findsNothing);
 

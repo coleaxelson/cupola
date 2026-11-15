@@ -307,7 +307,7 @@ void main() {
 
     final saved = _saved(container);
     expect(saved.account?.isSignedIn, isTrue);
-    expect(saved.account?.permissions, 32);
+    expect(saved.account?.permissions, 4194336);
     expect(saved.isConfigured, isTrue);
     expect(find.text('Signed in as ${WorldPeople.anna}'), findsOneWidget);
     final signIn = harness.network
