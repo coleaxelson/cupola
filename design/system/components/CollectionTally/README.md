@@ -11,7 +11,7 @@ Rendered from `lib/features/discover/presentation/widgets/collection_tally.dart`
 
 Both are a slab: `door`, `AppRadius.door`, a hairline edge, padding `AppSpacing.lg`. The invitation glows with the light of its first movie's cover (`SlabLight` at 0.5, clipped to the slab), read from the cover the strip draws.
 
-**Wide**: once the inside of the slab is `CollectionTally.besideFrom` (776) wide, the strip goes beside the words, at the end of the slab and at its own width (its covers at 44, never more than `CollectionTally.stripMeasure`, 376, the widest phone's strip), with the legend under the words. The atrium's invitation reaches it on a tablet on its side and in a desktop window; a collection's page never does, its column stopping at the reading well.
+**Wide**: once the inside of the slab is `CollectionTally.besideFrom` (776) wide, the strip goes beside the words, at the end of the slab and at its own width (its covers at 44, never more than `CollectionTally.stripMeasure`, 376, the widest phone's strip), with the legend, where there is one, under the words. The atrium's invitation reaches it on a tablet on its side and in a desktop window; a collection's page never does, its column stopping at the reading well.
 
 ## The strip
 
@@ -19,7 +19,7 @@ The movies in release order, side by side, each cover at most 44 wide (`w92`, 2:
 
 ## The legend
 
-`5 on your server · 2 on the way · 1 waiting for approval`, each after a 7pt dot in its tone (a ring for the one waiting), in the label role at 400, `inkSecondary`; a kind with nothing in it is left out. It wraps at any reading size.
+`5 on your server · 2 on the way · 1 waiting for approval`, each after a 7pt dot in its tone (a ring for the one waiting), in the label role at 400, `inkSecondary`; a kind with nothing in it is left out. When the only kind left is `on your server` the legend is not drawn at all: it would repeat the headline's count (`5 of 7 on your server`, `All 4 on your server`). With two kinds or more it is whole. It wraps at any reading size.
 
 ## When the atrium invites
 
@@ -39,7 +39,8 @@ Each sheet is drawn in the dark and the light room.
 
 - The page's slab: five on the server, two on the way, one waiting.
 - The invitation.
-- Whole: all on the server.
+- Whole: all on the server, no legend.
+- Part way: on the server and missing only, no legend.
 - Past ten movies: the bars alone.
 - Text at 200%: the invitation.
 - The invitation on a tablet on its side: the strip beside the words.

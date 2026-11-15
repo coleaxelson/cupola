@@ -125,8 +125,8 @@ void main() {
         width: 390,
       ),
       CatalogScene(
-        'SearchRow.title · a long title and a long state, cut to one line '
-        'each; the plus keeps its 44',
+        'SearchRow.title · a long title takes a second line, a long state '
+        'and meta stay on one; the plus keeps its 44',
         (_) => SearchRow.title(
           title: 'The Cabinet of Dr. Caligari and Other Expressionist Films',
           meta: 'Movie · 1920 · TMDB\u00A08.0',
@@ -138,6 +138,34 @@ void main() {
           ),
         ),
         width: 320,
+      ),
+      CatalogScene(
+        'On a collection\'s page at 390 · a long title beside Request takes a '
+        'second line, one that fits keeps one, and no row is taller than a '
+        'short one\'s',
+        (_) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final (title, year) in const [
+              ('Agent 327: Operation Barbershop', 2017),
+              ('Cosmos Laundromat: First Cycle', 2015),
+              ('Caminandes 3: Llamigos', 2016),
+              ('Sintel', 2010),
+            ])
+              SearchRow.title(
+                title: title,
+                meta: 'Movie · $year',
+                onTap: () {},
+                action: SearchRowRequest(
+                  label: 'Request $title',
+                  verdict: const Live(),
+                  onTap: () {},
+                ),
+              ),
+          ],
+        ),
+        // The page's gutter and the group's inset, on either side.
+        width: 330,
       ),
       CatalogScene(
         'Selected · on a tablet, the row whose page the pane beside the list '
@@ -180,8 +208,8 @@ void main() {
         width: 390,
       ),
       CatalogScene(
-        'Text at 200% · the row grows past its floor, the words stay on one '
-        'line each and the person\'s line takes two',
+        'Text at 200% · the row grows past its floor; here the titles are '
+        'short and the person\'s line takes two',
         (_) => _answer(),
         width: 390,
         textScale: catalogTextScale,

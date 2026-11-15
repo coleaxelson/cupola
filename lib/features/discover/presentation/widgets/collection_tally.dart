@@ -128,7 +128,8 @@ class CollectionTally extends ConsumerWidget {
         ),
       ],
     ];
-    final legendLine = legend.isEmpty
+    // Alone, "on your server" would only say the headline again.
+    final legendLine = coming.isEmpty
         ? null
         : Wrap(
             spacing: AppSpacing.lg,
