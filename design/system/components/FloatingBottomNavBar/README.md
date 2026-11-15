@@ -26,6 +26,10 @@ The bar clamps its text scale at 1.3× (`maxTextScaleFactor`). `FloatingNavBarMe
 
 A horizontal drag rubber-bands the bar up to 15pt with growing resistance and springs back on `Curves.elasticOut` over `AppAnimation.durationXl`. When the shell attaches a `FloatingNavBarVerticalDragDelegate` (the service Portal), the vertical axis belongs to it; with a screen reader running none is attached.
 
+## Stepping down for a selection
+
+While a library wall selects (`LibrarySelectionScope`, held by the shell), the bar steps down out of sight and the library's selection bar comes up in its place: the same glass (`FloatingBarSurface`, the one surface both are drawn on), the same margins and the same foot, so one stands exactly where the other was. The bar keeps its slot, so nothing above it moves, takes no touch and says nothing to a screen reader while it is down: a tab cannot be switched under a selection, and the way out is Cancel, Back or a finished action. Over `motion.standard` (320 ms, the token's curve); under Reduce Motion a 150 ms fade of both, no slide. `LibrarySelectionNavSlot` is the shell's wrapper; the catalog's *MediaBrowseScaffold* card draws the swap.
+
 ## Where it is not used
 
 At `AppBreakpoints.touchRail` (840) and wider on a touch device, the bar stands on its side: [FloatingNavRail](../FloatingNavRail/README.md), the same destinations, glyphs over names, glass and badge at the middle of the leading edge. A desktop window drawing the desktop shell navigates from [DesktopNavRail](../DesktopNavRail/README.md) instead.

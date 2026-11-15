@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/widgets/glass_app_bar.dart';
+import 'package:cupola/core/widgets/library_selection.dart';
 import 'package:cupola/core/widgets/service_tab_bar.dart';
 import 'package:cupola/features/services/domain/service_tab.dart';
 import 'package:cupola/features/services/presentation/service_bar_action.dart';
@@ -95,18 +96,22 @@ class ServiceTabScaffold extends StatelessWidget {
           top: ServiceHomeScreen.bandHeightOf(context),
           left: 0,
           right: 0,
-          child: GlassSurface(
-            child: SafeArea(
-              bottom: false,
-              // The band above already consumed the top inset, and this widget
-              // has now been offset past it: consuming it a second time here
-              // would push the bar a status bar below where the content
-              // reserves it.
-              top: false,
-              child: ServiceTabBar(
-                service: service,
-                current: tab,
-                onSelected: (next) => _go(context, next),
+          // Steps aside with the band while a library selects: a tab cannot
+          // be switched from under a selection.
+          child: LibrarySelectionHide(
+            child: GlassSurface(
+              child: SafeArea(
+                bottom: false,
+                // The band above already consumed the top inset, and this widget
+                // has now been offset past it: consuming it a second time here
+                // would push the bar a status bar below where the content
+                // reserves it.
+                top: false,
+                child: ServiceTabBar(
+                  service: service,
+                  current: tab,
+                  onSelected: (next) => _go(context, next),
+                ),
               ),
             ),
           ),

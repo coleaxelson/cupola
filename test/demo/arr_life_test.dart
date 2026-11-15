@@ -318,6 +318,61 @@ void main() {
       );
     });
 
+    test('the editor sets some artists and removes others, and the library '
+        'says so', () async {
+      Future<Map<String, Object?>> artist(int id) async =>
+          (await list('$lidarr/artist')).firstWhere((a) => a['id'] == id);
+
+      // Two artists of the shelf: monitored, on profile 1.
+      expect((await artist(1001))['monitored'], isTrue);
+      expect((await artist(1002))['qualityProfileId'], 1);
+
+      await send(
+        'PUT',
+        '$lidarr/artist/editor',
+        json: {
+          'artistIds': [1001, 1002],
+          'monitored': false,
+          'qualityProfileId': 2,
+        },
+      );
+
+      // What was sent was set on the ones named, and nothing else was.
+      for (final id in [1001, 1002]) {
+        expect((await artist(id))['monitored'], isFalse);
+        expect((await artist(id))['qualityProfileId'], 2);
+        expect((await artist(id))['monitorNewItems'], 'all');
+      }
+      expect((await artist(1003))['monitored'], isTrue);
+
+      await send(
+        'DELETE',
+        '$lidarr/artist/editor',
+        json: {
+          'artistIds': [1001],
+          'deleteFiles': false,
+          'addImportListExclusion': false,
+        },
+      );
+
+      final library = (await list('$lidarr/artist')).map((a) => a['id']);
+      expect(library, isNot(contains(1001)));
+      expect(library, contains(1002));
+      expect(library, hasLength(LidarrFake.shelfCount));
+    });
+
+    test('a search for an artist is a command Lidarr takes', () async {
+      final command =
+          await send(
+                'POST',
+                '$lidarr/command',
+                json: {'name': 'ArtistSearch', 'artistId': 1002},
+              )
+              as Map;
+      expect(command['name'], 'ArtistSearch');
+      expect(command['status'], 'queued');
+    });
+
     test('finds the world\'s own artist and albums as the library holds '
         'them, and for any other word one artist and one album that it '
         'does not', () async {

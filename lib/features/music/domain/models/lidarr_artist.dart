@@ -18,6 +18,10 @@ class LidarrArtist {
   final Map<String, dynamic>? statistics;
   final List<String> genres;
   final int? qualityProfileId;
+
+  /// Which kinds of release Lidarr keeps of the artist. Null on a record that
+  /// does not say.
+  final int? metadataProfileId;
   final List<RatingSource> ratings;
   final String? artistType;
   final String? disambiguation;
@@ -40,6 +44,7 @@ class LidarrArtist {
     this.statistics,
     required this.genres,
     this.qualityProfileId,
+    this.metadataProfileId,
     this.ratings = const [],
     this.artistType,
     this.disambiguation,
@@ -79,6 +84,7 @@ class LidarrArtist {
       statistics: json['statistics'],
       genres: parseGenreList(json['genres']),
       qualityProfileId: json['qualityProfileId'],
+      metadataProfileId: json['metadataProfileId'] as int?,
       ratings: ratings,
       artistType: json['artistType'],
       disambiguation: json['disambiguation'],

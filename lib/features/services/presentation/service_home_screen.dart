@@ -13,6 +13,7 @@ import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/utils/route_utils.dart';
 import 'package:cupola/core/widgets/ambient_background.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
+import 'package:cupola/core/widgets/library_selection.dart';
 import 'package:cupola/core/widgets/service_mark_tile.dart';
 import 'package:cupola/features/media/presentation/media_parts.dart';
 import 'package:cupola/features/services/domain/service_tab.dart';
@@ -98,14 +99,19 @@ class ServiceHomeScreen extends StatelessWidget {
         // tabs take this light ([RoomLightScope]), and the band and the tab
         // bar, which float over them, frost this same room.
         final light = ref.watch(serviceRoomLightProvider(service));
-        return RoomLightScope(
-          accent: light?.light,
-          art: light?.art,
-          child: AmbientBackground(
+        // Back belongs to this page's route while a library of the service
+        // selects: the swipe would pop the whole service, not end the
+        // selection (see `LibrarySelectionBackGuard`).
+        return LibrarySelectionBackGuard(
+          child: RoomLightScope(
             accent: light?.light,
             art: light?.art,
-            accentDuration: AppAnimation.light,
-            child: _framed(context),
+            child: AmbientBackground(
+              accent: light?.light,
+              art: light?.art,
+              accentDuration: AppAnimation.light,
+              child: _framed(context),
+            ),
           ),
         );
       },
@@ -129,9 +135,13 @@ class ServiceHomeScreen extends StatelessWidget {
           // screen's ambient gradient reads continuously behind the app bar
           // and scrolling content frosts underneath. Whole to its edge when
           // the tab row's glass carries on under it.
-          child: tabsFor(service) == null
-              ? GlassSurface(child: _band())
-              : GlassSurface.continued(child: _band()),
+          // Steps aside while a library of the service selects: the header
+          // of the selection stands in its place.
+          child: LibrarySelectionHide(
+            child: tabsFor(service) == null
+                ? GlassSurface(child: _band())
+                : GlassSurface.continued(child: _band()),
+          ),
         ),
       ],
     );

@@ -1,28 +1,37 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // ignore: implementation_imports
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:cupola/core/app_animation.dart';
 import 'package:cupola/core/app_breakpoints.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
+import 'package:cupola/core/lifecycle/page_activity.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/service_theme.dart';
 import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/arr_activity_display.dart';
 import 'package:cupola/core/utils/find_match.dart';
 import 'package:cupola/core/utils/image_utils.dart';
+import 'package:cupola/core/utils/side_pane_route.dart';
+import 'package:cupola/core/utils/snack_bar_helper.dart';
 import 'package:cupola/core/widgets/ambient_scaffold.dart';
 import 'package:cupola/core/widgets/app_empty_state.dart';
 import 'package:cupola/core/widgets/media_poster_caption.dart';
 import 'package:cupola/core/widgets/async_value_widget.dart';
 import 'package:cupola/core/widgets/content_card.dart';
+import 'package:cupola/core/widgets/failure_remedy.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
 import 'package:cupola/core/widgets/inline_error_retry.dart';
+import 'package:cupola/core/widgets/library_selection.dart';
+import 'package:cupola/core/widgets/media_bulk.dart';
 import 'package:cupola/core/widgets/media_find.dart';
 import 'package:cupola/core/widgets/media_browse_index.dart';
 import 'package:cupola/core/widgets/media_browse_wanted.dart';
@@ -358,6 +367,11 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
   /// for a wall that keeps Missing. See [MediaBrowseWanted].
   final MediaBrowseWanted? wanted;
 
+  /// What this library can do to several of its titles at once, or null for a
+  /// wall that cannot: it then offers no `Select` and no long press into
+  /// selection, rather than a control with nothing behind it. See [MediaBulk].
+  final MediaBulk<T>? bulk;
+
   const MediaBrowseScaffold({
     super.key,
     required this.title,
@@ -387,6 +401,7 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
     this.sorts = const [],
     this.cutoffUnmetIds,
     this.wanted,
+    this.bulk,
     this.tileShape = MediaBrowseTileShape.poster,
     this.posterFallbackIcon = Icons.movie_outlined,
     this.emptyIcon = Icons.video_library_outlined,
@@ -430,6 +445,29 @@ class _MediaBrowseScaffoldState<T>
   /// letter has to count in (see [_jumpToLetter]).
   final ScrollController _outer = ScrollController();
 
+  /// The window's selection controller, when there is a shell to coordinate
+  /// with: the one the navigation bar and a service's band listen to.
+  LibrarySelectionController? _scope;
+
+  /// Whether the wall is in selection mode: see [MediaBrowseScaffold.bulk].
+  var _selecting = false;
+
+  /// The ids selected, whether or not the current chip shows them.
+  final Set<int> _selected = <int>{};
+
+  /// The action in flight, by its place on the bar; -1 for a retry from the
+  /// notice. While one is out the others are inert and Back is not heard.
+  int? _running;
+
+  /// What the last action left undone for some titles, over the chips.
+  _BulkNotice<T>? _notice;
+
+  /// Why the last action did nothing at all: the selection stays under it.
+  ({String message, Object error, VoidCallback retry})? _failure;
+
+  /// Where the keys of selection mode (Esc, Cmd or Ctrl A) are heard.
+  final FocusNode _keys = FocusNode(debugLabel: 'library selection');
+
   @override
   void initState() {
     super.initState();
@@ -437,7 +475,20 @@ class _MediaBrowseScaffoldState<T>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = LibrarySelectionScope.maybeOf(context);
+    if (!identical(scope, _scope)) {
+      if (_selecting) _scope?.release(this);
+      _scope = scope;
+      if (_selecting) scope?.claim(this, onCancel: _cancelSelecting);
+    }
+  }
+
+  @override
   void dispose() {
+    _scope?.release(this);
+    _keys.dispose();
     _outer.dispose();
     super.dispose();
   }
@@ -446,6 +497,9 @@ class _MediaBrowseScaffoldState<T>
   /// and the next one starts in the library.
   void _setLiveText(String text) {
     if (text == _liveText) return;
+    // A word typed from outside (a link that opens the wall on a search) is
+    // the end of selecting: the wall is showing something else now.
+    if (text.isNotEmpty && _selecting && _running == null) _endSelecting();
     setState(() => _liveText = text);
     if (text.isEmpty) {
       final scope = widget.find.scopeProvider;
@@ -484,7 +538,295 @@ class _MediaBrowseScaffoldState<T>
     if (_selectedFilter == MediaBrowseFilter.wanted && widget.wanted == null) {
       _selectedFilter = MediaBrowseFilter.all;
     }
+    // A wall that can no longer do anything to its titles does not select.
+    if (widget.bulk == null) {
+      if (_selecting) {
+        _selecting = false;
+        _selected.clear();
+        _scope?.release(this);
+      }
+      _notice = null;
+      _failure = null;
+    }
   }
+
+  // === Selection ============================================================
+
+  /// Enters selection mode, with [id] selected when a long press began it.
+  void _beginSelecting({int? id}) {
+    if (widget.bulk == null || _selecting) return;
+    if (id != null) HapticFeedback.mediumImpact();
+    setState(() {
+      _selecting = true;
+      _selected.clear();
+      if (id != null) _selected.add(id);
+      _failure = null;
+    });
+    _scope?.claim(this, onCancel: _cancelSelecting);
+    // The keys of selection are heard where the focus is: put it in the wall,
+    // unless a control in it already holds it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _selecting && !_keys.hasFocus) {
+        final focus = FocusManager.instance.primaryFocus;
+        if (focus == null || !_keys.descendants.contains(focus)) {
+          _keys.requestFocus();
+        }
+      }
+    });
+  }
+
+  /// Leaves selection mode and forgets what was selected.
+  void _endSelecting() {
+    if (!_selecting) return;
+    setState(() {
+      _selecting = false;
+      _selected.clear();
+      _failure = null;
+    });
+    _scope?.release(this);
+  }
+
+  /// Cancel, Back and Esc. Not while a write is out: it would answer to
+  /// nobody, and the titles would change under a wall that said it had stopped.
+  void _cancelSelecting() {
+    if (_running != null) return;
+    _endSelecting();
+  }
+
+  void _toggle(int id) {
+    if (_running != null) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (!_selected.remove(id)) _selected.add(id);
+      _failure = null;
+    });
+  }
+
+  /// `Select all` takes what the chip and sort show; `Deselect all` lets go of
+  /// every title, shown or not.
+  void _toggleAll(List<T> items, {required bool deselect}) {
+    if (_running != null) return;
+    setState(() {
+      if (deselect) {
+        _selected.clear();
+      } else {
+        for (final item in _filteredItems(items)) {
+          _selected.add(widget.idExtractor(item));
+        }
+      }
+      _failure = null;
+    });
+  }
+
+  /// The selected titles, in the wall's order. Ids the library no longer
+  /// holds (a title removed since) are not titles.
+  List<T> _chosen(List<T> items) => [
+    for (final item in _sortedItems(items))
+      if (_selected.contains(widget.idExtractor(item))) item,
+  ];
+
+  /// What the header says: how many are selected, how many the chip shows,
+  /// how many of the selected it hides, and whether all that is shown is
+  /// selected.
+  ({int selected, int shown, int hidden, bool all}) _selectionFacts(
+    List<T> items,
+  ) {
+    final shown = {
+      for (final item in _filteredItems(items)) widget.idExtractor(item),
+    };
+    final held = {for (final item in items) widget.idExtractor(item)};
+    final selected = _selected.where(held.contains).length;
+    final shownSelected = _selected.where(shown.contains).length;
+    return (
+      selected: selected,
+      shown: shown.length,
+      hidden: selected - shownSelected,
+      all: shown.isNotEmpty && shownSelected == shown.length,
+    );
+  }
+
+  /// What the selection header clears at the top: nothing under the wall's own
+  /// bar; the tab row a desktop window keeps as the service's header; and the
+  /// status bar alone where the service's band and tab bar have stepped aside.
+  double _selectionTopInset(BuildContext context) {
+    if (widget.showAppBar) return 0;
+    if (AppBreakpoints.isDesktopShell(context)) return _chromeInset(context);
+    return MediaQuery.paddingOf(context).top;
+  }
+
+  /// Whether the navigation bar is at the foot of the window: the phone
+  /// layout, where the selection bar takes its place. The rail and the
+  /// desktop shell have none.
+  bool _hasNavBar(BuildContext context) =>
+      !AppBreakpoints.isDesktopShell(context) &&
+      MediaQuery.sizeOf(context).width < AppBreakpoints.touchRail;
+
+  /// The room a wall keeps at its foot while selecting: the navigation bar's
+  /// is already kept on a phone, and the other layouts keep the selection
+  /// bar's own.
+  double _selectionClearance(BuildContext context) =>
+      _selecting && !_hasNavBar(context)
+      ? FloatingNavBarMetrics.barHeightFor(context) + _railBarGap
+      : 0;
+
+  /// How far the selection bar floats above the foot of the list on a layout
+  /// with no navigation bar.
+  static const double _railBarGap = AppSpacing.xl;
+
+  /// Taps on an action with nothing selected.
+  void _toastNone(BuildContext context) {
+    final hint = widget.bulk!.noneHint;
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    // On a phone the shell's Scaffold already lifts a toast over its bottom
+    // slot, which is where the selection bar is; elsewhere it is lifted here.
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(hint),
+        margin: _hasNavBar(context)
+            ? null
+            : EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                FloatingNavBarMetrics.barHeightFor(context) +
+                    _railBarGap +
+                    AppSpacing.md,
+              ),
+      ),
+    );
+  }
+
+  Future<void> _tapAction(int index, List<T> items) async {
+    final bulk = widget.bulk;
+    if (bulk == null || _running != null) return;
+    final chosen = _chosen(items);
+    if (chosen.isEmpty) {
+      _toastNone(context);
+      return;
+    }
+    final job = await bulk.actions[index].prepare(context, chosen);
+    if (!mounted || job == null) return;
+    await _perform(job, chosen, running: index);
+  }
+
+  /// Runs [job] for [items] and says what became of each title.
+  ///
+  /// [retrying] is the notice being run again for the titles it names: the
+  /// outcome then folds into it rather than starting a new one.
+  Future<void> _perform(
+    MediaBulkJob<T> job,
+    List<T> items, {
+    required int running,
+    _BulkNotice<T>? retrying,
+  }) async {
+    final bulk = widget.bulk;
+    setState(() {
+      _running = running;
+      _failure = null;
+    });
+    MediaBulkOutcome? outcome;
+    Object? thrown;
+    try {
+      outcome = await job.run(items);
+    } catch (error) {
+      thrown = error;
+    }
+    if (!mounted) return;
+    setState(() => _running = null);
+
+    if (thrown != null) {
+      _fail(
+        thrown,
+        retrying: retrying != null,
+        again: () => _perform(job, items, running: running, retrying: retrying),
+      );
+      return;
+    }
+    final result = outcome!;
+    if (result.done.isNotEmpty && bulk != null) bulk.onChanged?.call(ref);
+
+    final total = retrying?.total ?? items.length;
+    final done = (retrying?.done ?? 0) + result.done.length;
+    if (result.isWhole) {
+      setState(() => _notice = null);
+      _endSelecting();
+      SnackBarHelper.success(context, job.doneLine(total));
+      return;
+    }
+    if (retrying == null && result.isNone) {
+      // Nothing took it: the selection stays, with why, so the same titles
+      // can be tried again or let go.
+      final first = result.failures.first;
+      setState(
+        () => _failure = (
+          message: _failureLines(result.failures).join(' '),
+          error: first.error,
+          retry: () => _perform(job, items, running: running),
+        ),
+      );
+      return;
+    }
+    _endSelecting();
+    setState(
+      () => _notice = _BulkNotice<T>(
+        job: job,
+        total: total,
+        done: done,
+        failures: result.failures,
+      ),
+    );
+  }
+
+  /// A failure that is no title's own (nothing answered, the key was
+  /// refused): the selection stays, and a retry from a notice is told.
+  void _fail(
+    Object error, {
+    required bool retrying,
+    required VoidCallback again,
+  }) {
+    final bulk = widget.bulk;
+    if (bulk == null) return;
+    final message = sectionFailureMessage(
+      bulk.service,
+      error,
+      consequence: 'nothing was changed',
+    );
+    if (retrying) {
+      SnackBarHelper.error(context, message, cause: error, onRetry: again);
+      return;
+    }
+    setState(() => _failure = (message: message, error: error, retry: again));
+  }
+
+  /// Each refusal in the service's words, up to three, then how many more.
+  static List<String> _failureLines(List<MediaBulkFailure> failures) => [
+    for (final failure in failures.take(3)) failure.line,
+    if (failures.length > 3) 'And ${failures.length - 3} more.',
+  ];
+
+  /// Runs the notice's action again for the titles it names, and no others.
+  Future<void> _retryNotice() async {
+    final notice = _notice;
+    if (notice == null || _running != null) return;
+    final items = ref.read(widget.libraryProvider).value;
+    if (items == null) return;
+    final ids = {for (final failure in notice.failures) failure.id};
+    final again = [
+      for (final item in items)
+        if (ids.contains(widget.idExtractor(item))) item,
+    ];
+    if (again.isEmpty) {
+      setState(() => _notice = null);
+      return;
+    }
+    await _perform(notice.job, again, running: -1, retrying: notice);
+  }
+
+  /// Whether the wall is the thing on screen: not under another route, not in
+  /// another tab. A selection does not outlive its wall being left.
+  bool _isShowing(BuildContext context) =>
+      BranchActivityScope.isActiveOf(context) &&
+      (TickerMode.valuesOf(context).enabled || SidePaneScope.hostsOf(context));
 
   /// Title A–Z first, then whatever the service declared.
   ///
@@ -569,7 +911,22 @@ class _MediaBrowseScaffoldState<T>
       }
     });
 
-    return AmbientScaffold(
+    // What selection mode needs of the library: it is only entered over one.
+    final library = ref.watch(widget.libraryProvider).value;
+    final facts = _selecting && library != null
+        ? _selectionFacts(library)
+        : null;
+    final showing = _isShowing(context);
+    if (_selecting && !showing) {
+      // Left for another tab or covered by a route: the selection does not
+      // wait for the wall to come back.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _endSelecting();
+      });
+    }
+    final canSelect = widget.bulk != null && (library?.isNotEmpty ?? false);
+
+    final scaffold = AmbientScaffold(
       accent: widget.accentColor,
       // The token, not a number tuned against it. This used to be 1160, argued
       // as "eight 130pt posters and their gaps", an off-token well chosen to
@@ -580,6 +937,9 @@ class _MediaBrowseScaffoldState<T>
       // `AppBreakpoints.contentWell` is the widest the main well is allowed to
       // grow on any shell, and a browse grid is not an exception to it.
       contentWellWidth: AppBreakpoints.contentWell,
+      // Stays while selecting: a body under a bar is wrapped differently from
+      // one with none ([AmbientScaffold]), and taking the bar away would
+      // build the wall again from nothing and lose its place.
       appBar: widget.showAppBar
           ? GlassAppBar(
               leading: isSearching
@@ -608,20 +968,51 @@ class _MediaBrowseScaffoldState<T>
       body: NestedScrollView(
         controller: _outer,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          if (widget.topPadding > 0)
+          if (_selecting)
+            // `Cancel · 3 selected · Select all 34` in place of the band, the
+            // field and the peek: the service's chrome has stepped aside
+            // (`LibrarySelectionHide`), so only the status bar is cleared. A
+            // wall with a bar of its own keeps it, and the header sits under.
+            SliverToBoxAdapter(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: _selectionTopInset(context)),
+                  LibrarySelectionHeader(
+                    selected: facts?.selected ?? 0,
+                    shown: facts?.shown ?? 0,
+                    hidden: facts?.hidden ?? 0,
+                    hiddenBy: _filterLabel(
+                      _selectedFilter,
+                      widget.wanted?.label,
+                    ),
+                    allSelected: facts?.all ?? false,
+                    onCancel: _cancelSelecting,
+                    onToggleAll: () {
+                      if (library != null) {
+                        _toggleAll(library, deselect: facts?.all ?? false);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+              ),
+            )
+          else if (widget.topPadding > 0)
             SliverToBoxAdapter(child: SizedBox(height: _chromeInset(context))),
-          SliverToBoxAdapter(
-            child: SearchBarHeader(
-              hintText: widget.searchHint,
-              // A word the Discover tab sends here ("Search Lidarr for …")
-              // shows in the field it searches.
-              initialQuery: ref.watch(widget.searchQueryProvider),
-              onQueryChanged: (query) {
-                ref.read(widget.searchQueryProvider.notifier).state = query;
-              },
-              onTextChanged: _setLiveText,
+          if (!_selecting)
+            SliverToBoxAdapter(
+              child: SearchBarHeader(
+                hintText: widget.searchHint,
+                // A word the Discover tab sends here ("Search Lidarr for …")
+                // shows in the field it searches.
+                initialQuery: ref.watch(widget.searchQueryProvider),
+                onQueryChanged: (query) {
+                  ref.read(widget.searchQueryProvider.notifier).state = query;
+                },
+                onTextChanged: _setLiveText,
+              ),
             ),
-          ),
           if (isSearching && scopeProvider != null)
             SliverToBoxAdapter(
               child: MediaFindScopeControl(
@@ -630,7 +1021,7 @@ class _MediaBrowseScaffoldState<T>
                 onSelected: (next) => _selectScope(scopeProvider, next),
               ),
             ),
-          if (!isSearching && widget.kpiPeek != null)
+          if (!isSearching && !_selecting && widget.kpiPeek != null)
             SliverToBoxAdapter(child: widget.kpiPeek!),
           if (!isSearching)
             SliverToBoxAdapter(
@@ -646,6 +1037,9 @@ class _MediaBrowseScaffoldState<T>
                   });
                 },
                 wantedLabel: widget.wanted?.label,
+                // Only a wall that can do something to its titles, once it
+                // has some, and not while it is already selecting.
+                onSelect: canSelect && !_selecting ? _beginSelecting : null,
                 sortLabel: _sortOptions[_sortIndex].label,
                 sortOptions: [for (final sort in _sortOptions) sort.label],
                 selectedSort: _sortIndex,
@@ -654,6 +1048,32 @@ class _MediaBrowseScaffoldState<T>
                     _sortIndex = index;
                   });
                 },
+              ),
+            ),
+          if (_failure case final failure?)
+            SliverToBoxAdapter(
+              child: InlineErrorRetry(
+                message: failure.message,
+                error: failure.error,
+                service: widget.bulk!.service,
+                instanceId: widget.bulk!.instanceId,
+                // The same action for the same titles: the selection never
+                // left.
+                onRetry: () {
+                  setState(() => _failure = null);
+                  failure.retry();
+                },
+              ),
+            ),
+          if (_notice case final notice?)
+            SliverToBoxAdapter(
+              child: _BulkNoticeCard<T>(
+                notice: notice,
+                bulk: widget.bulk!,
+                busy: _running != null,
+                onRetry: _retryNotice,
+                onDismiss: () => setState(() => _notice = null),
+                lines: _failureLines(notice.failures),
               ),
             ),
           if (wantedLine != null)
@@ -684,6 +1104,121 @@ class _MediaBrowseScaffoldState<T>
                 ),
               },
       ),
+    );
+
+    final bulk = widget.bulk;
+    if (bulk == null) return scaffold;
+
+    // Back leaves the selection, not the wall: with a write out it is heard
+    // and ignored, since nothing may cancel it.
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _cancelSelecting();
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _withSelectionKeys(scaffold, library),
+          // The selection bar floats at the foot of the wall: where the
+          // navigation bar was on a phone, at the foot of the list elsewhere.
+          // Kept built while it leaves, so it goes out with what it said.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: LibrarySelectionSwap(
+              shown: _selecting,
+              holdsLast: true,
+              enters: true,
+              child: _selecting
+                  ? _selectionBar(context, bulk, library, facts?.selected ?? 0)
+                  : const SizedBox.shrink(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Esc cancels and Cmd A (Ctrl A off Apple platforms) selects all: the keys
+  /// of a window with a keyboard, heard anywhere in the wall while it selects.
+  ///
+  /// Always in the tree, with no keys to hear until the wall selects: the
+  /// wall under it must not be rebuilt from nothing when selection starts.
+  Widget _withSelectionKeys(Widget child, List<T>? library) {
+    final apple =
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    return CallbackShortcuts(
+      bindings: {
+        if (_selecting) ...{
+          const SingleActivator(LogicalKeyboardKey.escape): _cancelSelecting,
+          SingleActivator(
+            LogicalKeyboardKey.keyA,
+            meta: apple,
+            control: !apple,
+          ): () {
+            if (library != null) _toggleAll(library, deselect: false);
+          },
+        },
+      },
+      child: Focus(focusNode: _keys, skipTraversal: true, child: child),
+    );
+  }
+
+  /// The bar, at the foot: the navigation bar's own place and padding on a
+  /// phone, and floating over the list's foot where there is a rail.
+  Widget _selectionBar(
+    BuildContext context,
+    MediaBulk<T> bulk,
+    List<T>? library,
+    int count,
+  ) {
+    final phone = _hasNavBar(context);
+    final bar = LibrarySelectionBar(
+      label: count == 0
+          ? 'No ${bulk.plural} selected'
+          : '${bulk.countOf(count)} selected',
+      dimmed: count == 0,
+      dimmedHint: bulk.noneHint,
+      busy: _running != null && _running! >= 0 ? _running : null,
+      actions: [
+        for (final (index, action) in bulk.actions.indexed)
+          LibrarySelectionBarAction(
+            icon: action.icon,
+            label: action.label,
+            onPressed: () {
+              if (library != null) _tapAction(index, library);
+            },
+          ),
+      ],
+    );
+    return Padding(
+      // The navigation bar's, to the point: the same margins over the same
+      // foot. A phone's foot is the shell's bottom slot, which the page is
+      // handed in its bottom padding (the home indicator and the bar, once),
+      // so the bar stands as far above the foot as the navigation bar does.
+      // The other layouts have no slot, and the bar floats the list's own
+      // distance clear of the foot.
+      padding: phone
+          ? EdgeInsets.only(
+              left: AppSpacing.lg,
+              right: AppSpacing.lg,
+              bottom: math.max(
+                MediaQuery.viewPaddingOf(context).bottom +
+                    FloatingNavBarMetrics.bottomPadding,
+                MediaQuery.paddingOf(context).bottom -
+                    FloatingNavBarMetrics.topPadding -
+                    FloatingNavBarMetrics.barHeightFor(context),
+              ),
+            )
+          : const EdgeInsets.only(
+              left: AppSpacing.md,
+              right: AppSpacing.md,
+              bottom: _railBarGap,
+            ),
+      child: bar,
     );
   }
 
@@ -845,6 +1380,7 @@ class _MediaBrowseScaffoldState<T>
     // The strip belongs to the alphabetical order alone, which is the one
     // that has headings, and only to a wall long enough to need it.
     final showIndex =
+        !_selecting &&
         sections.isNotEmpty &&
         sections.first.label.isNotEmpty &&
         visibleItems.length >= MediaBrowseIndex.minTitles;
@@ -885,7 +1421,8 @@ class _MediaBrowseScaffoldState<T>
                 top: _wallTopPadding,
                 bottom:
                     AppSpacing.lg +
-                    FloatingNavBarMetrics.getScrollViewBottomPadding(context),
+                    FloatingNavBarMetrics.getScrollViewBottomPadding(context) +
+                    _selectionClearance(context),
               ),
               sliver: SliverLayoutBuilder(
                 builder: (context, constraints) {
@@ -945,7 +1482,8 @@ class _MediaBrowseScaffoldState<T>
     top: AppSpacing.lg,
     bottom:
         AppSpacing.lg +
-        FloatingNavBarMetrics.getScrollViewBottomPadding(context),
+        FloatingNavBarMetrics.getScrollViewBottomPadding(context) +
+        _selectionClearance(context),
   );
 
   /// The air over the first heading of the wall.
@@ -1273,6 +1811,8 @@ class _MediaBrowseScaffoldState<T>
     required String baseUrl,
     required String apiKey,
   }) {
+    final id = widget.idExtractor(item);
+    final selecting = _selecting;
     return _BrowsePosterTile(
       width: tileWidth,
       shape: widget.tileShape,
@@ -1287,7 +1827,16 @@ class _MediaBrowseScaffoldState<T>
       ),
       status: widget.statusExtractor?.call(item),
       heroTag: heroTag,
-      onTap: () => widget.onItemTap(context, item, heroTag),
+      selecting: selecting,
+      selected: _selected.contains(id),
+      // A tap toggles while selecting, and opens the title otherwise.
+      onTap: selecting
+          ? () => _toggle(id)
+          : () => widget.onItemTap(context, item, heroTag),
+      // The long press that starts selecting, on a wall that can.
+      onLongPress: widget.bulk != null && !selecting
+          ? () => _beginSelecting(id: id)
+          : null,
     );
   }
 
@@ -1425,6 +1974,10 @@ class _MediaBrowseFilterChips extends StatelessWidget {
   final Color color;
   final ValueChanged<MediaBrowseFilter> onSelected;
   final String? wantedLabel;
+
+  /// Starts selecting, or null where the wall has nothing to do to its titles
+  /// (or is selecting already): then there is no `Select`.
+  final VoidCallback? onSelect;
   final String sortLabel;
   final List<String> sortOptions;
   final int selectedSort;
@@ -1436,6 +1989,7 @@ class _MediaBrowseFilterChips extends StatelessWidget {
     required this.color,
     required this.onSelected,
     required this.wantedLabel,
+    required this.onSelect,
     required this.sortLabel,
     required this.sortOptions,
     required this.selectedSort,
@@ -1448,7 +2002,45 @@ class _MediaBrowseFilterChips extends StatelessWidget {
     // nothing and only says that the screen has no question to put.
     final hasChips = filters.length > 1;
     final hasSort = sortOptions.length > 1;
-    if (!hasChips && !hasSort) return const SizedBox.shrink();
+    if (!hasChips && !hasSort && onSelect == null) {
+      return const SizedBox.shrink();
+    }
+
+    // At a large reading size the sort control and `Select` no longer fit one
+    // line beside the chips: `Select` goes under them, at the end.
+    final stacked = MediaQuery.textScalerOf(context).scale(14) > 14 * 1.4;
+    final selectBeside = onSelect != null && !stacked;
+    final strip = Row(
+      children: [
+        if (hasChips)
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final filter in filters)
+                    MediaBrowseFilterChip(
+                      label: _filterLabel(filter, wantedLabel),
+                      color: color,
+                      selected: selectedFilter == filter,
+                      onTap: () => onSelected(filter),
+                    ),
+                ],
+              ),
+            ),
+          )
+        else
+          const Spacer(),
+        if (hasSort)
+          MediaBrowseSortControl(
+            label: sortLabel,
+            options: sortOptions,
+            selected: selectedSort,
+            onSelected: onSortSelected,
+          ),
+        if (selectBeside) _MediaBrowseSelectButton(onTap: onSelect!),
+      ],
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -1461,43 +2053,203 @@ class _MediaBrowseFilterChips extends StatelessWidget {
       // on this strip that has to stay reachable no matter how many chips a
       // service declares, and a control that scrolls off the end of a strip it
       // does not belong to is a control nobody finds.
-      child: Row(
-        children: [
-          if (hasChips)
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final filter in filters)
-                      MediaBrowseFilterChip(
-                        label: switch (filter) {
-                          MediaBrowseFilter.all => 'All',
-                          MediaBrowseFilter.available => 'Available',
-                          MediaBrowseFilter.missing => 'Missing',
-                          MediaBrowseFilter.wanted => wantedLabel ?? 'Wanted',
-                          MediaBrowseFilter.inQueue => 'In queue',
-                          MediaBrowseFilter.cutoffUnmet => 'Cutoff unmet',
-                          MediaBrowseFilter.unmonitored => 'Unmonitored',
-                        },
-                        color: color,
-                        selected: selectedFilter == filter,
-                        onTap: () => onSelected(filter),
+      child: onSelect != null && stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                strip,
+                _MediaBrowseSelectButton(onTap: onSelect!),
+              ],
+            )
+          : strip,
+    );
+  }
+}
+
+/// A chip's name, as the strip prints it and the selection header names the
+/// chip that hides some of what is selected.
+String _filterLabel(MediaBrowseFilter filter, String? wantedLabel) =>
+    switch (filter) {
+      MediaBrowseFilter.all => 'All',
+      MediaBrowseFilter.available => 'Available',
+      MediaBrowseFilter.missing => 'Missing',
+      MediaBrowseFilter.wanted => wantedLabel ?? 'Wanted',
+      MediaBrowseFilter.inQueue => 'In queue',
+      MediaBrowseFilter.cutoffUnmet => 'Cutoff unmet',
+      MediaBrowseFilter.unmonitored => 'Unmonitored',
+    };
+
+/// `Select`, at the end of the chips: the way into selection mode with
+/// nothing selected, for a pointer that has no long press and a hand that
+/// would rather not.
+class _MediaBrowseSelectButton extends StatelessWidget {
+  const _MediaBrowseSelectButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: 'Select',
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadius.borderRadiusPill,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+            padding: const EdgeInsets.only(left: AppSpacing.xs),
+            alignment: Alignment.center,
+            child: Text(
+              'Select',
+              style: AppTheme.chrome(
+                context,
+                weight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the last bulk action left undone: the action to run again, how many
+/// titles it was for, how many took it so far, and the ones that were refused.
+class _BulkNotice<T> {
+  const _BulkNotice({
+    required this.job,
+    required this.total,
+    required this.done,
+    required this.failures,
+  });
+
+  final MediaBulkJob<T> job;
+  final int total;
+  final int done;
+  final List<MediaBulkFailure> failures;
+}
+
+/// The amber notice over the wall after an action some titles refused:
+/// `2 of 3 artists updated`, the refusals in the service's words, and a
+/// remedy that runs the same action again for the titles that were refused.
+class _BulkNoticeCard<T> extends StatelessWidget {
+  const _BulkNoticeCard({
+    required this.notice,
+    required this.bulk,
+    required this.busy,
+    required this.onRetry,
+    required this.onDismiss,
+    required this.lines,
+  });
+
+  final _BulkNotice<T> notice;
+  final MediaBulk<T> bulk;
+
+  /// The action is out again: its verb shows progress and takes no tap.
+  final bool busy;
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final room = CupolaRoom.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final title = notice.job.partialLine(notice.done, notice.total);
+    final failures = notice.failures;
+    final again = failures.length == 1
+        ? 'Try ${failures.first.name} again'
+        : 'Try ${bulk.countOf(failures.length)} again';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xs,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: room.toneAmberWash,
+        borderRadius: BorderRadius.circular(AppRadius.door),
+        border: Border.all(color: room.hair),
+      ),
+      child: Semantics(
+        container: true,
+        explicitChildNodes: true,
+        // Announced when it appears, which is when it matters.
+        liveRegion: true,
+        label: [title, ...lines].join('. '),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ExcludeSemantics(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // The tone is one dot, on the first line.
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      top: AppSpacing.xs + AppSpacing.xxs,
+                      right: AppSpacing.sm,
+                    ),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: room.toneAmber,
                       ),
-                  ],
+                      child: const SizedBox.square(dimension: 7),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: AppType.row.copyWith(color: room.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (final line in lines)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.xs),
+                child: ExcludeSemantics(
+                  child: Text(
+                    line,
+                    style: AppType.meta.copyWith(color: room.inkSecondary),
+                  ),
                 ),
               ),
-            )
-          else
-            const Spacer(),
-          if (hasSort)
-            MediaBrowseSortControl(
-              label: sortLabel,
-              options: sortOptions,
-              selected: selectedSort,
-              onSelected: onSortSelected,
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.sm,
+              children: [
+                FilledButton(
+                  onPressed: busy ? null : onRetry,
+                  style: remedyFillStyle(context, compact: true),
+                  child: busy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(again),
+                ),
+                TextButton(
+                  onPressed: busy ? null : onDismiss,
+                  style: retryInkStyle(colorScheme),
+                  child: const Text('Dismiss'),
+                ),
+              ],
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1648,6 +2400,15 @@ class _BrowsePosterTile extends StatelessWidget {
   final String heroTag;
   final VoidCallback onTap;
 
+  /// The wall is in selection mode: the tile wears its disc, and is a toggle.
+  final bool selecting;
+
+  /// The tile is among the selected.
+  final bool selected;
+
+  /// Starts selecting with this tile, or null where it cannot.
+  final VoidCallback? onLongPress;
+
   const _BrowsePosterTile({
     required this.width,
     required this.shape,
@@ -1658,6 +2419,9 @@ class _BrowsePosterTile extends StatelessWidget {
     required this.status,
     required this.heroTag,
     required this.onTap,
+    this.selecting = false,
+    this.selected = false,
+    this.onLongPress,
   });
 
   bool get isCircle => shape == MediaBrowseTileShape.circle;
@@ -1673,11 +2437,16 @@ class _BrowsePosterTile extends StatelessWidget {
       // the face, and the caption carries the completeness in words instead.
       return AspectRatio(
         aspectRatio: 1,
-        child: MediaPosterCard.circular(
-          heroTag: heroTag,
-          imageUrl: imageSource.url,
-          imageHeaders: imageSource.headers,
-          fallbackIcon: Icons.person_outline_rounded,
+        child: _selectable(
+          context,
+          MediaPosterCard.circular(
+            heroTag: heroTag,
+            imageUrl: imageSource.url,
+            imageHeaders: imageSource.headers,
+            fallbackIcon: Icons.person_outline_rounded,
+          ),
+          markInset: 2,
+          markSize: 28,
         ),
       );
     }
@@ -1686,35 +2455,74 @@ class _BrowsePosterTile extends StatelessWidget {
     // only held at one column count.
     return AspectRatio(
       aspectRatio: 2 / 3,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Hero(
-              tag: heroTag,
-              transitionOnUserGestures: MediaPosterCard.flightOnUserGestures,
-              child: ContentCard(
-                imageUrl: imageSource.url,
-                httpHeaders: imageSource.headers,
-                paneTag: heroTag,
-                fallbackIcon: fallbackIcon,
+      child: _selectable(
+        context,
+        Stack(
+          children: [
+            Positioned.fill(
+              child: Hero(
+                tag: heroTag,
+                transitionOnUserGestures: MediaPosterCard.flightOnUserGestures,
+                child: ContentCard(
+                  imageUrl: imageSource.url,
+                  httpHeaders: imageSource.headers,
+                  paneTag: heroTag,
+                  fallbackIcon: fallbackIcon,
+                ),
               ),
             ),
-          ),
-          if (status != null)
-            Positioned(
-              left: 6,
-              bottom: 6,
-              // Redundant against the parent's `excludeSemantics`, but it keeps
-              // the invariant local: the tile speaks the status, the dot does
-              // not.
-              child: StatusBadge(
-                info: status!,
-                iconOnly: true,
-                excludeFromSemantics: true,
+            if (status != null)
+              Positioned(
+                left: 6,
+                bottom: 6,
+                // Redundant against the parent's `excludeSemantics`, but it keeps
+                // the invariant local: the tile speaks the status, the dot does
+                // not.
+                child: StatusBadge(
+                  info: status!,
+                  iconOnly: true,
+                  excludeFromSemantics: true,
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
+        markInset: 6,
+        markSize: 26,
       ),
+    );
+  }
+
+  /// How far an unselected tile's artwork dims in selection mode: the
+  /// selected ones stand out by being whole.
+  static const double _unselectedOpacity = 0.55;
+
+  /// [artwork] as selection mode draws it: dimmed unless it is selected, with
+  /// the disc in its top right corner. Outside selection mode it is the
+  /// artwork alone.
+  Widget _selectable(
+    BuildContext context,
+    Widget artwork, {
+    required double markInset,
+    required double markSize,
+  }) {
+    if (!selecting) return artwork;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AnimatedOpacity(
+          opacity: selected ? 1 : _unselectedOpacity,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? AppAnimation.reducedFade
+              : AppAnimation.standard,
+          curve: AppAnimation.standardCurve,
+          child: artwork,
+        ),
+        Positioned(
+          right: markInset,
+          top: markInset,
+          child: LibrarySelectionMark(selected: selected, size: markSize),
+        ),
+      ],
     );
   }
 
@@ -1733,14 +2541,19 @@ class _BrowsePosterTile extends StatelessWidget {
       // Labelled as one button: the visible title is truncated to a single line,
       // so a screen reader would otherwise announce a clipped name.
       child: Semantics(
-        button: true,
+        // A button that opens the title; a toggle, with its state, while the
+        // wall is selecting.
+        button: !selecting,
+        checked: selecting ? selected : null,
         container: true,
         excludeSemantics: true,
         label: title,
         value: spokenValue.isEmpty ? null : spokenValue,
         onTap: onTap,
+        onLongPress: onLongPress,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: AppRadius.borderRadiusMd,
           child: Column(
             crossAxisAlignment: isCircle

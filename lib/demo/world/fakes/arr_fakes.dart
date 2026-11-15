@@ -1505,6 +1505,20 @@ class LidarrFake extends ArrFake {
     };
   }
 
+  /// [artist] with what the demo changed on it by the editor: what was set,
+  /// and nothing else.
+  JsonMap _edited(ServerContext c, JsonMap artist) {
+    final edit = c.life?.arrs.artistEdit(c.server.id, artist['id'] as int);
+    if (edit == null) return artist;
+    return {
+      ...artist,
+      'monitored': ?edit.monitored,
+      'monitorNewItems': ?edit.monitorNewItems,
+      'qualityProfileId': ?edit.qualityProfileId,
+      'metadataProfileId': ?edit.metadataProfileId,
+    };
+  }
+
   /// The albums of the artist at [index], as `GET /api/v1/album` sends them:
   /// the wanted ones last, with no file.
   List<JsonMap> _shelfAlbums(ServerContext c, int index) {
@@ -1589,13 +1603,20 @@ class LidarrFake extends ArrFake {
 
   /// Every album of the shelf artists, for the routes that list them all.
   List<JsonMap> _allShelfAlbums(ServerContext c) => [
-    for (var i = 0; i < _shelfNames.length; i++) ..._shelfAlbums(c, i),
+    for (var i = 0; i < _shelfSize(c); i++) ..._shelfAlbums(c, i),
   ];
 
+  /// How many shelf artists this world holds: the shelf is the demo's alone,
+  /// served only once the world lives. A profile read as written (the tests',
+  /// the testlab's) has the world's own artist and nothing else, as it had
+  /// before the shelf.
+  static int _shelfSize(ServerContext c) =>
+      c.life == null ? 0 : _shelfNames.length;
+
   /// The index in [_shelfNames] of the artist with library id [id], or null.
-  static int? _shelfIndexOf(int id) {
+  static int? _shelfIndexOf(ServerContext c, int id) {
     final index = id - _shelfFirstId;
-    return index >= 0 && index < _shelfNames.length ? index : null;
+    return index >= 0 && index < _shelfSize(c) ? index : null;
   }
 
   /// Sintel's five tracks, as `GET /api/v1/track?albumId=3` sends them; the
@@ -1612,7 +1633,7 @@ class LidarrFake extends ArrFake {
   /// artist every album's; asked for an album's, only Sintel lists any.
   List<JsonMap> _tracks(ServerContext c, NetworkRequest r) {
     final artist = int.tryParse(r.query['artistId'] ?? '');
-    final shelved = artist == null ? null : _shelfIndexOf(artist);
+    final shelved = artist == null ? null : _shelfIndexOf(c, artist);
     if (shelved != null) return _shelfTracks(c, shelved);
     return _sintelTrackList(
       withSintel: artist == 1 || r.query['albumId'] == '3',
@@ -2036,6 +2057,34 @@ class LidarrFake extends ArrFake {
           'artist': {...artist.cast<String, Object?>(), 'id': 100},
       }, status: 201);
     }
+    // The editor, as Lidarr's own front end sets or removes several artists:
+    // the ones it names, what was sent and nothing else. An id Lidarr does
+    // not hold is skipped, as it does.
+    if (r.method == 'PUT' && r.path == '/api/v1/artist/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['artistIds'] : null;
+      if (arrs != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          arrs.editArtist(
+            c.server.id,
+            id,
+            monitored: body['monitored'] as bool?,
+            monitorNewItems: body['monitorNewItems'] as String?,
+            qualityProfileId: body['qualityProfileId'] as int?,
+            metadataProfileId: body['metadataProfileId'] as int?,
+          );
+        }
+      }
+      return const NetworkReply(202);
+    }
+    if (r.method == 'DELETE' && r.path == '/api/v1/artist/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['artistIds'] : null;
+      if (arrs != null && ids is List) {
+        arrs.removedArtists(c.server.id).addAll(ids.whereType<int>());
+      }
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method == 'PUT' && r.path == '/api/v1/album/monitor') {
       final body = r.json;
       if (arrs != null && body is Map && body['monitored'] is bool) {
@@ -2053,26 +2102,36 @@ class LidarrFake extends ArrFake {
     final addedOne = one == null
         ? null
         : arrs?.artist(c.server.id, int.parse(one.group(1)!));
-    if (addedOne != null) return NetworkReply.json(_added(c, addedOne));
+    if (addedOne != null) {
+      return NetworkReply.json(_edited(c, _added(c, addedOne)));
+    }
     final shelved = one == null
         ? null
-        : _shelfIndexOf(int.parse(one.group(1)!));
-    if (shelved != null) return NetworkReply.json(_shelfArtist(c, shelved));
+        : _shelfIndexOf(c, int.parse(one.group(1)!));
+    if (shelved != null) {
+      return NetworkReply.json(_edited(c, _shelfArtist(c, shelved)));
+    }
     if (r.path == '/api/v1/album') {
       final asked = int.tryParse(r.query['artistId'] ?? '');
       final added = asked == null ? null : arrs?.artist(c.server.id, asked);
       if (added != null) return NetworkReply.json(_addedAlbums(c, added));
-      final onShelf = asked == null ? null : _shelfIndexOf(asked);
+      final onShelf = asked == null ? null : _shelfIndexOf(c, asked);
       if (onShelf != null) return NetworkReply.json(_shelfAlbums(c, onShelf));
     }
     return switch (r.path) {
       '/api/v1/artist' => NetworkReply.json([
-        _artist(c),
-        for (var i = 0; i < _shelfNames.length; i++) _shelfArtist(c, i),
-        for (final artist in arrs?.artists(c.server.id) ?? const <LiveArtist>[])
-          _added(c, artist),
+        for (final artist in [
+          _artist(c),
+          for (var i = 0; i < _shelfSize(c); i++) _shelfArtist(c, i),
+          for (final artist
+              in arrs?.artists(c.server.id) ?? const <LiveArtist>[])
+            _added(c, artist),
+        ])
+          if (!(arrs?.removedArtists(c.server.id).contains(artist['id']) ??
+              false))
+            _edited(c, artist),
       ]),
-      '/api/v1/artist/1' => NetworkReply.json(_artist(c)),
+      '/api/v1/artist/1' => NetworkReply.json(_edited(c, _artist(c))),
       // The search route, as Radarr's and Sonarr's fakes answer theirs.
       '/api/v1/artist/lookup' => NetworkReply.json(
         _lookup(c, r.query['term'] ?? ''),

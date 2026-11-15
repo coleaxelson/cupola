@@ -32,7 +32,21 @@ import 'package:cupola/features/series/domain/sonarr_status.dart';
 import 'package:cupola/features/series/presentation/series_find.dart';
 import 'package:cupola/features/series/presentation/series_provider.dart';
 import 'package:cupola/features/series/presentation/series_search_provider.dart';
+import 'package:cupola/core/theme.dart';
+import 'package:cupola/core/widgets/app_bottom_sheet.dart';
+import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
+import 'package:cupola/core/widgets/floating_nav_rail.dart';
+import 'package:cupola/core/widgets/library_selection.dart';
 import 'package:cupola/core/widgets/media_browse_index.dart';
+import 'package:cupola/core/widgets/media_bulk.dart';
+import 'package:cupola/core/widgets/service_tab_bar.dart';
+import 'package:cupola/features/music/domain/lidarr_add_options.dart';
+import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
+import 'package:cupola/features/music/presentation/lidarr_add_options_provider.dart';
+import 'package:cupola/features/music/presentation/lidarr_bulk.dart';
+import 'package:cupola/features/services/presentation/service_home_screen.dart';
+import 'package:cupola/features/services/presentation/service_tab_scaffold.dart';
+import 'package:cupola/features/services/domain/service_tab.dart';
 import 'package:cupola/core/widgets/media_browse_scaffold.dart';
 import 'package:cupola/core/widgets/media_browse_wanted.dart';
 import 'package:cupola/core/widgets/media_find.dart';
@@ -942,6 +956,383 @@ CatalogScene _lidarrWallScene(
   platform: platform,
 );
 
+// === Music: selecting several artists =====================================
+
+/// What a selection of artists is read from: the board's nine, each with the
+/// albums Lidarr wants of them, and sizes on disk that the three of the
+/// selection add up to 61.4 GB.
+final _selectArtists = [
+  for (final (id, name, gigabytes, quality) in const [
+    (1, 'Anton Bruckner', 14.2, 1),
+    (2, 'Bill Evans', 20.1, 1),
+    (3, 'Brian Eno', 18.3, 1),
+    (4, 'Charles Mingus', 23.0, 2),
+    (5, 'Jan Morgenstern', 0.9, 1),
+    (6, 'Max Richter', 6.5, 1),
+    (7, 'Miles Davis', 9.8, 2),
+    (8, 'Mulatu Astatke', 3.4, 1),
+    (9, 'Nina Simone', 11.7, 1),
+  ])
+    LidarrArtist(
+      id: id,
+      artistName: name,
+      foreignArtistId: 'mb-select-$id',
+      status: 'continuing',
+      monitored: true,
+      images: const [],
+      genres: const [],
+      monitorNewItems: 'all',
+      qualityProfileId: quality,
+      metadataProfileId: 1,
+      statistics: {
+        'albumCount': 12,
+        'trackCount': 120,
+        'trackFileCount': 120,
+        'sizeOnDisk': (gigabytes * 1024 * 1024 * 1024).round(),
+      },
+    ),
+];
+
+/// The albums wanted of each artist of [_selectArtists].
+final _selectWanted = MediaBrowseWantedSet(
+  countById: const {1: 1, 2: 3, 3: 7, 4: 1, 5: 1, 6: 2, 7: 12, 8: 1, 9: 3},
+);
+
+/// Lidarr's wall as the router builds it in the service's Library tab, over
+/// [_selectArtists]: under the band and the tab bar (`topPadding`), on the
+/// Wanted chip, with [bulk] as the actions.
+Widget _selectWall({MediaBulk<LidarrArtist>? bulk, bool chrome = true}) =>
+    MediaBrowseScaffold<LidarrArtist>(
+      title: 'Music',
+      searchHint: 'Artists and albums',
+      activityRoute: '/activity',
+      navigationSection: NavigationSection.stack,
+      serviceName: 'Lidarr',
+      service: ServiceKey.lidarr,
+      accentColor: ServiceKey.lidarr.accent,
+      heroTagPrefix: 'artist',
+      libraryProvider: musicProvider,
+      searchQueryProvider: musicSearchQueryProvider,
+      find: MediaFind(
+        scopeProvider: musicFindScopeProvider,
+        libraryBody: (context, query) =>
+            MusicFindLibrary(query: query, onAskLidarr: () {}),
+        serviceBody: (context, query) => MusicFindLidarr(query: query),
+      ),
+      titleExtractor: (artist) => artist.artistName,
+      subtitleExtractor: lidarrArtistCaption,
+      sortTitleExtractor: (artist) => artist.artistName,
+      imagesExtractor: (artist) => artist.images,
+      idExtractor: (artist) => artist.id,
+      statusExtractor: (artist) => MediaStatusInfo(
+        availability: artist.artistName == 'Charles Mingus'
+            ? MediaAvailability.missing
+            : MediaAvailability.available,
+      ),
+      settingsSelector: (_) => ('', '', const NoAccess()),
+      onItemTap: (_, _, _) {},
+      tileShape: MediaBrowseTileShape.circle,
+      showAppBar: false,
+      topPadding: chrome ? kToolbarHeight + ServiceTabBar.height : 0,
+      cutoffUnmetIds: const {},
+      wanted: MediaBrowseWanted(
+        answer: AsyncData(_selectWanted),
+        service: ServiceKey.lidarr,
+        instanceId: '',
+        failureConsequence: 'the artists with a wanted album are not shown',
+        onRetry: () {},
+        captionOf: lidarrWantedCaption,
+        summaryOf: lidarrWantedSummary,
+      ),
+      bulk: bulk,
+      kpiPeek: ServiceKpiPeek(kpis: _kpis, service: ServiceKey.lidarr),
+    );
+
+List<Override> _selectOverrides() => [
+  musicProvider.overrideWith((ref) async => _selectArtists),
+  lidarrQueueSnapshotsProvider.overrideWith(
+    (ref) async => LidarrQueueSnapshots.empty,
+  ),
+  musicSearchQueryProvider.overrideWith((ref) => ''),
+  musicFindScopeProvider.overrideWith((ref) => MediaFindScope.library),
+  lidarrAddOptionsProvider.overrideWith(
+    (ref, id) async => const LidarrAddOptions(
+      folders: [LidarrRootFolder(path: '/mnt/tank/media/music')],
+      qualityProfiles: [(id: 1, name: 'Lossless'), (id: 2, name: 'Any')],
+      metadataProfiles: [
+        LidarrMetadataProfile(
+          id: 1,
+          name: 'Standard',
+          allowedPrimaryTypes: ['Album', 'EP'],
+        ),
+      ],
+    ),
+  ),
+];
+
+const _navDestinations = [
+  FloatingNavDestination(
+    icon: Icons.home_outlined,
+    selectedIcon: Icons.home_rounded,
+    label: 'Home',
+  ),
+  FloatingNavDestination(
+    icon: Icons.explore_outlined,
+    selectedIcon: Icons.explore_rounded,
+    label: 'Discover',
+  ),
+  FloatingNavDestination(
+    icon: Icons.monitor_heart_outlined,
+    selectedIcon: Icons.monitor_heart_rounded,
+    label: 'Activity',
+  ),
+  FloatingNavDestination(
+    icon: Icons.layers_outlined,
+    selectedIcon: Icons.layers_rounded,
+    label: 'Stack',
+  ),
+];
+
+/// The phone's shell as the app builds it, as far as selection goes: the
+/// floating navigation bar in the Scaffold's bottom slot, which steps down
+/// while a library selects, and the service's band and tab bar over the wall,
+/// which step aside.
+class _CatalogShell extends StatefulWidget {
+  const _CatalogShell({required this.wall});
+
+  final Widget wall;
+
+  @override
+  State<_CatalogShell> createState() => _CatalogShellState();
+}
+
+class _CatalogShellState extends State<_CatalogShell> {
+  final _selection = LibrarySelectionController();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LibrarySelectionScope(
+    controller: _selection,
+    child: Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      body: ServiceHomeScreen(
+        service: ServiceKey.lidarr,
+        child: ServiceTabScaffold(
+          service: ServiceKey.lidarr,
+          tab: ServiceTab.library,
+          child: widget.wall,
+        ),
+      ),
+      bottomNavigationBar: LibrarySelectionNavSlot(
+        child: FloatingBottomNavBar(
+          selectedIndex: 3,
+          onDestinationSelected: (_) {},
+          destinations: _navDestinations,
+        ),
+      ),
+    ),
+  );
+}
+
+/// Lets the wall's motion land: the sheet is pumped in 400 ms steps.
+Future<void> _land(WidgetTester tester) async {
+  for (var i = 0; i < 3; i++) {
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+}
+
+/// Enters selection by a long press on Bill Evans and taps Brian Eno and
+/// Charles Mingus: three artists selected, on the Wanted chip.
+Future<void> _selectThree(WidgetTester tester, Finder scene) => _selectNamed(
+  tester,
+  scene,
+  const ['Bill Evans', 'Brian Eno', 'Charles Mingus'],
+);
+
+/// Enters selection by a long press on the first of [names] and taps the rest,
+/// on the Wanted chip.
+Future<void> _selectNamed(
+  WidgetTester tester,
+  Finder scene,
+  List<String> names,
+) async {
+  Finder text(String value) =>
+      find.descendant(of: scene, matching: find.text(value));
+  // The chip: the service's tab bar has a Wanted of its own.
+  await tester.tap(
+    find.descendant(
+      of: find.descendant(
+        of: scene,
+        matching: find.byType(MediaBrowseFilterChip),
+      ),
+      matching: find.text('Wanted'),
+    ),
+  );
+  await _land(tester);
+  await tester.longPress(text(names.first));
+  await _land(tester);
+  for (final name in names.skip(1)) {
+    await tester.tap(text(name));
+    await _land(tester);
+  }
+}
+
+/// Lidarr's refusal of one artist's folder, as the editor sends it.
+final _folderRefusal = DioException(
+  requestOptions: RequestOptions(path: '/api/v1/artist/editor'),
+  response: Response(
+    requestOptions: RequestOptions(path: '/api/v1/artist/editor'),
+    statusCode: 400,
+    data: [
+      {
+        'propertyName': 'RootFolderPath',
+        'errorMessage': 'The folder /music/Charles Mingus is not reachable',
+      },
+    ],
+  ),
+  type: DioExceptionType.badResponse,
+);
+
+/// The four actions, each running at once, and each leaving Charles Mingus
+/// refused and the other two taken.
+MediaBulk<LidarrArtist> _partialBulk() => MediaBulk<LidarrArtist>(
+  singular: 'artist',
+  plural: 'artists',
+  noneHint: 'Select an artist first',
+  service: ServiceKey.lidarr,
+  instanceId: '',
+  actions: [
+    for (final (label, icon) in const [
+      ('Search', Icons.search_rounded),
+      ('Monitor', Icons.visibility_rounded),
+      ('Profile', Icons.tune_rounded),
+      ('Remove', Icons.delete_outline_rounded),
+    ])
+      MediaBulkAction<LidarrArtist>(
+        label: label,
+        icon: icon,
+        prepare: (context, artists) async => MediaBulkJob<LidarrArtist>(
+          run: (items) async => MediaBulkOutcome(
+            done: [
+              for (final artist in items)
+                if (artist.artistName != 'Charles Mingus') artist.id,
+            ],
+            failures: [
+              MediaBulkFailure(
+                id: 4,
+                name: 'Charles Mingus',
+                line: lidarrRefusalLine(
+                  'Charles Mingus',
+                  _folderRefusal,
+                  'Lidarr',
+                ),
+                error: _folderRefusal,
+              ),
+            ],
+          ),
+          doneLine: (count) => 'Updated $count',
+          partialLine: (done, total) => '$done of $total artists updated',
+        ),
+      ),
+  ],
+);
+
+/// The wall in the shell, the actions asking what they ask: the sheet and the
+/// confirmation are the scene's own [Navigator]'s, so the sheet draws them.
+Widget _shelled(Widget wall) => ClipRect(
+  child: Navigator(
+    onGenerateRoute: (_) => PageRouteBuilder<void>(
+      pageBuilder: (_, _, _) => _CatalogShell(wall: wall),
+    ),
+  ),
+);
+
+/// A sheet drawn in place over the selecting wall, as the sheet's card draws
+/// its panels: the panel is the real one, and the scrim stands for the route
+/// a modal would be.
+CatalogScene _sheetScene(
+  String caption, {
+  required String id,
+  required Widget sheet,
+}) => CatalogScene(
+  caption,
+  (_) => _phone(
+    Stack(
+      fit: StackFit.expand,
+      children: [
+        _CatalogShell(wall: _selectWall(bulk: _partialBulk())),
+        // Takes no touch: the wall under it is selected before it is drawn.
+        const IgnorePointer(child: ColoredBox(color: Colors.black54)),
+        IgnorePointer(
+          child: Align(alignment: Alignment.bottomCenter, child: sheet),
+        ),
+      ],
+    ),
+  ),
+  id: id,
+  overrides: _selectOverrides(),
+  act: _selectThree,
+);
+
+CatalogScene _selectScene(
+  String caption, {
+  required String id,
+  MediaBulk<LidarrArtist>? bulk,
+  Future<void> Function(WidgetTester, Finder)? act,
+  double textScale = 1,
+}) => CatalogScene(
+  caption,
+  (_) => _phone(_CatalogShell(wall: _selectWall(bulk: bulk ?? _partialBulk()))),
+  id: id,
+  textScale: textScale,
+  overrides: _selectOverrides(),
+  act: act ?? _selectThree,
+);
+
+/// The tablet: the rail stays, the wall is the list column with its bar at the
+/// foot, and the title the list opened is the pane beside it, as it was.
+Widget _tablet(BuildContext context) => Row(
+  crossAxisAlignment: CrossAxisAlignment.stretch,
+  children: [
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: FloatingNavRail.margin),
+      child: Align(
+        widthFactor: 1,
+        child: FloatingNavRail(
+          selectedIndex: 3,
+          destinations: _navDestinations,
+          onDestinationSelected: (_) {},
+        ),
+      ),
+    ),
+    SizedBox(
+      width: 440,
+      child: _selectWall(bulk: _partialBulk(), chrome: false),
+    ),
+    Expanded(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: CupolaRoom.of(context).hair)),
+        ),
+        child: Center(
+          child: Text(
+            'The pane, as it was',
+            style: AppType.meta.copyWith(
+              color: CupolaRoom.of(context).inkSecondary,
+            ),
+          ),
+        ),
+      ),
+    ),
+  ],
+);
+
 void main() {
   catalogCard(
     'MediaBrowseScaffold',
@@ -1247,6 +1638,165 @@ void main() {
         width: 1280,
         height: 1000,
         platform: CatalogPlatform.desktop,
+      ),
+      _selectScene(
+        'MediaBrowseScaffold · selecting, Lidarr · Cancel, the count and '
+        'Select all 34 in place of the band and the field; a check disc on '
+        'each tile, the unselected dimmed; the selection bar where the '
+        'navigation bar was, the navigation bar gone',
+        id: 'select-lidarr',
+      ),
+      _selectScene(
+        'MediaBrowseScaffold · selecting with nothing selected · the four '
+        'actions dimmed and still tappable, carrying why as their hint',
+        id: 'select-none',
+        act: (tester, scene) async {
+          // The toast a tap on an action answers with is the scaffold
+          // messenger's, shared by every scene of the sheet and gone before
+          // the sheet is drawn: `media_browse_scaffold_selection_test.dart`
+          // holds it.
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select')),
+          );
+          await _land(tester);
+        },
+      ),
+      _selectScene(
+        'MediaBrowseScaffold · selecting, a title the chip hides · it stays '
+        'selected and counted, and the header says how many the chip hides',
+        id: 'select-hidden',
+        act: (tester, scene) async {
+          await _selectThree(tester, scene);
+          // Charles Mingus is the one artist the library reads as missing
+          // (`_selectWall`), so the chip for what is available hides him.
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Available')),
+          );
+          await _land(tester);
+        },
+      ),
+      _sheetScene(
+        'MediaBrowseScaffold · Monitor, over the selection · the artists '
+        'named under the title, Monitor and Leave as is as they start',
+        id: 'select-monitor',
+        sheet: AppBottomSheet(
+          title: 'Monitor 3 artists',
+          subtitle: 'Bill Evans, Brian Eno and Charles Mingus',
+          child: LidarrBulkMonitorSheet(
+            artists: [
+              for (final index in const [1, 2, 3]) _selectArtists[index],
+            ],
+          ),
+        ),
+      ),
+      _sheetScene(
+        'MediaBrowseScaffold · Profile, over the selection · the artists '
+        'differ in quality, so Leave as is; they share a metadata profile; '
+        'Apply is not live until something changes',
+        id: 'select-profile',
+        sheet: AppBottomSheet(
+          title: 'Profiles for 3 artists',
+          subtitle: 'Bill Evans, Brian Eno and Charles Mingus',
+          child: LidarrBulkProfileSheet(
+            artists: [
+              for (final index in const [1, 2, 3]) _selectArtists[index],
+            ],
+            instanceId: 'catalog',
+          ),
+        ),
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · Remove, over the selection · the app’s own '
+        'confirmation: what Lidarr stops, the size the files take, the '
+        'exclusion, and the confirm naming what it does',
+        (_) => _phone(
+          Consumer(
+            builder: (context, ref, _) => _shelled(
+              _selectWall(
+                bulk: lidarrBulk(
+                  ref: ref,
+                  instanceId: '',
+                  name: 'Lidarr',
+                  dialogsOnRoot: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+        id: 'select-remove',
+        overrides: _selectOverrides(),
+        act: (tester, scene) async {
+          await _selectThree(tester, scene);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.byKey(const ValueKey('library-selection-remove')),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
+      _selectScene(
+        'MediaBrowseScaffold · after an action Lidarr refused for one artist '
+        '· the amber notice over the wall: how many were updated, the refusal '
+        'in Lidarr’s words naming the artist, and Try Charles Mingus again; the '
+        'selection has ended and the navigation bar is back',
+        id: 'select-partial',
+        act: (tester, scene) async {
+          await _selectThree(tester, scene);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.byKey(const ValueKey('library-selection-monitor')),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
+      _selectScene(
+        'Text at 200% · selecting: the header stacks its count under Cancel '
+        'and Select all, the bar’s names stay in their columns',
+        id: 'text-200-select',
+        textScale: catalogTextScale,
+        // At twice the size the first rows fill the screen, so all nine are
+        // selected from the header rather than reached one by one.
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select')),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select all 9')),
+          );
+          await _land(tester);
+        },
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · selecting on a tablet · the rail stays, the '
+        'bar floats at the foot of the list column, the pane is as it was',
+        _tablet,
+        id: 'select-tablet',
+        width: 1024,
+        height: 760,
+        overrides: _selectOverrides(),
+        // The bar floats over the foot of the list, so the three are the
+        // first that are clear of it.
+        act: (tester, scene) => _selectNamed(tester, scene, const [
+          'Anton Bruckner',
+          'Bill Evans',
+          'Brian Eno',
+        ]),
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · selecting on a 1280 desktop window · the bar '
+        'at the foot of the 1140 well',
+        (_) => _selectWall(bulk: _partialBulk(), chrome: false),
+        id: 'select-desktop',
+        width: 1280,
+        height: 1000,
+        platform: CatalogPlatform.desktop,
+        overrides: _selectOverrides(),
+        act: _selectThree,
       ),
       CatalogScene(
         'Text at 200% · the library wall and a failed load with service: the '

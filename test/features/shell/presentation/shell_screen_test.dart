@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/utils/a11y_announce.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
+import 'package:cupola/core/widgets/library_selection.dart';
 import 'package:cupola/features/onboarding/data/onboarding_provider.dart';
 import 'package:cupola/features/release_search/presentation/release_search_jobs_provider.dart';
 import 'package:cupola/features/release_search/presentation/release_search_lifecycle.dart';
@@ -941,6 +942,71 @@ void main() {
 
   // The one-shot demo is spent only where it is seen. The window that could
   // not see it is asked in the desktop shell's own tests.
+  group('a library that selects', () {
+    testWidgets('takes the navigation bar’s place on the phone: the bar steps '
+        'down, takes no tap, and comes back when the library is done', (
+      tester,
+    ) async {
+      final harness = await _pumpShell(tester);
+      final bar = find.byKey(const ValueKey('floating-nav-surface'));
+      final resting = tester.getRect(bar);
+      // What a wall does when it enters selection mode.
+      final selection = LibrarySelectionScope.maybeOf(
+        tester.element(find.byType(FloatingBottomNavBar)),
+      )!;
+      final owner = Object();
+
+      selection.claim(owner);
+      await tester.pumpAndSettle();
+
+      expect(tester.getRect(bar).top, greaterThanOrEqualTo(900));
+      await tester.tapAt(resting.center);
+      await tester.pumpAndSettle();
+      expect(
+        harness.router.routeInformationProvider.value.uri.path,
+        '/home',
+        reason: 'a tab cannot be switched while a library selects',
+      );
+
+      selection.release(owner);
+      await tester.pumpAndSettle();
+
+      expect(tester.getRect(bar), resting);
+      await tester.tap(_navItem('Discover'));
+      await tester.pumpAndSettle();
+      expect(
+        harness.router.routeInformationProvider.value.uri.path,
+        isNot('/home'),
+      );
+    });
+
+    testWidgets('does not move the page above the bar: the bottom slot keeps '
+        'its size', (tester) async {
+      await _pumpShell(tester);
+      final scaffold = find.byType(Scaffold).first;
+      final before = tester.getSize(scaffold);
+      final selection = LibrarySelectionScope.maybeOf(
+        tester.element(find.byType(FloatingBottomNavBar)),
+      )!;
+      final owner = Object();
+
+      selection.claim(owner);
+      await tester.pumpAndSettle();
+      final during = MediaQuery.paddingOf(
+        tester.element(find.byType(_ProbePage).first),
+      ).bottom;
+      selection.release(owner);
+      await tester.pumpAndSettle();
+      final after = MediaQuery.paddingOf(
+        tester.element(find.byType(_ProbePage).first),
+      ).bottom;
+
+      expect(tester.getSize(scaffold), before);
+      expect(during, after, reason: 'the page keeps the room for the bar');
+      expect(during, greaterThan(0));
+    });
+  });
+
   group('the Portal demo', () {
     testWidgets('plays once on the phone and is then marked seen', (
       tester,

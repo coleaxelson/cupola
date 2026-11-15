@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 
 import 'package:cupola/core/api/api_client.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
+import 'package:cupola/core/utils/parallel_reads.dart';
+import 'package:cupola/features/music/domain/lidarr_bulk.dart';
 import 'package:cupola/features/music/domain/lidarr_add_options.dart';
 import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
@@ -537,6 +539,126 @@ class LidarrService with ArrActivityMixin {
   /// `all` or `none`, or `new` (only those released from now on).
   Future<void> updateArtistMonitorNewItems(int artistId, String value) =>
       updateItemFields('artist', artistId, {'monitorNewItems': value});
+
+  /// Sets [edit] on every artist of [artistIds]: `PUT /api/v1/artist/editor`.
+  ///
+  /// **The editor cannot say which artist it refused.** Lidarr's
+  /// `ArtistEditorController.SaveAll` validates every artist it was given
+  /// before it saves any, throws one `ValidationException` for the lot, and its
+  /// errors name a property (`QualityProfileId`, `RootFolderPath`), never an
+  /// artist. So one request for the whole set is asked first, which is what
+  /// nearly always happens and costs one write however many artists there are,
+  /// and a *refusal* of it (a 400, 409 or 422: nothing was saved) is followed
+  /// by one request per artist, a few at a time, each through the same editor
+  /// with its single id. Each of those is its own answer, so the artists in
+  /// [LidarrBulkResult.refused] are exactly those Lidarr turned down and the
+  /// rest were saved. Any other failure (nothing answered, the key was
+  /// refused, a 5xx) is not about any artist: it is thrown, and nothing is
+  /// reported as done.
+  Future<LidarrBulkResult> updateArtistsInBulk(
+    List<int> artistIds,
+    LidarrArtistEdit edit,
+  ) {
+    assert(!edit.isEmpty, 'an edit that sets nothing is not sent');
+    return _inBulk(
+      artistIds,
+      (ids) => client.put(
+        '/api/v1/artist/editor',
+        data: {'artistIds': ids, ...edit.fields},
+      ),
+    );
+  }
+
+  /// Removes every artist of [artistIds] from Lidarr: `DELETE
+  /// /api/v1/artist/editor`, with [deleteFiles] and [addImportListExclusion]
+  /// as the single removal's.
+  ///
+  /// Asked and answered as [updateArtistsInBulk] is. Lidarr's delete is one
+  /// `DeleteMany` that reports nothing per artist, and an id it does not hold
+  /// is skipped without a word, so a refusal of the set is followed by one
+  /// request per artist for the same reason.
+  Future<LidarrBulkResult> removeArtistsInBulk(
+    List<int> artistIds, {
+    bool deleteFiles = false,
+    bool addImportListExclusion = false,
+  }) {
+    return _inBulk(
+      artistIds,
+      (ids) => client.delete(
+        '/api/v1/artist/editor',
+        data: {
+          'artistIds': ids,
+          'deleteFiles': deleteFiles,
+          'addImportListExclusion': addImportListExclusion,
+        },
+      ),
+    );
+  }
+
+  /// Starts a search for every artist of [artistIds]: one `ArtistSearch`
+  /// command each, a few at a time. Lidarr's command takes one artist, so each
+  /// request is its own answer and the batch is only the loop.
+  Future<LidarrBulkResult> searchArtistsInBulk(List<int> artistIds) =>
+      _eachOf(artistIds, searchArtist);
+
+  /// Whether [error] is Lidarr turning a *request* down for what was in it,
+  /// which a request for fewer artists can get a different answer to. Not a
+  /// refused key (401, 403), not a missing route and not a server fault: those
+  /// would answer every artist the same.
+  static bool _isRefusal(Object error) =>
+      error is DioException &&
+      switch (error.response?.statusCode) {
+        400 || 409 || 422 => true,
+        _ => false,
+      };
+
+  /// [send] for all of [ids] at once, and, when Lidarr refuses that, for each
+  /// one by itself. See [updateArtistsInBulk].
+  Future<LidarrBulkResult> _inBulk(
+    List<int> ids,
+    Future<Object?> Function(List<int> ids) send,
+  ) async {
+    try {
+      await send(ids);
+      return LidarrBulkResult(done: ids);
+    } catch (error) {
+      if (!_isRefusal(error)) rethrow;
+      // One artist asked alone and refused is that artist's refusal.
+      if (ids.length == 1) {
+        return LidarrBulkResult(done: const [], refused: {ids.single: error});
+      }
+    }
+    return _eachOf(ids, (id) => send([id]));
+  }
+
+  /// [task] for each of [ids], four at a time, the failure of one kept with
+  /// its id and never stopping the others.
+  Future<LidarrBulkResult> _eachOf(
+    List<int> ids,
+    Future<Object?> Function(int id) task,
+  ) async {
+    final errors = await runInLanes<Object?>(ids.length, _bulkLanes, (
+      index,
+    ) async {
+      try {
+        await task(ids[index]);
+        return null;
+      } catch (error) {
+        return error;
+      }
+    });
+    return LidarrBulkResult(
+      done: [
+        for (final (index, id) in ids.indexed)
+          if (errors[index] == null) id,
+      ],
+      refused: {for (final (index, id) in ids.indexed) id: ?errors[index]},
+    );
+  }
+
+  /// How many artists are asked at once when they have to be asked one by one:
+  /// a NAS answers a handful of small writes together and not a thousand.
+  static const int _bulkLanes = 4;
 
   /// Deletes an artist from Lidarr.
   Future<void> deleteArtist(

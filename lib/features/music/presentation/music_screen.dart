@@ -12,6 +12,7 @@ import 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 import 'package:cupola/features/music/domain/lidarr_status.dart';
 import 'package:cupola/features/music/domain/lidarr_wanted.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/presentation/lidarr_bulk.dart';
 import 'package:cupola/features/music/presentation/music_find.dart';
 import 'package:cupola/features/music/presentation/music_provider.dart';
 import 'package:cupola/features/music/presentation/music_search_provider.dart';
@@ -96,6 +97,14 @@ class MusicScreen extends ConsumerWidget {
       ),
     );
 
+    // The connection as a sentence says it: the bar's toasts and the
+    // confirmation name it.
+    final connectionName = ref.watch(
+      currentSettingsProvider.select(
+        (s) => s.connectionTitle(lens, ServiceKey.lidarr),
+      ),
+    );
+
     return MediaBrowseScaffold<LidarrArtist>(
       title: 'Music',
       searchHint: 'Artists and albums',
@@ -109,17 +118,29 @@ class MusicScreen extends ConsumerWidget {
       searchQueryProvider: musicSearchQueryProvider,
       find: MediaFind(
         scopeProvider: musicFindScopeProvider,
-        serviceLabel: ref.watch(
-          currentSettingsProvider.select(
-            (s) => s.connectionTitle(lens, ServiceKey.lidarr),
-          ),
-        ),
+        serviceLabel: connectionName,
         libraryBody: (context, query) => MusicFindLibrary(
           query: query,
           onAskLidarr: () => ref.read(musicFindScopeProvider.notifier).state =
               MediaFindScope.service,
         ),
         serviceBody: (context, query) => MusicFindLidarr(query: query),
+      ),
+      // Search, Monitor, Profile and Remove on the artists selected.
+      bulk: lidarrBulk(
+        ref: ref,
+        instanceId: lens,
+        name: connectionName,
+        onChanged: (ref) {
+          // What an action changed: the library, what is read from it, and
+          // what each artist is wanted for.
+          ref.invalidate(musicProvider);
+          ref.invalidate(musicForProvider);
+          ref.invalidate(musicAlbumsProvider);
+          ref.invalidate(lidarrWantedArtistIdsProvider);
+          ref.invalidate(lidarrCutoffUnmetArtistIdsProvider);
+          ref.invalidate(lidarrKpiLibraryProvider);
+        },
       ),
       titleExtractor: (artist) => artist.artistName,
       subtitleExtractor: lidarrArtistCaption,

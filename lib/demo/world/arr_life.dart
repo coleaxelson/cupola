@@ -84,6 +84,16 @@ class LiveArtist {
   final bool readsAlbums;
 }
 
+/// What the demo changed on an artist of a Lidarr by the editor: only what
+/// was set, the rest is the artist's own. Kept by id, so it holds for the
+/// world's artists and the shelf's as it does for those the demo added.
+class LiveArtistEdit {
+  bool? monitored;
+  String? monitorNewItems;
+  int? qualityProfileId;
+  int? metadataProfileId;
+}
+
 /// One album added to a Lidarr in the demo, under the world's artist (id 1)
 /// or one the demo added.
 class LiveAlbum {
@@ -122,6 +132,8 @@ class ArrLife {
   final Map<String, List<LiveMovie>> _movies = {};
   final Map<String, List<LiveSeries>> _series = {};
   final Map<String, List<LiveArtist>> _artists = {};
+  final Map<String, Map<int, LiveArtistEdit>> _artistEdits = {};
+  final Map<String, Set<int>> _removedArtists = {};
   final Map<String, List<LiveAlbum>> _albums = {};
   int _grabs = 0;
 
@@ -214,6 +226,32 @@ class ArrLife {
 
   LiveArtist? artist(String serverId, int id) =>
       artists(serverId).where((a) => a.id == id).firstOrNull;
+
+  /// What the demo changed on artist [id] of Lidarr [serverId], or null for an
+  /// artist it has left as it was.
+  LiveArtistEdit? artistEdit(String serverId, int id) =>
+      _artistEdits[serverId]?[id];
+
+  /// Sets what is given of artist [id]'s settings on Lidarr [serverId].
+  void editArtist(
+    String serverId,
+    int id, {
+    bool? monitored,
+    String? monitorNewItems,
+    int? qualityProfileId,
+    int? metadataProfileId,
+  }) {
+    final edit = (_artistEdits.putIfAbsent(serverId, () => {})[id] ??=
+        LiveArtistEdit());
+    if (monitored != null) edit.monitored = monitored;
+    if (monitorNewItems != null) edit.monitorNewItems = monitorNewItems;
+    if (qualityProfileId != null) edit.qualityProfileId = qualityProfileId;
+    if (metadataProfileId != null) edit.metadataProfileId = metadataProfileId;
+  }
+
+  /// The artists removed from Lidarr [serverId] in the demo.
+  Set<int> removedArtists(String serverId) =>
+      _removedArtists.putIfAbsent(serverId, () => {});
 
   /// Adds the artist [name] to Lidarr [serverId], or finds it there.
   LiveArtist addArtist(

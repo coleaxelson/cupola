@@ -49,6 +49,8 @@ export 'media_grid.dart';
 export 'media_browse_index.dart';
 export 'media_browse_scaffold.dart';
 export 'media_browse_wanted.dart';
+export 'media_bulk.dart';
+export 'library_selection.dart';
 export 'media_detail_view.dart';
 export 'media_detail_slot.dart';
 export 'media_detail_body_metrics.dart';
