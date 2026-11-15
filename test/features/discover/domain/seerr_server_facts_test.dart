@@ -411,6 +411,16 @@ void main() {
       expect(facts.toString(), contains('jellyfin'));
     });
 
+    test('hideAvailable is the server\'s own, off unless it says so', () {
+      bool hides(Map<String, dynamic> json) =>
+          SeerrServerFacts.fromPublicSettings(json).hideAvailable;
+
+      expect(hides({'hideAvailable': true}), isTrue);
+      expect(hides({'hideAvailable': false}), isFalse);
+      expect(hides({}), isFalse);
+      expect(hides({'hideAvailable': 'true'}), isFalse);
+    });
+
     test('the facts are a value', () {
       expect(
         SeerrServerFacts.fromPublicSettings(_seerr({}), version: '3.5.0'),

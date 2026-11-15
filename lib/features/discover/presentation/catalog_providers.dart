@@ -4,6 +4,7 @@ import 'package:cupola/core/models/media_preview.dart';
 import 'package:cupola/core/providers/provider_retry.dart';
 import 'package:cupola/core/utils/arr_model_helpers.dart';
 import 'package:cupola/core/utils/dynamic_map_utils.dart';
+import 'package:cupola/features/discover/data/seerr_accounts.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/models/seerr_genre.dart';
@@ -11,6 +12,7 @@ import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/seerr_status.dart';
 import 'package:cupola/features/discover/presentation/discover_details_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
+import 'package:cupola/features/settings/domain/service_key.dart';
 
 // The atrium's reads. Each throws when Seerr did not answer or answered with
 // a failure, and none retries on its own (`noProviderRetry`): the atrium says
@@ -239,29 +241,58 @@ List<MediaPreview> interleave(List<List<MediaPreview>> lists) {
   return woven;
 }
 
-/// "Hide what I have": one choice for the whole catalogue, kept across
-/// launches (one global switch, not one per shelf). Off at first.
+/// "Hide what I have": one choice for the whole catalogue and the atrium,
+/// kept across launches (one global switch, not one per shelf).
+///
+/// The person's own choice when there is one. Until they make it, the lens's
+/// Seerr says: its `hideAvailable`, read from `/settings/public` the way
+/// every other Seerr fact is ([seerrServerFactsProvider]). With no Seerr, or
+/// one that did not answer, off. Resolved before anything is drawn from it,
+/// so a shelf never shows posters and then takes some away.
 final catalogHideOwnedProvider =
-    NotifierProvider<CatalogHideOwnedNotifier, bool>(
+    AsyncNotifierProvider<CatalogHideOwnedNotifier, bool>(
       CatalogHideOwnedNotifier.new,
+      retry: noProviderRetry,
     );
 
-class CatalogHideOwnedNotifier extends Notifier<bool> {
+class CatalogHideOwnedNotifier extends AsyncNotifier<bool> {
   static const _key = 'catalog_hide_owned';
 
-  @override
-  bool build() {
+  /// What the person chose, or null if they never touched the switch: `set`
+  /// always writes a value.
+  bool? _stored() {
     // Guarded like the recent searches: a test or a screen built without
     // the preferences still draws, with the switch off.
     try {
-      return ref.watch(sharedPreferencesProvider).getBool(_key) ?? false;
+      return ref.watch(sharedPreferencesProvider).getBool(_key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> build() async {
+    final stored = _stored();
+    if (stored != null) return stored;
+    // Checked before watching, so a Seerr nobody set up is never read.
+    final configured = ref.watch(
+      currentSettingsProvider.select(
+        (settings) => settings.isServiceConfigured(ServiceKey.seerr),
+      ),
+    );
+    final lens = ref.watch(activeInstanceProvider(ServiceKey.seerr))?.id;
+    if (!configured || lens == null) return false;
+    try {
+      return (await ref.watch(
+        seerrServerFactsProvider(lens).future,
+      )).hideAvailable;
     } catch (_) {
       return false;
     }
   }
 
   void set(bool value) {
-    state = value;
+    state = AsyncData(value);
     try {
       ref.read(sharedPreferencesProvider).setBool(_key, value);
     } catch (_) {
@@ -269,3 +300,65 @@ class CatalogHideOwnedNotifier extends Notifier<bool> {
     }
   }
 }
+
+/// How many titles a shelf with the switch on tries to keep.
+const atriumShelfFill = 12;
+
+/// What the atrium's filtered shelves do to a page of titles: nothing with
+/// the switch off, otherwise take off what the server holds. Resolved from
+/// the switch and Seerr's numbering together, so a shelf waits for both.
+final atriumShelfKeeperProvider =
+    FutureProvider<List<MediaPreview> Function(List<MediaPreview>)>((
+      ref,
+    ) async {
+      final hide = await ref.watch(catalogHideOwnedProvider.future);
+      if (!hide) return (List<MediaPreview> items) => items;
+      // A numbering that did not come is no reason to lose the shelves:
+      // without it the standard codes apply, as on the catalogue page.
+      final numbering = await ref
+          .watch(seerrNumberingProvider.future)
+          .catchError((_) => null);
+      return (List<MediaPreview> items) => [
+        for (final item in items)
+          if (!seerrHolds(item.mediaInfo, numbering: numbering)) item,
+      ];
+    }, retry: noProviderRetry);
+
+/// Trending this week as the atrium's shelf draws it. With the switch off,
+/// [atriumTrendingProvider] whole. On, without what the server holds, and
+/// if fewer than [atriumShelfFill] are left, the second page read once to
+/// fill it: never a third. Trending itself stays whole: it is the canary,
+/// the doors' artwork and People's faces.
+final atriumTrendingShelfProvider = FutureProvider<List<MediaPreview>>((
+  ref,
+) async {
+  final keep = await ref.watch(atriumShelfKeeperProvider.future);
+  final first = await ref.watch(atriumTrendingProvider.future);
+  final kept = keep(first);
+  if (identical(kept, first) || kept.length >= atriumShelfFill) return kept;
+  try {
+    final more = await ref
+        .watch(seerrServiceProvider)
+        .getCatalogPage(const CatalogQuery.trending(), page: 2);
+    // Trending moves between the two reads: a title already there is not
+    // listed again.
+    final seen = {for (final item in kept) '${item.mediaType}:${item.id}'};
+    return [
+      ...kept,
+      for (final item in keep(more.items))
+        if (seen.add('${item.mediaType}:${item.id}')) item,
+    ];
+  } catch (_) {
+    // The second page is only a refill: what the first gave stands.
+    return kept;
+  }
+}, retry: noProviderRetry);
+
+/// Coming soon as the atrium's shelf draws it: the switch's filter over
+/// [comingSoonProvider], with no refill.
+final atriumComingSoonShelfProvider = FutureProvider<List<MediaPreview>>((
+  ref,
+) async {
+  final keep = await ref.watch(atriumShelfKeeperProvider.future);
+  return keep(await ref.watch(comingSoonProvider.future));
+}, retry: noProviderRetry);

@@ -68,6 +68,7 @@ cards live in [`../motion/`](../motion/).
 | Media | [CalendarWeekStrip](CalendarWeekStrip/README.md) | `lib/features/discover/presentation/widgets/calendar_week_strip.dart` |
 | Media | [CatalogPoster](CatalogPoster/README.md) | `lib/features/discover/presentation/widgets/catalog_poster.dart` |
 | Media | [CollectionTally](CollectionTally/README.md) | `lib/features/discover/presentation/widgets/collection_tally.dart` |
+| Media | [HideOwnedSwitch](HideOwnedSwitch/README.md) | `lib/features/discover/presentation/widgets/hide_owned_switch.dart` |
 | Media | [DiscoverDoor](DiscoverDoor/README.md) | `lib/features/discover/presentation/widgets/discover_door.dart` |
 | Media | [SearchRow](SearchRow/README.md) | `lib/features/discover/presentation/widgets/search_row.dart` |
 | Media | [ContentCard](ContentCard/README.md) | `lib/core/widgets/content_card.dart` |

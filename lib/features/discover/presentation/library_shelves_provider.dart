@@ -8,6 +8,7 @@ import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/collection_shelf.dart';
 import 'package:cupola/features/discover/domain/library_shelves.dart';
 import 'package:cupola/features/discover/domain/models/collection_detail.dart';
+import 'package:cupola/features/discover/presentation/catalog_providers.dart';
 import 'package:cupola/features/discover/presentation/discover_details_provider.dart';
 import 'package:cupola/features/movies/data/radarr_service.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
@@ -92,4 +93,15 @@ final completeTheCollectionProvider = FutureProvider<CollectionInvitation?>((
     }
   }
   return null;
+}, retry: noProviderRetry);
+
+/// Because you watched as the atrium's shelf draws it: the switch's filter
+/// over [becauseYouWatchedProvider], with no refill. Null where nothing is
+/// left to recommend.
+final atriumBecauseShelfProvider = FutureProvider<WatchedShelf?>((ref) async {
+  final keep = await ref.watch(atriumShelfKeeperProvider.future);
+  final shelf = await ref.watch(becauseYouWatchedProvider.future);
+  if (shelf == null) return null;
+  final items = keep(shelf.items);
+  return items.isEmpty ? null : (watched: shelf.watched, items: items);
 }, retry: noProviderRetry);

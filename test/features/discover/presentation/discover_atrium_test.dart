@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,7 +11,9 @@ import 'package:cupola/core/models/media_preview.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/selection_pills.dart';
 import 'package:cupola/core/widgets/shimmer_placeholder.dart';
+import 'package:cupola/features/discover/data/seerr_accounts.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
+import 'package:cupola/features/discover/domain/seerr_server_facts.dart';
 import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/discover_index.dart';
 import 'package:cupola/features/discover/domain/models/seerr_genre.dart';
@@ -365,6 +368,8 @@ Future<ProviderContainer> _pumpAtrium(
   Size size = const Size(1200, 3000),
   double textScale = 1,
   String? location,
+  bool serverHides = false,
+  List<Override> overrides = const [],
 }) async {
   // Tall viewport so every shelf builds (the vertical ListView is lazy).
   tester.view.physicalSize = size;
@@ -379,6 +384,12 @@ Future<ProviderContainer> _pumpAtrium(
       // Which numbering Seerr's codes follow: asked of the service, which
       // this test has none of.
       seerrNumberingProvider.overrideWith((ref) async => null),
+      // What the server says of "Hide what I have" for one who never chose:
+      // answered here, so no read leaves the test.
+      seerrServerFactsProvider.overrideWith(
+        (ref, id) async =>
+            SeerrServerFacts.fromPublicSettings({'hideAvailable': serverHides}),
+      ),
       // The catalogue is drawn only once there is a Seerr to ask.
       currentSettingsProvider.overrideWith(
         (ref) => settingsWithServices([ServiceKey.seerr]),
@@ -392,6 +403,7 @@ Future<ProviderContainer> _pumpAtrium(
             : const [SeerrGenre(id: 10765, name: 'Sci-Fi & Fantasy')],
       ),
       requestsProvider.overrideWith((ref) async => requests),
+      ...overrides,
     ],
   );
   addTearDown(container.dispose);
