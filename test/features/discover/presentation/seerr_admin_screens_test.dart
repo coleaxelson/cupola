@@ -6,12 +6,15 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/widgets/not_configured_placeholder.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/seerr_numbering.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/discover/presentation/seerr_admin_screens.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
 
+import '../../../test_helpers/fake_api_client.dart';
 import '../../../test_helpers/fake_services.dart';
+import '../../../test_helpers/fixtures.dart';
 import '../../../test_helpers/settings_scope.dart';
 
 void main() {
@@ -69,6 +72,30 @@ void main() {
     expect(find.text('3 requests'), findsOneWidget);
   });
 
+  testWidgets('the Issues tab draws the title hydrated from its page', (
+    tester,
+  ) async {
+    // Seerr's issue list names no title: the screen reads the real service,
+    // which asks each title's own page, and draws what came back.
+    final client = FakeApiClient()
+      ..getResponseQueue.addAll([
+        jsonFixtureMap('seerr/issues.json'),
+        {'title': 'Fight Club'},
+        {'name': 'Game of Thrones'},
+        // The third title cannot be read: its row stays as it was.
+      ]);
+
+    await _pump(
+      tester,
+      service: SeerrService(client, numbering: SeerrNumbering.seerr),
+      screen: const SeerrIssuesScreen(topPadding: 0),
+    );
+
+    expect(find.text('Fight Club'), findsOneWidget);
+    expect(find.text('Game of Thrones'), findsOneWidget);
+    expect(find.text('Unknown media'), findsOneWidget);
+  });
+
   testWidgets('does not read admin providers before Seerr is configured', (
     tester,
   ) async {
@@ -107,7 +134,7 @@ void main() {
 
 Future<void> _pump(
   WidgetTester tester, {
-  required FakeSeerrService service,
+  required SeerrService service,
   required Widget screen,
 }) async {
   await tester.pumpWidget(

@@ -301,9 +301,44 @@ class SeerrService {
     SeerrIssueFilter filter = SeerrIssueFilter.open,
   }) async {
     final first = await _issuePage(0, filter: filter);
-    return _collect(
+    final all = await _collect(
       first,
       (skip) async => (await _issuePage(skip, filter: filter)).items,
+    );
+    // Seerr's issue rows carry no title, so the names come from the titles'
+    // own pages, once the whole list is in hand so the lanes are shared.
+    return SeerrAdminResult(
+      items: List.unmodifiable(await _hydrateIssues(all.items)),
+      total: all.total,
+      isPartial: all.isPartial,
+    );
+  }
+
+  Future<List<SeerrIssue>> _hydrateIssues(List<SeerrIssue> issues) async {
+    if (issues.isEmpty) return issues;
+    final hydrated = await runInLanes(
+      issues.length,
+      _hydrationConcurrency,
+      (index) => _hydrateIssue(issues[index]),
+    );
+    return hydrated.toList(growable: false);
+  }
+
+  /// Reads the title through the same cache and in-flight reads as the
+  /// requests. A title that cannot be read leaves its row as it was.
+  Future<SeerrIssue> _hydrateIssue(SeerrIssue issue) async {
+    final media = issue.media;
+    final tmdbId = media?.tmdbId;
+    if (media == null || tmdbId == null) return issue;
+    final movie = media.mediaType == 'movie';
+    if (!movie && media.mediaType != 'tv') return issue;
+    final key = '${media.mediaType}:$tmdbId';
+    final entry =
+        _mediaCache[key] ??
+        await (_titleReads[key] ??= _readTitle(key, tmdbId, movie: movie));
+    if (entry == null) return issue;
+    return issue.copyWith(
+      media: media.copyWith(title: entry.title, posterPath: entry.posterPath),
     );
   }
 

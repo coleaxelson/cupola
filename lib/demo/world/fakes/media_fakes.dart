@@ -830,11 +830,9 @@ class SeerrFake extends ServiceFake {
                 'createdAt': c.ago(const Duration(days: 3)),
                 'updatedAt': c.ago(const Duration(days: 2)),
                 'createdBy': _user(c, 2),
-                // The issue's media names its title, as the app reads it.
-                'media': {
-                  ..._media(c, WorldTitles.tearsOfSteel)!,
-                  'title': WorldTitles.tearsOfSteel.title,
-                },
+                // Seerr's issue rows name no title: the app reads it from
+                // the title's own page, which this world answers.
+                'media': _media(c, WorldTitles.tearsOfSteel),
                 'comments': [
                   {
                     'id': 1,

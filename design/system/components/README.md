@@ -91,6 +91,7 @@ cards live in [`../motion/`](../motion/).
 | Service surfaces | [DomainSectionHeader](DomainSectionHeader/README.md) | `lib/core/widgets/domain_section.dart`, `lib/features/settings/domain/service_key.dart` |
 | Service surfaces | [ServiceOverview](ServiceOverview/README.md) | `lib/core/widgets/service_overview.dart`, `lib/features/movies/presentation/radarr_overview_screen.dart` |
 | Service surfaces | [NowPlaying](NowPlaying/README.md) | `lib/features/stream/presentation/widgets/stream_session_slab.dart`, `lib/features/stream/presentation/widgets/stream_now_playing_section.dart` |
+| Service surfaces | [SeerrIssues](SeerrIssues/README.md) | `lib/features/discover/presentation/seerr_admin_screens.dart`, `lib/features/discover/data/seerr_service.dart` |
 | Service surfaces | [ServiceRing](ServiceRing/README.md) | `lib/core/widgets/service_ring.dart` |
 | Service surfaces | [TrueNasShares](TrueNasShares/README.md) | `lib/features/truenas/presentation/shares/truenas_shares_screen.dart`, `lib/core/widgets/floating_bottom_nav_bar.dart` |
 | Service surfaces | [TrueNasCredentials](TrueNasCredentials/README.md) | `lib/features/truenas/presentation/system/truenas_credentials_screen.dart`, `lib/core/widgets/floating_bottom_nav_bar.dart` |

@@ -571,27 +571,89 @@ void main() {
 
   group('admin endpoints', () {
     test('gets open issues with the documented query contract', () async {
-      client.getResponseData = {
-        'pageInfo': {'results': 1},
-        'results': [
-          {
-            'id': 21,
-            'issueType': 2,
-            'media': {'title': 'Fight Club'},
-            'createdBy': {'username': 'matt'},
-          },
-        ],
-      };
+      final routed = _RoutedClient(
+        pages: jsonFixtureMap('seerr/issues.json'),
+        titles: {
+          '/api/v1/movie/550': {'title': 'Fight Club'},
+        },
+      );
 
-      final issues = (await service.getIssuesResult()).items;
+      final issues = (await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getIssuesResult()).items;
 
-      expect(issues.single.media?.title, 'Fight Club');
-      expect(client.lastGetPath, '/api/v1/issue');
-      expect(client.lastGetQueryParameters, {
+      expect(issues.first.media?.title, 'Fight Club');
+      expect(routed.issuePaths.first, '/api/v1/issue');
+      expect(routed.issueQueries.first, {
         'take': 50,
         'skip': 0,
         'sort': 'modified',
         'filter': 'open',
+      });
+    });
+
+    group('issue titles', () {
+      // Seerr's issue rows carry no title: the names come from each title's
+      // own page, once per title, and a title that will not read leaves its
+      // row as it was.
+      test('names every row from its title page, once per title', () async {
+        final page = jsonFixtureMap('seerr/issues.json');
+        // A second issue on the same movie must not read it again.
+        (page['results'] as List).add({
+          ...(page['results'] as List).first as Map<String, dynamic>,
+          'id': 24,
+        });
+        final routed = _RoutedClient(
+          pages: page,
+          titles: {
+            '/api/v1/movie/550': {
+              'title': 'Fight Club',
+              'posterPath': '/fight.jpg',
+            },
+            '/api/v1/tv/1399': {'name': 'Game of Thrones'},
+            '/api/v1/movie/603': {'title': 'The Matrix'},
+          },
+        );
+        final seerr = SeerrService(routed, numbering: SeerrNumbering.seerr);
+
+        final issues = (await seerr.getIssuesResult()).items;
+        await seerr.getIssuesResult();
+
+        expect(issues.map((i) => i.media?.title), [
+          'Fight Club',
+          'Game of Thrones',
+          'The Matrix',
+          'Fight Club',
+        ]);
+        expect(issues.first.media?.posterPath, '/fight.jpg');
+        expect(issues.first.media?.tmdbId, 550);
+        expect(routed.titlePaths.toSet().length, 3);
+        // Three titles, read once across two refreshes.
+        expect(routed.titlePaths.length, 3);
+      });
+
+      test('a title that cannot be read keeps its row as it was', () async {
+        final routed = _RoutedClient(
+          pages: jsonFixtureMap('seerr/issues.json'),
+          titles: {
+            '/api/v1/movie/550': {'title': 'Fight Club'},
+            '/api/v1/tv/1399': null,
+          },
+        );
+
+        final result = await SeerrService(
+          routed,
+          numbering: SeerrNumbering.seerr,
+        ).getIssuesResult();
+
+        expect(result.items.map((i) => i.media?.title), [
+          'Fight Club',
+          null,
+          null,
+        ]);
+        expect(result.items[1].id, 22);
+        expect(result.isPartial, isFalse);
       });
     });
 
@@ -836,4 +898,48 @@ void main() {
       expect((await service.search('dune')).isEmpty, isTrue);
     });
   });
+}
+
+/// Seerr as the issue list sees it: the page of issues, then one read per
+/// title page. A title mapped to null answers 500.
+class _RoutedClient extends FakeApiClient {
+  _RoutedClient({required this.pages, required this.titles});
+
+  final Map<String, dynamic> pages;
+  final Map<String, Map<String, dynamic>?> titles;
+  final issuePaths = <String>[];
+  final issueQueries = <Map<String, dynamic>?>[];
+  final titlePaths = <String>[];
+
+  @override
+  Future<Response<dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Duration? receiveTimeout,
+  }) async {
+    if (path == '/api/v1/issue') {
+      issuePaths.add(path);
+      issueQueries.add(queryParameters);
+      return Response(
+        requestOptions: RequestOptions(path: path),
+        data: pages,
+      );
+    }
+    titlePaths.add(path);
+    final body = titles[path];
+    if (body == null) {
+      throw DioException(
+        requestOptions: RequestOptions(path: path),
+        response: Response(
+          requestOptions: RequestOptions(path: path),
+          statusCode: 500,
+        ),
+      );
+    }
+    return Response(
+      requestOptions: RequestOptions(path: path),
+      data: body,
+    );
+  }
 }

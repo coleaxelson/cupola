@@ -36,6 +36,8 @@ class SeerrUser {
     this.email,
     this.username,
     this.plexUsername,
+    this.jellyfinUsername,
+    this.serverDisplayName,
     this.avatar,
     this.userType,
     this.permissions,
@@ -47,6 +49,12 @@ class SeerrUser {
   final String? email;
   final String? username;
   final String? plexUsername;
+  final String? jellyfinUsername;
+
+  /// Seerr's own `displayName`: it computes username, plexUsername,
+  /// jellyfinUsername, email in that order, so it is the name of a Jellyfin
+  /// or Emby account that has no username.
+  final String? serverDisplayName;
   final String? avatar;
   final int? userType;
   final int? permissions;
@@ -62,6 +70,10 @@ class SeerrUser {
       email: _text(json['email']),
       username: _text(json['username']),
       plexUsername: _text(json['plexUsername'] ?? json['plex_username']),
+      jellyfinUsername: _text(
+        json['jellyfinUsername'] ?? json['jellyfin_username'],
+      ),
+      serverDisplayName: _text(json['displayName'] ?? json['display_name']),
       avatar: _text(json['avatar']),
       userType: _int(json['userType'] ?? json['user_type']),
       permissions: _int(json['permissions']),
@@ -71,7 +83,13 @@ class SeerrUser {
   }
 
   String get displayName {
-    for (final value in [username, plexUsername, email]) {
+    for (final value in [
+      serverDisplayName,
+      username,
+      plexUsername,
+      jellyfinUsername,
+      email,
+    ]) {
       if (value != null && value.trim().isNotEmpty) return value.trim();
     }
     return 'Unnamed user';
@@ -106,6 +124,15 @@ class SeerrIssueMedia {
       posterPath: _text(json['posterPath'] ?? json['poster_path']),
     );
   }
+
+  SeerrIssueMedia copyWith({String? title, String? posterPath}) =>
+      SeerrIssueMedia(
+        id: id,
+        tmdbId: tmdbId,
+        title: title ?? this.title,
+        mediaType: mediaType,
+        posterPath: posterPath ?? this.posterPath,
+      );
 }
 
 @immutable
@@ -160,6 +187,18 @@ class SeerrIssue {
       updatedAt: _text(json['updatedAt'] ?? json['updated_at']),
     );
   }
+
+  SeerrIssue copyWith({SeerrIssueMedia? media}) => SeerrIssue(
+    id: id,
+    issueType: issueType,
+    status: status,
+    media: media ?? this.media,
+    createdBy: createdBy,
+    modifiedBy: modifiedBy,
+    commentCount: commentCount,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
 
   String get issueTypeLabel => switch (issueType) {
     1 => 'Video',

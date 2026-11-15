@@ -278,6 +278,8 @@ class _IssueCard extends StatelessWidget {
                     reporter,
                     issue.commentCount == 0
                         ? null
+                        : issue.commentCount == 1
+                        ? '1 comment'
                         : '${issue.commentCount} comments',
                   ]),
                   style: Theme.of(context).textTheme.bodyMedium,
