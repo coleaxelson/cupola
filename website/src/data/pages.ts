@@ -162,14 +162,27 @@ export const rivalPages: Page[] = rivals.map((r) => ({
 
 const serviceLight: Record<Category, LightId> = { Media: 'tos', Downloads: 'charge', Stream: 'sintel', Infrastructure: 'lamp' };
 
+// Where people search for a service in their own words, its page answers in
+// them. Seerr's searches ask for an iOS app or an APK, because Seerr itself
+// runs in the browser.
+const serviceSearch: Partial<Record<string, Pick<Page, 'title' | 'description'>>> = {
+  seerr: {
+    title: 'Seerr app for iOS and Android · Cupola',
+    description:
+      'Seerr runs in the browser; Cupola is a free, open-source app for it on iPhone, iPad, Android (APK) and Mac. Discover, requests and approvals, with Overseerr and Jellyseerr too.',
+  },
+};
+
 /** One page per service in the README, at /services/<id>/. */
 export const servicePages: Page[] = services().map((s) => ({
   path: `/services/${s.id}/`,
   slug: `service-${s.id}`,
   name: s.name,
-  title: `${s.name} app for iPhone and Android · Cupola`,
+  title: serviceSearch[s.id]?.title ?? `${s.name} app for iPhone and Android · Cupola`,
   heading: `${s.name}, from your phone.`,
-  description: `Manage ${s.name} from iPhone, Android or Mac with Cupola, free and open source: what it can do, how to connect it, and how well it is tested.`,
+  description:
+    serviceSearch[s.id]?.description ??
+    `Manage ${s.name} from iPhone, Android or Mac with Cupola, free and open source: what it can do, how to connect it, and how well it is tested.`,
   light: serviceLight[s.category],
 }));
 

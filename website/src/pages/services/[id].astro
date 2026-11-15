@@ -68,13 +68,14 @@ const questions: Qa[] = [
         q: `Where do I find the ${s.name} ${s.id === 'plex' ? 'token' : 'API key'}?`,
         a: `In ${s.name}'s own web interface: <strong>${escape(reg.credentialPath!)}</strong>.`,
       },
+  ...(s.id === 'seerr' || s.id === 'lidarr' ? pick('music') : []),
   ...pick('away', 'certs'),
 ];
 ---
 <Guide
   page={page}
   parent="services"
-  lede={`Cupola is a free, open-source app for ${s.name}${aka ? ` (${aka} too)` : ''} on iPhone, iPad, Android and Mac. It connects straight to your own ${s.name}, with no account.`}
+  lede={`${s.id === 'seerr' ? 'Seerr itself runs in the browser. ' : ''}Cupola is a free, open-source app for ${s.name}${aka ? ` (${aka} too)` : ''} on iPhone, iPad, Android and Mac. It connects straight to your own ${s.name}, with no account.`}
   questions={questions}
   related={[home, 'services', 'install']}
 >
