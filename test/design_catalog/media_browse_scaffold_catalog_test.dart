@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 // ignore: implementation_imports
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,8 +15,18 @@ import 'package:cupola/core/models/service_kpi.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/providers/provider_retry.dart';
 import 'package:cupola/core/widgets/media_browse_scaffold.dart';
+import 'package:cupola/core/widgets/media_find.dart';
 import 'package:cupola/core/widgets/service_kpi_peek.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
+import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
+import 'package:cupola/features/music/domain/lidarr_queue_snapshots.dart';
+import 'package:cupola/features/music/domain/models/lidarr_album.dart';
+import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
+import 'package:cupola/features/music/presentation/music_find.dart';
+import 'package:cupola/features/music/presentation/music_provider.dart';
+import 'package:cupola/features/music/presentation/music_search_provider.dart';
+import 'package:cupola/features/services/presentation/services_queue_snapshots.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/connection_access.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -324,6 +335,207 @@ class _TypedState extends State<_Typed> {
   Widget build(BuildContext context) => widget.child;
 }
 
+// === Music: the wall that finds in its library, then in Lidarr ============
+
+LidarrArtist _artist(
+  int id,
+  String name, {
+  String foreign = '',
+  Map<String, dynamic>? statistics,
+}) => LidarrArtist(
+  id: id,
+  artistName: name,
+  foreignArtistId: foreign,
+  status: 'continuing',
+  monitored: true,
+  images: const [],
+  genres: const [],
+  statistics: statistics,
+);
+
+LidarrAlbum _album(
+  int id,
+  String title,
+  int artistId,
+  String year, {
+  int files = 0,
+  int tracks = 11,
+  bool monitored = true,
+  String foreign = '',
+  String? art,
+}) => LidarrAlbum(
+  id: id,
+  title: title,
+  artistId: artistId,
+  foreignAlbumId: foreign,
+  releaseDate: '$year-01-01T00:00:00Z',
+  monitored: monitored,
+  images: [
+    if (art != null) {'coverType': 'cover', 'remoteUrl': art},
+  ],
+  statistics: {'trackFileCount': files, 'totalTrackCount': tracks},
+);
+
+final _musicArtists = [
+  _artist(
+    2,
+    'Edward Elgar',
+    foreign: 'mb-elgar',
+    statistics: {'albumCount': 9, 'trackCount': 40, 'trackFileCount': 40},
+  ),
+  _artist(
+    3,
+    'Ella Fitzgerald',
+    foreign: 'mb-ella',
+    statistics: {'albumCount': 31, 'trackCount': 400, 'trackFileCount': 336},
+  ),
+  _artist(1, 'Jan Morgenstern', foreign: 'mb-jan'),
+  _artist(5, 'The Jimi Hendrix Experience', foreign: 'mb-jimi'),
+];
+
+final _musicAlbums = [
+  _album(
+    10,
+    'Elephants Dream',
+    1,
+    '2006',
+    files: 7,
+    tracks: 7,
+    foreign: 'mb-elephants',
+    art: CatalogArt.poster,
+  ),
+  _album(11, 'Ella and Louis', 3, '1956', files: 9, foreign: 'mb-eal'),
+  _album(12, 'Elegy for Strings', 2, '1909', tracks: 1, foreign: 'mb-elegy'),
+  _album(
+    13,
+    'Electric Ladyland',
+    5,
+    '1968',
+    monitored: false,
+    foreign: 'mb-ladyland',
+  ),
+];
+
+/// What Lidarr's catalog answers for `el`: Elbow (not held), Ella (held), an
+/// album of Elbow's, one the library holds and left alone, and one by an
+/// artist the library holds.
+final _musicCatalog = <LidarrSearchHit>[
+  for (final row in <Map<String, dynamic>>[
+    {
+      'artist': {
+        'id': 0,
+        'artistName': 'Elbow',
+        'foreignArtistId': 'mb-elbow',
+        'artistType': 'Group',
+        'disambiguation': 'Bury, England',
+        'status': 'continuing',
+      },
+    },
+    {
+      'artist': {
+        'id': 3,
+        'artistName': 'Ella Fitzgerald',
+        'foreignArtistId': 'mb-ella',
+        'artistType': 'Person',
+        'status': 'continuing',
+      },
+    },
+    for (final (title, foreign, artist, artistForeign, type) in const [
+      ('Leaders of the Free World', 'mb-leaders', 'Elbow', 'mb-elbow', 'Album'),
+      (
+        'Electric Ladyland',
+        'mb-ladyland',
+        'The Jimi Hendrix Experience',
+        'mb-jimi',
+        'Album',
+      ),
+      ('Elegy for Brass', 'mb-brass', 'Edward Elgar', 'mb-elgar', 'Single'),
+    ])
+      {
+        'album': {
+          'id': 0,
+          'title': title,
+          'foreignAlbumId': foreign,
+          'albumType': type,
+          'releaseDate': '2005-03-07T00:00:00Z',
+          'images': const <Object?>[],
+          'artist': {
+            'id': 0,
+            'artistName': artist,
+            'foreignArtistId': artistForeign,
+            'status': 'continuing',
+          },
+        },
+      },
+  ])
+    ?LidarrSearchHit.tryParse(row),
+];
+
+/// The Music wall as `MusicScreen` builds it: the real find bodies over a
+/// scaffold with nothing else of the screen (no peek, no cutoff source).
+Widget _music() => MediaBrowseScaffold<LidarrArtist>(
+  title: 'Music',
+  searchHint: 'Artists and albums',
+  activityRoute: '/activity',
+  navigationSection: NavigationSection.stack,
+  serviceName: 'Lidarr',
+  service: ServiceKey.lidarr,
+  accentColor: ServiceKey.lidarr.accent,
+  heroTagPrefix: 'artist',
+  searchHeroTagPrefix: 'artist_search',
+  libraryProvider: musicProvider,
+  searchQueryProvider: musicSearchQueryProvider,
+  find: MediaFind(
+    scopeProvider: musicFindScopeProvider,
+    libraryBody: (context, query) =>
+        MusicFindLibrary(query: query, onAskLidarr: () {}),
+    serviceBody: (context, query) => MusicFindLidarr(query: query),
+  ),
+  titleExtractor: (artist) => artist.artistName,
+  subtitleExtractor: (artist) => '',
+  imagesExtractor: (artist) => artist.images,
+  idExtractor: (artist) => artist.id,
+  settingsSelector: (_) => ('', '', const NoAccess()),
+  onItemTap: (_, _, _) {},
+  tileShape: MediaBrowseTileShape.circle,
+);
+
+/// What the Music wall reads: a library to find in, an empty queue, and
+/// Lidarr's answer to the search.
+List<Override> _musicOverrides(
+  String query,
+  MediaFindScope scope,
+  Future<List<LidarrSearchHit>?> Function()? search,
+) => [
+  musicProvider.overrideWith((ref) async => _musicArtists),
+  musicAlbumsProvider.overrideWith((ref) async => _musicAlbums),
+  lidarrQueueSnapshotsProvider.overrideWith(
+    (ref) async => LidarrQueueSnapshots.empty,
+  ),
+  musicSearchQueryProvider.overrideWith((ref) => query),
+  musicFindScopeProvider.overrideWith((ref) => scope),
+  musicSearchResultsProvider.overrideWith(
+    (ref) => (search ?? () async => const <LidarrSearchHit>[])(),
+  ),
+];
+
+/// One phone of the Music wall, with the field holding [query] in [scope] and
+/// Lidarr answering with [search].
+CatalogScene _musicScene(
+  String caption, {
+  required String query,
+  MediaFindScope scope = MediaFindScope.library,
+  Future<List<LidarrSearchHit>?> Function()? search,
+  double textScale = 1,
+  String? id,
+}) => CatalogScene(
+  caption,
+  (_) => _phone(_music()),
+  id: id,
+  textScale: textScale,
+  overrides: _musicOverrides(query, scope, search),
+);
+
 void main() {
   catalogCard(
     'MediaBrowseScaffold',
@@ -332,7 +544,8 @@ void main() {
       // A Radarr with an address, so the service-aware failure has a host to
       // name; nothing else on the sheet reads settings but the image auth.
       currentSettingsProvider.overrideWith(
-        (ref) => settingsWithServices(const [ServiceKey.radarr]),
+        (ref) =>
+            settingsWithServices(const [ServiceKey.radarr, ServiceKey.lidarr]),
       ),
     ],
     scenes: [
@@ -430,6 +643,84 @@ void main() {
         width: 1280,
         height: 1000,
         platform: CatalogPlatform.desktop,
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, your library · the field holds "el": the '
+        'segmented control under it, Artists and Albums each with its count, '
+        'an album’s state in the one word the artist page uses, the '
+        'caption that says what is searched',
+        query: 'el',
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, your library, nothing found · the line, '
+        'the way to Lidarr as an outlined button',
+        query: 'elbo',
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, Lidarr · artists and albums the catalog '
+        'found: held ones in their words, the rest with the add disc, an '
+        'album left alone with the monitor disc',
+        query: 'el',
+        scope: MediaFindScope.service,
+        search: () async => _musicCatalog,
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, Lidarr, asked · the heading over four '
+        'skeleton rows',
+        query: 'elbo',
+        scope: MediaFindScope.service,
+        search: () => Completer<List<LidarrSearchHit>?>().future,
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, Lidarr answered and its catalog did '
+        'not · the amber card with Retry, the library still works',
+        query: 'elbo',
+        scope: MediaFindScope.service,
+        search: () => Future.error(const LidarrCatalogUnavailable('down')),
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, Lidarr found nothing · what Lidarr '
+        'finds, and not songs',
+        query: 'smells like',
+        scope: MediaFindScope.service,
+        search: () async => const [],
+      ),
+      _musicScene(
+        'MediaBrowseScaffold · find, Lidarr did not answer · the app’s '
+        'own failure state, named for the service',
+        query: 'elbo',
+        scope: MediaFindScope.service,
+        search: () => Future.error(
+          DioException.connectionError(
+            requestOptions: RequestOptions(path: '/api/v1/search'),
+            reason: 'Connection refused',
+          ),
+        ),
+      ),
+      _musicScene(
+        'Text at 200% · find, your library: the control, the headings and '
+        'the rows at twice the reading size',
+        query: 'el',
+        textScale: catalogTextScale,
+        id: 'text-200-find-library',
+      ),
+      _musicScene(
+        'Text at 200% · find, Lidarr: the rows and their discs at twice the '
+        'reading size',
+        query: 'el',
+        scope: MediaFindScope.service,
+        search: () async => _musicCatalog,
+        textScale: catalogTextScale,
+        id: 'text-200-find-lidarr',
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · find on a 1280 desktop window · the results sit '
+        'in the 1140 well',
+        (_) => _music(),
+        width: 1280,
+        height: 1000,
+        platform: CatalogPlatform.desktop,
+        overrides: _musicOverrides('el', MediaFindScope.library, null),
       ),
       CatalogScene(
         'Text at 200% · the library wall, a failed load with service: and a '

@@ -12,7 +12,7 @@ void main() {
             statistics: const {'totalTrackCount': 12, 'trackFileCount': 7},
           ),
         ),
-        '7 of 12 tracks',
+        '7 of 12\u00A0tracks',
       );
     });
 

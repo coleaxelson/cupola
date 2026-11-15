@@ -76,3 +76,22 @@ class LidarrAddOptions {
     return null;
   }
 }
+
+/// Where and how an artist that comes in with an album is filed: what
+/// `POST /api/v1/album` needs of an artist Lidarr does not hold yet.
+class LidarrNewArtistSetup {
+  const LidarrNewArtistSetup({
+    required this.rootFolderPath,
+    required this.qualityProfileId,
+    required this.metadataProfileId,
+    this.monitorNewItems = 'none',
+  });
+
+  final String rootFolderPath;
+  final int qualityProfileId;
+  final int metadataProfileId;
+
+  /// Whether the albums Lidarr learns of later are monitored: not for an
+  /// artist added for one album.
+  final String monitorNewItems;
+}

@@ -7,10 +7,12 @@ import 'package:cupola/core/capability/role_gate.dart';
 import 'package:cupola/core/network/pinned_image_cache.dart';
 import 'package:cupola/core/text_scale.dart';
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/widgets/artwork_decode.dart';
 import 'package:cupola/core/widgets/cross_service_action.dart';
 import 'package:cupola/core/widgets/media_poster_card.dart';
 import 'package:cupola/core/widgets/pressable_scale.dart';
+import 'package:cupola/core/widgets/shimmer_placeholder.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 
@@ -22,11 +24,20 @@ sealed class SearchRowAction {
   final String label;
 }
 
-/// The plus: adds the title to its arr.
+/// The plus: adds the title to its arr (or does what [label] says: the plus
+/// is the row's one verb).
 final class SearchRowAdd extends SearchRowAction {
-  const SearchRowAdd({required super.label, required this.onTap});
+  const SearchRowAdd({
+    required super.label,
+    required this.onTap,
+    this.busy = false,
+  });
 
   final VoidCallback onTap;
+
+  /// The write is out: the plus gives way to a spinner and the control does
+  /// nothing until it is back.
+  final bool busy;
 }
 
 /// `Request`: asks Seerr for the title, as far as the account may, so
@@ -58,7 +69,10 @@ final class SearchRowSetUp extends SearchRowAction {
 
 /// One row of a search by kind, and of the atrium's people: a
 /// title with its poster, what it is and where it stands, or a person with
-/// their face and what they are known for.
+/// their face and what they are known for. Music's results are the same row
+/// in two more shapes: an album with its square cover and an artist with
+/// their disc, both of which, unlike a person, say where they stand and carry
+/// a control.
 ///
 /// Flat on the page, no card: the section heading above groups the rows.
 /// The row is one control that speaks one sentence; a title that can be
@@ -81,7 +95,54 @@ class SearchRow extends StatelessWidget {
     this.selected = false,
     this.padding = EdgeInsets.zero,
   }) : imageUrl = poster,
-       _person = false;
+       statusHollow = false,
+       hint = null,
+       _kind = _Kind.title;
+
+  /// An album: its [cover] in a 44 square (the album's initials without one),
+  /// [meta] (`The White Stripes · 2003 · Album`), and where it stands under
+  /// that, [statusHollow] for the backlog's ring as the state words draw it.
+  const SearchRow.album({
+    super.key,
+    required this.title,
+    required this.meta,
+    this.status,
+    this.statusHollow = false,
+    String cover = '',
+    Map<String, String>? coverHeaders,
+    required this.onTap,
+    this.action,
+    this.hint,
+    this.padding = EdgeInsets.zero,
+  }) : imageUrl = cover,
+       posterHeaders = coverHeaders,
+       heroTag = null,
+       selected = false,
+       _kind = _Kind.album;
+
+  /// An artist in a search of music: their [photo] in a 44 disc (their
+  /// initials without one), what they are under the name, where they stand,
+  /// and a control at the end when there is one. Unlike [SearchRow.person]
+  /// it has no chevron: what it opens, or does, is its own.
+  const SearchRow.artist({
+    super.key,
+    required String name,
+    required String line,
+    this.status,
+    this.statusHollow = false,
+    String photo = '',
+    Map<String, String>? photoHeaders,
+    required this.onTap,
+    this.action,
+    this.hint,
+    this.padding = EdgeInsets.zero,
+  }) : title = name,
+       meta = line,
+       imageUrl = photo,
+       posterHeaders = photoHeaders,
+       heroTag = null,
+       selected = false,
+       _kind = _Kind.artist;
 
   /// A person: their [face] (empty for none, drawn as their initials) and
   /// one line under the name.
@@ -97,16 +158,25 @@ class SearchRow extends StatelessWidget {
        meta = line,
        imageUrl = face,
        status = null,
+       statusHollow = false,
+       hint = null,
        posterHeaders = null,
        heroTag = null,
        action = null,
-       _person = true;
+       _kind = _Kind.person;
 
   final String title;
   final String meta;
 
   /// Where the title stands, as a dot in its tone and a word.
   final ({String label, StatusTone tone})? status;
+
+  /// The dot is the backlog's ring rather than a filled dot: what is wanted
+  /// and not here, which no tone paints.
+  final bool statusHollow;
+
+  /// What a tap does, spoken after the sentence: `Adds it to Lidarr`.
+  final String? hint;
 
   final String imageUrl;
   final Map<String, String>? posterHeaders;
@@ -129,13 +199,20 @@ class SearchRow extends StatelessWidget {
   /// slab's inset among the atrium's people.
   final EdgeInsetsGeometry padding;
 
-  final bool _person;
+  final _Kind _kind;
+
+  bool get _person => _kind == _Kind.person;
+
+  /// The kinds of row whose text may take two lines: a title is one, for the
+  /// rows of a list read at a glance.
+  bool get _roomy => _kind != _Kind.title;
 
   /// The row's floor: a 2:3 poster 66 tall and 8 above and below it.
   static const double minHeight = 76;
 
   static const Size _poster = Size(44, 66);
   static const double _face = 44;
+  static const Size _square = Size(44, 44);
   static const double _dot = 7;
 
   /// Up to two initials, for a title or a person with no picture.
@@ -151,12 +228,18 @@ class SearchRow extends StatelessWidget {
     final room = CupolaRoom.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final status = this.status;
-    final spoken = [meta, ?status?.label].where((s) => s.isNotEmpty).join(', ');
+    // A music row's dots are commas to the ear.
+    final said = _roomy ? splitParts(meta).join(', ') : meta;
+    final statusSaid = status == null
+        ? null
+        : (_roomy ? splitParts(status.label).join(', ') : status.label);
+    final spoken = [said, ?statusSaid].where((s) => s.isNotEmpty).join(', ');
 
     final row = PressableScale(
       onTap: onTap,
       semanticLabel: title,
       semanticValue: spoken,
+      semanticHint: hint,
       semanticSelected: selected ? true : null,
       excludeChildSemantics: true,
       child: ConstrainedBox(
@@ -165,7 +248,11 @@ class SearchRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           child: Row(
             children: [
-              _person ? _faceOf(room) : _posterOf(room),
+              switch (_kind) {
+                _Kind.person || _Kind.artist => _faceOf(room),
+                _Kind.album => _coverOf(room),
+                _Kind.title => _posterOf(room),
+              },
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
@@ -174,7 +261,7 @@ class SearchRow extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      maxLines: 1,
+                      maxLines: _roomy ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppType.row.copyWith(color: room.ink),
                     ),
@@ -182,7 +269,7 @@ class SearchRow extends StatelessWidget {
                       const SizedBox(height: AppSpacing.xxs),
                       Text(
                         meta,
-                        maxLines: _person ? 2 : 1,
+                        maxLines: _roomy ? 2 : 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppType.meta.copyWith(color: room.inkSecondary),
                       ),
@@ -195,7 +282,15 @@ class SearchRow extends StatelessWidget {
                             width: _dot,
                             height: _dot,
                             decoration: BoxDecoration(
-                              color: statusToneColor(colorScheme, status.tone),
+                              color: statusHollow
+                                  ? null
+                                  : statusToneColor(colorScheme, status.tone),
+                              border: statusHollow
+                                  ? Border.all(
+                                      color: room.inkSecondary,
+                                      width: 1.5,
+                                    )
+                                  : null,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -229,11 +324,12 @@ class SearchRow extends StatelessWidget {
     final action = this.action;
     final trailing = switch (action) {
       null => null,
-      SearchRowAdd(:final label, :final onTap) => PressableScale(
-        onTap: onTap,
+      SearchRowAdd(:final label, :final onTap, :final busy) => PressableScale(
+        // A write in flight takes no second tap.
+        onTap: busy ? null : onTap,
         semanticLabel: label,
         excludeChildSemantics: true,
-        child: const _Plus(),
+        child: _Plus(busy: busy),
       ),
       SearchRowSetUp(:final label, :final service, :final blockedMessage) =>
         CrossServiceAction(
@@ -339,6 +435,34 @@ class SearchRow extends StatelessWidget {
     );
   }
 
+  Widget _coverOf(CupolaRoom room) => Container(
+    width: _square.width,
+    height: _square.height,
+    clipBehavior: Clip.antiAlias,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: room.fillQuiet,
+      borderRadius: BorderRadius.circular(AppRadius.thumb),
+      border: Border.all(color: room.hair),
+    ),
+    child: imageUrl.isEmpty
+        ? _initials(room)
+        : ArtworkDecodeBox(
+            box: _square,
+            builder: (context, decode) => CachedNetworkImage(
+              imageUrl: imageUrl,
+              httpHeaders: posterHeaders,
+              cacheManager: pinnedImageCacheFor(imageUrl),
+              memCacheWidth: decode.width,
+              memCacheHeight: decode.height,
+              width: _square.width,
+              height: _square.height,
+              fit: BoxFit.cover,
+              errorWidget: (_, _, _) => _initials(room),
+            ),
+          ),
+  );
+
   Widget _faceOf(CupolaRoom room) => Container(
     width: _face,
     height: _face,
@@ -355,6 +479,7 @@ class SearchRow extends StatelessWidget {
             box: const Size.square(_face),
             builder: (context, decode) => CachedNetworkImage(
               imageUrl: imageUrl,
+              httpHeaders: posterHeaders,
               cacheManager: pinnedImageCacheFor(imageUrl),
               memCacheWidth: decode.width,
               memCacheHeight: decode.height,
@@ -377,9 +502,15 @@ class SearchRow extends StatelessWidget {
   );
 }
 
-/// The plus at a row's end: a 44 disc in the room's quiet fill.
+/// What a row is a picture of, which is its shape.
+enum _Kind { title, person, album, artist }
+
+/// The plus at a row's end: a 44 disc in the room's quiet fill, a spinner in
+/// it while the write is out.
 class _Plus extends StatelessWidget {
-  const _Plus();
+  const _Plus({this.busy = false});
+
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -392,7 +523,186 @@ class _Plus extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: room.hair),
       ),
-      child: Icon(Icons.add_rounded, size: 20, color: room.ink),
+      child: busy
+          ? const Center(
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : Icon(Icons.add_rounded, size: 20, color: room.ink),
+    );
+  }
+}
+
+/// A section's name over a search's rows, in the secondary ink, with how many
+/// it holds on the right where the search knows it.
+class SearchHeading extends StatelessWidget {
+  const SearchHeading(
+    this.text, {
+    super.key,
+    this.top = AppSpacing.md,
+    this.count,
+  });
+
+  final String text;
+  final double top;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    final room = CupolaRoom.of(context);
+    return Padding(
+      padding: EdgeInsets.only(top: top, bottom: AppSpacing.xxs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text(
+                text,
+                style: AppType.label.copyWith(color: room.inkSecondary),
+              ),
+            ),
+          ),
+          if (count != null)
+            Text(
+              '$count',
+              style: AppType.meta.copyWith(color: room.inkSecondary),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a row's picture is while the rows are still on their way.
+enum SearchRowsShape {
+  poster(44, 66, AppRadius.thumb),
+  square(44, 44, AppRadius.thumb),
+  circle(44, 44, 22);
+
+  const SearchRowsShape(this.width, this.height, this.radius);
+
+  final double width;
+  final double height;
+  final double radius;
+}
+
+/// Rows still on their way: plates at a row's size, spoken as [label].
+class SearchRowsPending extends StatelessWidget {
+  const SearchRowsPending({
+    super.key,
+    required this.label,
+    this.rows = 3,
+    this.shape = SearchRowsShape.poster,
+  });
+
+  final String label;
+  final int rows;
+  final SearchRowsShape shape;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    liveRegion: true,
+    child: ExcludeSemantics(
+      child: Column(
+        children: [
+          for (var i = 0; i < rows; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+              child: Row(
+                children: [
+                  ShimmerPlaceholder(
+                    width: shape.width,
+                    height: shape.height,
+                    borderRadius: BorderRadius.circular(shape.radius),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerPlaceholder(
+                          height: 14,
+                          width: 160,
+                          borderRadius: AppRadius.borderRadiusXs,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        ShimmerPlaceholder(
+                          height: 12,
+                          width: 100,
+                          borderRadius: AppRadius.borderRadiusXs,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// A search with nothing to show: [title] in the section role, [message]
+/// under it, and where there is a next step [action]; [icon] over it when the
+/// absence wants a mark.
+class SearchNothing extends StatelessWidget {
+  const SearchNothing({
+    super.key,
+    required this.title,
+    this.message,
+    this.icon,
+    this.action,
+  });
+
+  final String title;
+  final String? message;
+  final IconData? icon;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final room = CupolaRoom.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xl),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        explicitChildNodes: true,
+        child: Column(
+          children: [
+            if (icon != null) ...[
+              ExcludeSemantics(
+                child: Icon(icon, size: 28, color: room.inkTertiary),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppType.section.copyWith(color: room.ink),
+            ),
+            if (message != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                message!,
+                textAlign: TextAlign.center,
+                style: AppType.meta.copyWith(color: room.inkSecondary),
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              action!,
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

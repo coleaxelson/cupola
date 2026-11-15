@@ -71,7 +71,7 @@ cards live in [`../motion/`](../motion/).
 | Media | [DiscoverDoor](DiscoverDoor/README.md) | `lib/features/discover/presentation/widgets/discover_door.dart` |
 | Media | [SearchRow](SearchRow/README.md) | `lib/features/discover/presentation/widgets/search_row.dart` |
 | Media | [ContentCard](ContentCard/README.md) | `lib/core/widgets/content_card.dart` |
-| Media | [MediaBrowseScaffold](MediaBrowseScaffold/README.md) | `lib/core/widgets/media_browse_scaffold.dart`, `lib/core/widgets/search_bar_header.dart` |
+| Media | [MediaBrowseScaffold](MediaBrowseScaffold/README.md) | `lib/core/widgets/media_browse_scaffold.dart`, `lib/core/widgets/search_bar_header.dart`, `lib/core/widgets/media_find.dart` |
 | Media | [MediaPosterCard](MediaPosterCard/README.md) | `lib/core/widgets/media_poster_card.dart`, `lib/core/widgets/media_grid.dart` |
 | Media | [StreamLibrary](StreamLibrary/README.md) | `lib/features/stream/presentation/stream_library_screen.dart`, `lib/features/stream/presentation/widgets/stream_poster_tile.dart` |
 | Media | [StreamWatching](StreamWatching/README.md) | `lib/features/stream/presentation/stream_watching.dart` |

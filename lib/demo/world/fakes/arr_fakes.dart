@@ -1599,9 +1599,42 @@ class LidarrFake extends ArrFake {
     'images': const <Object?>[],
   };
 
-  /// The one album Lidarr reads for an artist the demo added, once it has.
+  /// An album added in the demo, as `GET /api/v1/album` sends it: nothing on
+  /// disk yet, monitored as it was asked.
+  JsonMap _live(LiveAlbum album, JsonMap artist) => {
+    'id': album.id,
+    'artistId': album.artistId,
+    'title': album.title,
+    'foreignAlbumId': album.foreignAlbumId,
+    'albumType': album.albumType,
+    'monitored': album.monitored,
+    'releaseDate': album.releaseDate,
+    'images': const <Object?>[],
+    'artist': artist,
+    'statistics': const {
+      'trackFileCount': 0,
+      'trackCount': 5,
+      'totalTrackCount': 5,
+    },
+  };
+
+  /// The artist a live album is under: the world's, or one the demo added.
+  JsonMap _artistOf(ServerContext c, int artistId) {
+    final added = c.life?.arrs.artist(c.server.id, artistId);
+    return added == null ? _artist(c) : _added(c, added);
+  }
+
+  /// The albums the demo added to Lidarr, under [artistId] only when asked.
+  List<JsonMap> _liveAlbums(ServerContext c, {int? artistId}) => [
+    for (final album in c.life?.arrs.albums(c.server.id) ?? const <LiveAlbum>[])
+      if (artistId == null || album.artistId == artistId)
+        _live(album, _artistOf(c, album.artistId)),
+  ];
+
+  /// The albums Lidarr reads for an artist the demo added, once it has: one,
+  /// and those added by hand under it.
   List<JsonMap> _addedAlbums(ServerContext c, LiveArtist artist) => [
-    if (c.now.difference(artist.added) >= _readingAlbums)
+    if (artist.readsAlbums && c.now.difference(artist.added) >= _readingAlbums)
       {
         'id': 100 + artist.id,
         'artistId': artist.id,
@@ -1617,7 +1650,68 @@ class LidarrFake extends ArrFake {
           'totalTrackCount': 5,
         },
       },
+    ..._liveAlbums(c, artistId: artist.id),
   ];
+
+  /// What Lidarr's search answers for [term]: the world's artist and albums
+  /// that it names, as the library holds them, and for a word the library
+  /// holds none of one artist and one album by them that it does not (no id),
+  /// as the catalog answers a name this library has never held.
+  List<JsonMap> _search(ServerContext c, String term) {
+    final wanted = term.trim().toLowerCase();
+    if (wanted.isEmpty) return const [];
+    bool names(String name) => name.toLowerCase().contains(wanted);
+    final world = _artist(c);
+    final held = <JsonMap>[
+      if (names('${world['artistName']}'))
+        {'id': 1, 'foreignId': world['foreignArtistId'], 'artist': world},
+      for (final album in [..._albums(c), ..._liveAlbums(c, artistId: 1)])
+        if (names('${album['title']}'))
+          {'foreignId': album['foreignAlbumId'], 'album': album},
+    ];
+    if (held.isNotEmpty) return held;
+    final slug = wanted.replaceAll(RegExp(r'\W+'), '-');
+    final name = [
+      for (final word in term.trim().split(RegExp(r'\s+')))
+        word[0].toUpperCase() + word.substring(1),
+    ].join(' ');
+    final foreignArtistId = 'lookup-$slug';
+    final added = c.life?.arrs
+        .artists(c.server.id)
+        .where((a) => a.foreignArtistId == foreignArtistId)
+        .firstOrNull;
+    final artist = <String, Object?>{
+      'id': added?.id ?? 0,
+      'artistName': name,
+      'sortName': wanted,
+      'foreignArtistId': foreignArtistId,
+      'status': 'continuing',
+      'artistType': 'Group',
+      'monitored': added?.monitored ?? false,
+      'images': const <Object?>[],
+    };
+    return [
+      {'id': 1, 'foreignId': foreignArtistId, 'artist': artist},
+      {
+        'id': 2,
+        'foreignId': 'lookup-album-$slug',
+        'album': {
+          'id': 0,
+          'title': name,
+          'foreignAlbumId': 'lookup-album-$slug',
+          'albumType': 'Album',
+          'releaseDate': '2003-04-14T00:00:00Z',
+          'monitored': false,
+          'images': const <Object?>[],
+          'artist': artist,
+        },
+      },
+    ];
+  }
+
+  /// The body of an add: the album's artist, as the front end sends it.
+  JsonMap _album(ServerContext c, LiveAlbum album) =>
+      _live(album, _artistOf(c, album.artistId));
 
   /// What the lookup answers for [term]: the world's artist for its own name,
   /// and for any other name one artist the library does not hold (no id), as
@@ -1692,6 +1786,59 @@ class LidarrFake extends ArrFake {
         'id': 100,
       }, status: 201);
     }
+    // An album added: the artist comes in with it when the library has not
+    // got them, and the album is the only one it holds of theirs.
+    if (r.method == 'POST' && r.path == '/api/v1/album') {
+      final body = r.json;
+      final artist = body is Map ? body['artist'] : null;
+      final foreignAlbumId = body is Map ? body['foreignAlbumId'] : null;
+      if (arrs != null &&
+          body is Map &&
+          artist is Map &&
+          foreignAlbumId is String &&
+          foreignAlbumId.isNotEmpty) {
+        final world = _artist(c);
+        final artistId = artist['foreignArtistId'] == world['foreignArtistId']
+            ? 1
+            : arrs
+                  .addArtist(
+                    c.server.id,
+                    '${artist['artistName']}',
+                    foreignArtistId: '${artist['foreignArtistId']}',
+                    readsAlbums: false,
+                  )
+                  .id;
+        final album = arrs.addAlbum(
+          c.server.id,
+          artistId: artistId,
+          title: '${body['title']}',
+          foreignAlbumId: foreignAlbumId,
+          albumType: '${body['albumType'] ?? 'Album'}',
+          releaseDate: '${body['releaseDate'] ?? '2003-04-14T00:00:00Z'}',
+        );
+        return NetworkReply.json(_album(c, album), status: 201);
+      }
+      return NetworkReply.json({
+        if (body is Map) ...body.cast<String, Object?>(),
+        'id': 200,
+        // A world that does not live keeps nothing: the artist is the one
+        // the post named, under id 100 as an artist add answers.
+        if (artist is Map)
+          'artist': {...artist.cast<String, Object?>(), 'id': 100},
+      }, status: 201);
+    }
+    if (r.method == 'PUT' && r.path == '/api/v1/album/monitor') {
+      final body = r.json;
+      if (arrs != null && body is Map && body['monitored'] is bool) {
+        final ids = body['albumIds'];
+        for (final album in arrs.albums(c.server.id)) {
+          if (ids is List && ids.contains(album.id)) {
+            album.monitored = body['monitored'] as bool;
+          }
+        }
+      }
+      return const NetworkReply(202);
+    }
     if (r.method != 'GET') return null;
     final one = RegExp(r'^/api/v1/artist/(\d+)$').firstMatch(r.path);
     final addedOne = one == null
@@ -1714,7 +1861,13 @@ class LidarrFake extends ArrFake {
       '/api/v1/artist/lookup' => NetworkReply.json(
         _lookup(c, r.query['term'] ?? ''),
       ),
-      '/api/v1/album' => NetworkReply.json(_albums(c)),
+      // Asked for an artist's albums, it is the world's: the ones added under
+      // the artists the demo added are answered above.
+      '/api/v1/album' => NetworkReply.json([
+        ..._albums(c),
+        ..._liveAlbums(c, artistId: r.query.containsKey('artistId') ? 1 : null),
+      ]),
+      '/api/v1/search' => NetworkReply.json(_search(c, r.query['term'] ?? '')),
       '/api/v1/metadataprofile' => NetworkReply.json([
         {
           'id': 1,
@@ -1730,6 +1883,25 @@ class LidarrFake extends ArrFake {
               {
                 'albumType': {'id': id, 'name': name},
                 'allowed': allowed,
+              },
+          ],
+        },
+        // Lidarr's own: it keeps no release type, so an artist added for one
+        // album holds that album alone.
+        {
+          'id': 2,
+          'name': 'None',
+          'primaryAlbumTypes': [
+            for (final (id, name) in const [
+              (1, 'Album'),
+              (2, 'EP'),
+              (3, 'Single'),
+              (4, 'Broadcast'),
+              (5, 'Other'),
+            ])
+              {
+                'albumType': {'id': id, 'name': name},
+                'allowed': false,
               },
           ],
         },

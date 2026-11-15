@@ -33,6 +33,8 @@ import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/music/presentation/artist_page.dart';
+import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
+import 'package:cupola/features/music/presentation/lidarr_add_album_sheet.dart';
 import 'package:cupola/features/music/presentation/lidarr_add_artist_sheet.dart';
 import 'package:cupola/features/music/presentation/lidarr_add_options_provider.dart';
 import 'package:cupola/features/music/presentation/artist_page_providers.dart';
@@ -237,7 +239,8 @@ const _addOptions = LidarrAddOptions(
 
 /// A Lidarr that refuses the add, as it refuses an artist it already holds.
 class _RefusingLidarr extends LidarrService {
-  _RefusingLidarr() : super(FakeApiClient()) {
+  _RefusingLidarr([String message = 'This artist has already been added'])
+    : super(FakeApiClient()) {
     (client as FakeApiClient).postException = DioException.badResponse(
       statusCode: 400,
       requestOptions: RequestOptions(path: '/api/v1/artist'),
@@ -245,7 +248,7 @@ class _RefusingLidarr extends LidarrService {
         requestOptions: RequestOptions(path: '/api/v1/artist'),
         statusCode: 400,
         data: [
-          {'errorMessage': 'This artist has already been added'},
+          {'errorMessage': message},
         ],
       ),
     );
@@ -296,6 +299,93 @@ CatalogScene _addArtistScene(
     ),
     if (refused)
       lidarrServiceForProvider.overrideWith((ref, id) => _RefusingLidarr()),
+  ],
+  act: refused
+      ? (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.byType(FilledButton)),
+          );
+        }
+      : null,
+);
+
+/// An album the catalog found by a band the library has not got.
+LidarrAlbumHit _elephantHit() {
+  final raw = <String, dynamic>{
+    'id': 0,
+    'title': 'Elephant',
+    'foreignAlbumId': 'mbid-elephant',
+    'albumType': 'Album',
+    'releaseDate': '2003-04-14T00:00:00Z',
+    'monitored': false,
+    'images': const <Object?>[],
+    'artist': {
+      'id': 0,
+      'artistName': 'The White Stripes',
+      'foreignArtistId': 'mbid-stripes',
+      'artistType': 'Group',
+      'status': 'continuing',
+      'monitored': false,
+      'images': const <Object?>[],
+      'genres': const <Object?>[],
+    },
+  };
+  return LidarrAlbumHit(
+    album: LidarrAlbum.fromJson(raw),
+    artist: LidarrArtist.fromJson(
+      (raw['artist'] as Map).cast<String, dynamic>(),
+    ),
+    raw: raw,
+  );
+}
+
+/// The options a Lidarr that kept its own `None` profile offers.
+const _albumOptions = LidarrAddOptions(
+  folders: [
+    LidarrRootFolder(
+      path: '/music',
+      freeSpace: 2308974418944,
+      defaultQualityProfileId: 1,
+      defaultMetadataProfileId: 1,
+      defaultNewItemMonitor: 'all',
+    ),
+  ],
+  qualityProfiles: [(id: 1, name: 'Lossless'), (id: 2, name: 'Standard')],
+  metadataProfiles: [
+    LidarrMetadataProfile(
+      id: 1,
+      name: 'Standard',
+      allowedPrimaryTypes: ['Album', 'EP'],
+    ),
+    LidarrMetadataProfile(id: 2, name: 'None'),
+  ],
+);
+
+CatalogScene _addAlbumScene(
+  String caption, {
+  bool held = false,
+  bool refused = false,
+  double height = 760,
+  double textScale = 1,
+}) => CatalogScene(
+  caption,
+  (_) => _sheetOpen(
+    LidarrAddAlbumSheet(
+      hit: _elephantHit(),
+      connection: _connection(ServiceKey.lidarr),
+      connectionName: 'Lidarr',
+      libraryArtist: held ? _artist() : null,
+    ),
+  ),
+  width: 390,
+  height: height,
+  textScale: textScale,
+  overrides: [
+    lidarrAddOptionsProvider.overrideWith((ref, id) async => _albumOptions),
+    if (refused)
+      lidarrServiceForProvider.overrideWith(
+        (ref, id) => _RefusingLidarr('This album has already been added'),
+      ),
   ],
   act: refused
       ? (tester, scene) async {
@@ -624,6 +714,30 @@ void main() {
       _addArtistScene(
         'LidarrAddArtistSheet at twice the reading size',
         height: 1900,
+        textScale: catalogTextScale,
+      ),
+      _addAlbumScene(
+        'LidarrAddAlbumSheet · an artist the library has not got: the album '
+        'with its cover, the blue line that says the library does not have '
+        'them, that they come in too and that only this album is monitored, '
+        'the folder and the profiles for them (the folder\u2019s defaults), '
+        'the search',
+      ),
+      _addAlbumScene(
+        'LidarrAddAlbumSheet · an artist the library holds: the line says '
+        'so, and the search is all there is to choose',
+        held: true,
+        height: 460,
+      ),
+      _addAlbumScene(
+        'LidarrAddAlbumSheet · Lidarr refused the add: it stays, in '
+        'Lidarr\u2019s own words, over the button',
+        refused: true,
+        height: 860,
+      ),
+      _addAlbumScene(
+        'LidarrAddAlbumSheet at twice the reading size',
+        height: 2000,
         textScale: catalogTextScale,
       ),
       _artistScene(

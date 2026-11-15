@@ -100,11 +100,67 @@ class _Heading extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 12, bottom: 2),
-    child: Text(text, style: Theme.of(context).textTheme.labelLarge),
-  );
+  Widget build(BuildContext context) =>
+      SearchHeading(text, top: 12, count: null);
 }
+
+/// Music's results as a search lays them out: artists and albums, held or
+/// not, the backlog's ring, a write in flight.
+Widget _music() => Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    const SearchHeading('Artists', top: 12),
+    SearchRow.artist(
+      name: 'Elbow',
+      line: 'Group\u00A0· Bury, England',
+      onTap: () {},
+      hint: 'Not in your library. Adds it to Lidarr',
+      action: SearchRowAdd(label: 'Add Elbow to Lidarr', onTap: () {}),
+    ),
+    SearchRow.artist(
+      name: 'Ella Fitzgerald',
+      line: 'Person',
+      status: (label: 'In your library', tone: StatusTone.success),
+      onTap: () {},
+    ),
+    const SearchHeading('Albums', top: 20),
+    SearchRow.album(
+      title: 'Elephants Dream',
+      meta: 'Jan Morgenstern\u00A0· 2006\u00A0· 7\u00A0tracks',
+      status: (label: 'Complete', tone: StatusTone.success),
+      cover: _poster,
+      onTap: () {},
+    ),
+    SearchRow.album(
+      title: 'Ella and Louis',
+      meta: 'Ella Fitzgerald\u00A0· 1956\u00A0· 11\u00A0tracks',
+      status: (label: '9 of 11\u00A0tracks', tone: StatusTone.neutral),
+      statusHollow: true,
+      onTap: () {},
+    ),
+    SearchRow.album(
+      title: 'Electric Ladyland',
+      meta: 'The Jimi Hendrix Experience\u00A0· 1968\u00A0· Album',
+      status: (label: 'Unmonitored', tone: StatusTone.neutral),
+      statusHollow: true,
+      onTap: () {},
+      action: SearchRowAdd(
+        label: 'Monitor Electric Ladyland and search for it',
+        busy: true,
+        onTap: () {},
+      ),
+    ),
+    SearchRow.album(
+      title: 'Leaders of the Free World',
+      meta: 'Elbow\u00A0· 2005\u00A0· Album',
+      onTap: () {},
+      action: SearchRowAdd(
+        label: 'Add Leaders of the Free World by Elbow to Lidarr',
+        onTap: () {},
+      ),
+    ),
+  ],
+);
 
 void main() {
   catalogCard(
@@ -178,6 +234,22 @@ void main() {
         'plus dimmed where nothing set up can add it',
         (_) => _withoutRadarr(),
         width: 390,
+      ),
+      CatalogScene(
+        'SearchRow.artist and SearchRow.album · music\u2019s results: a disc '
+        'and a square cover with their initials, a state under the meta line '
+        '(filled for what is held, the backlog\u2019s ring for what is '
+        'wanted or left alone), the plus, and the plus while its write is out',
+        (_) => _music(),
+        width: 390,
+      ),
+      CatalogScene(
+        'SearchRow.album at 200% · the title and the meta take two lines, a '
+        'count never breaks from its noun',
+        (_) => _music(),
+        width: 390,
+        textScale: catalogTextScale,
+        id: 'search-row-album-200',
       ),
       CatalogScene(
         'Text at 200% · the row grows past its floor, the words stay on one '

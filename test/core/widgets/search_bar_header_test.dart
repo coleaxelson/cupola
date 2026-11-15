@@ -49,6 +49,34 @@ void main() {
     });
   }
 
+  testWidgets('onTextChanged hears every keystroke at once, trimmed, ahead '
+      'of the debounce that holds onQueryChanged', (tester) async {
+    final typed = <String>[];
+    final settled = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme(),
+        home: Scaffold(
+          body: SearchBarHeader(
+            onTextChanged: typed.add,
+            onQueryChanged: settled.add,
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'el ');
+    await tester.enterText(find.byType(TextField), 'elb ');
+
+    // The field also tells of a caret that moved, so a word may come twice.
+    expect(typed.toSet(), containsAll(['el', 'elb']));
+    expect(typed.last, 'elb');
+    expect(settled, isEmpty);
+
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(settled, ['elb']);
+  });
+
   testWidgets('the clear action has an explicit accessible name', (
     tester,
   ) async {

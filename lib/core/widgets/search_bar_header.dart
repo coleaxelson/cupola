@@ -16,6 +16,12 @@ class SearchBarHeader extends StatefulWidget {
   /// Callback when the search query changes (debounced).
   final ValueChanged<String> onQueryChanged;
 
+  /// Told of every change to the text, at once and trimmed, ahead of the
+  /// debounce that holds [onQueryChanged]: for a screen that answers from
+  /// what it already holds, where waiting would only be slower. Null for a
+  /// screen that asks a server and has no use for the keystroke.
+  final ValueChanged<String>? onTextChanged;
+
   /// Placeholder text for the search bar.
   final String hintText;
 
@@ -41,6 +47,7 @@ class SearchBarHeader extends StatefulWidget {
   const SearchBarHeader({
     super.key,
     required this.onQueryChanged,
+    this.onTextChanged,
     this.hintText = 'Search',
     this.initialQuery,
     this.debounceDuration = const Duration(milliseconds: 400),
@@ -125,6 +132,7 @@ class _SearchBarHeaderState extends State<SearchBarHeader> {
     if (hasText != _hasText) {
       setState(() => _hasText = hasText);
     }
+    widget.onTextChanged?.call(_controller.text.trim());
 
     _debounceTimer?.cancel();
     _debounceTimer = Timer(widget.debounceDuration, () {

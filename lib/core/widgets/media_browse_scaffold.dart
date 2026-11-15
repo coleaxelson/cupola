@@ -22,6 +22,7 @@ import 'package:cupola/core/widgets/async_value_widget.dart';
 import 'package:cupola/core/widgets/content_card.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
+import 'package:cupola/core/widgets/media_find.dart';
 import 'package:cupola/core/widgets/media_grid.dart';
 import 'package:cupola/core/widgets/media_poster_card.dart';
 import 'package:cupola/core/widgets/search_bar_header.dart';
@@ -291,7 +292,14 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
   /// `AsyncValueWidget`'s fault states with a Retry.
   final FutureProvider<List<T>> libraryProvider;
   final StateProvider<String> searchQueryProvider;
-  final FutureProvider<List<T>?> searchResultsProvider;
+
+  /// The service lookup the wall shows as a grid while searching. Null for a
+  /// wall that passes [find], whose results are rows it draws itself.
+  final FutureProvider<List<T>?>? searchResultsProvider;
+
+  /// The wall's search in two scopes (the library, then the service), or null
+  /// for the grid of [searchResultsProvider]. See [MediaFind].
+  final MediaFind? find;
   final MediaBrowseTextExtractor<T> titleExtractor;
   final MediaBrowseTextExtractor<T> subtitleExtractor;
   final MediaBrowseTextExtractor<T>? sortTitleExtractor;
@@ -351,7 +359,8 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
     required this.searchHeroTagPrefix,
     required this.libraryProvider,
     required this.searchQueryProvider,
-    required this.searchResultsProvider,
+    this.searchResultsProvider,
+    this.find,
     required this.titleExtractor,
     required this.subtitleExtractor,
     this.sortTitleExtractor,
@@ -371,7 +380,10 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
     this.posterFallbackIcon = Icons.movie_outlined,
     this.emptyIcon = Icons.video_library_outlined,
     this.emptyMessage,
-  });
+  }) : assert(
+         (searchResultsProvider == null) != (find == null),
+         'a wall searches by one of the two',
+       );
 
   @override
   ConsumerState<MediaBrowseScaffold<T>> createState() =>
@@ -399,6 +411,38 @@ class _MediaBrowseScaffoldState<T>
   List<T>? _sortedSource;
   List<T>? _sorted;
   int? _sortedUnder;
+
+  /// The text in the field as typed, trimmed, with no debounce: what a
+  /// [MediaFind] library scope answers from. The query provider holds the same
+  /// text once typing has paused, which is what the service scope asks for.
+  String _liveText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _liveText = ref.read(widget.searchQueryProvider);
+  }
+
+  /// Takes [text] as what the field holds. An emptied field ends the search,
+  /// and the next one starts in the library.
+  void _setLiveText(String text) {
+    if (text == _liveText) return;
+    setState(() => _liveText = text);
+    if (text.isEmpty) {
+      final find = widget.find;
+      if (find != null) {
+        ref.read(find.scopeProvider.notifier).state = MediaFindScope.library;
+      }
+    }
+  }
+
+  void _selectScope(MediaFind find, MediaFindScope scope) {
+    // The service asks about the text as it is now, not as it was 400ms ago.
+    if (scope == MediaFindScope.service) {
+      ref.read(widget.searchQueryProvider.notifier).state = _liveText;
+    }
+    ref.read(find.scopeProvider.notifier).state = scope;
+  }
 
   @override
   void didUpdateWidget(MediaBrowseScaffold<T> oldWidget) {
@@ -463,9 +507,23 @@ class _MediaBrowseScaffoldState<T>
 
   @override
   Widget build(BuildContext context) {
-    final isSearching = ref.watch(
+    final find = widget.find;
+    final queryNotEmpty = ref.watch(
       widget.searchQueryProvider.select((value) => value.isNotEmpty),
     );
+    // A wall that finds in its library answers from the first keystroke, not
+    // after the debounce that spares a server; and ends the search the moment
+    // the field is empty, not 400ms later.
+    final isSearching = find == null ? queryNotEmpty : _liveText.isNotEmpty;
+    final scope = find == null
+        ? MediaFindScope.library
+        : ref.watch(find.scopeProvider);
+
+    // The query set from outside (a link that opens the wall on a word, Back,
+    // a tap on the tab) is the field's text too.
+    ref.listen<String>(widget.searchQueryProvider, (previous, next) {
+      if (find != null && next != _liveText) _setLiveText(next);
+    });
 
     ref.listen<int>(navigationRefreshProvider(widget.navigationSection), (
       previous,
@@ -534,8 +592,17 @@ class _MediaBrowseScaffoldState<T>
               onQueryChanged: (query) {
                 ref.read(widget.searchQueryProvider.notifier).state = query;
               },
+              onTextChanged: find == null ? null : _setLiveText,
             ),
           ),
+          if (isSearching && find != null)
+            SliverToBoxAdapter(
+              child: MediaFindScopeControl(
+                serviceLabel: find.serviceLabel ?? widget.serviceName,
+                selected: scope,
+                onSelected: (next) => _selectScope(find, next),
+              ),
+            ),
           if (!isSearching && widget.kpiPeek != null)
             SliverToBoxAdapter(child: widget.kpiPeek!),
           if (!isSearching)
@@ -562,9 +629,17 @@ class _MediaBrowseScaffoldState<T>
               ),
             ),
         ],
-        body: isSearching
+        body: !isSearching
+            ? _buildLibraryContent(context)
+            : find == null
             ? _buildSearchResults(context)
-            : _buildLibraryContent(context),
+            : switch (scope) {
+                MediaFindScope.library => find.libraryBody(context, _liveText),
+                MediaFindScope.service => find.serviceBody(
+                  context,
+                  ref.watch(widget.searchQueryProvider),
+                ),
+              },
       ),
     );
   }
@@ -634,7 +709,8 @@ class _MediaBrowseScaffoldState<T>
   }
 
   Widget _buildSearchResults(BuildContext context) {
-    final searchResultsAsync = ref.watch(widget.searchResultsProvider);
+    final searchResultsProvider = widget.searchResultsProvider!;
+    final searchResultsAsync = ref.watch(searchResultsProvider);
     final (url, apiKey, _) = ref.watch(
       currentSettingsProvider.select(widget.settingsSelector),
     );
@@ -648,7 +724,7 @@ class _MediaBrowseScaffoldState<T>
         error: error,
         serviceName: widget.serviceName,
         service: widget.service,
-        onRetry: () => ref.invalidate(widget.searchResultsProvider),
+        onRetry: () => ref.invalidate(searchResultsProvider),
       ),
       data: (results) {
         // Only after an answer: a lookup that failed reaches the error state

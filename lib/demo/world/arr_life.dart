@@ -70,12 +70,39 @@ class LiveArtist {
     required this.foreignArtistId,
     required this.added,
     this.monitored = true,
+    this.readsAlbums = true,
   });
 
   final int id;
   final String name;
   final String foreignArtistId;
   final DateTime added;
+  bool monitored;
+
+  /// Whether Lidarr reads the artist's albums after the add: not for an
+  /// artist that came in with one album, whose only album is that one.
+  final bool readsAlbums;
+}
+
+/// One album added to a Lidarr in the demo, under the world's artist (id 1)
+/// or one the demo added.
+class LiveAlbum {
+  LiveAlbum({
+    required this.id,
+    required this.artistId,
+    required this.title,
+    required this.foreignAlbumId,
+    required this.albumType,
+    required this.releaseDate,
+    this.monitored = true,
+  });
+
+  final int id;
+  final int artistId;
+  final String title;
+  final String foreignAlbumId;
+  final String albumType;
+  final String releaseDate;
   bool monitored;
 }
 
@@ -95,6 +122,7 @@ class ArrLife {
   final Map<String, List<LiveMovie>> _movies = {};
   final Map<String, List<LiveSeries>> _series = {};
   final Map<String, List<LiveArtist>> _artists = {};
+  final Map<String, List<LiveAlbum>> _albums = {};
   int _grabs = 0;
 
   /// How long a grab takes to come down, so a title asked for arrives in
@@ -193,6 +221,7 @@ class ArrLife {
     String name, {
     required String foreignArtistId,
     bool monitored = true,
+    bool readsAlbums = true,
   }) {
     final held = artists(
       serverId,
@@ -207,9 +236,44 @@ class ArrLife {
       foreignArtistId: foreignArtistId,
       added: _now,
       monitored: monitored,
+      readsAlbums: readsAlbums,
     );
     artists(serverId).add(artist);
     return artist;
+  }
+
+  /// The albums added to Lidarr [serverId] in the demo, after the world's own
+  /// (ids 1 to 4), from id 200.
+  List<LiveAlbum> albums(String serverId) =>
+      _albums.putIfAbsent(serverId, () => []);
+
+  /// Adds the album [title] under [artistId] to Lidarr [serverId], or finds
+  /// it there.
+  LiveAlbum addAlbum(
+    String serverId, {
+    required int artistId,
+    required String title,
+    required String foreignAlbumId,
+    required String albumType,
+    required String releaseDate,
+  }) {
+    final held = albums(
+      serverId,
+    ).where((a) => a.foreignAlbumId == foreignAlbumId).firstOrNull;
+    if (held != null) return held;
+    final top = albums(
+      serverId,
+    ).fold<int>(199, (top, a) => a.id > top ? a.id : top);
+    final album = LiveAlbum(
+      id: top + 1,
+      artistId: artistId,
+      title: title,
+      foreignAlbumId: foreignAlbumId,
+      albumType: albumType,
+      releaseDate: releaseDate,
+    );
+    albums(serverId).add(album);
+    return album;
   }
 
   // === Sonarr ==============================================================

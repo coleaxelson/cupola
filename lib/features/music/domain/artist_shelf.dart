@@ -111,7 +111,8 @@ String _albums(int count) =>
 /// `5 tracks`, or null when Lidarr does not say.
 String? albumTrackCount(LidarrAlbum album) => album.trackCount <= 0
     ? null
-    : '${album.trackCount} ${album.trackCount == 1 ? 'track' : 'tracks'}';
+    : '${album.trackCount}$unitSpace'
+          '${album.trackCount == 1 ? 'track' : 'tracks'}';
 
 /// What a row says about [album] under its title: `2010 · 5 tracks ·
 /// 21 min`.
@@ -143,6 +144,10 @@ String _spokenSpan(Duration span) {
 /// Where one album stands, as its row's state line says it: the word, its
 /// tone, and whether it is the backlog's ring rather than a dot.
 typedef AlbumState = ({String word, StatusTone tone, bool hollow});
+
+/// The word of an album nothing is looking for: out, nothing on disk, not
+/// monitored. What a find offers to monitor and search.
+const albumUnmonitoredWord = 'Unmonitored';
 
 /// The state line of [album]'s row, or null while the queue it depends on is
 /// still being read (`badgeOverQueue`).
@@ -187,7 +192,7 @@ AlbumState? albumState(
     );
   }
   if (!album.monitored) {
-    return (word: 'Unmonitored', tone: StatusTone.neutral, hollow: true);
+    return (word: albumUnmonitoredWord, tone: StatusTone.neutral, hollow: true);
   }
   // Nothing on disk and nothing in a queue read whole: it may be downloading
   // right now, so the word waits for the queue, and says it does not know

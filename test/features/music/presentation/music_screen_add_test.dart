@@ -10,9 +10,9 @@ import 'package:go_router/go_router.dart';
 import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/widgets.dart';
+import 'package:cupola/features/music/presentation/lidarr_add_album_sheet.dart';
 import 'package:cupola/features/music/presentation/lidarr_add_artist_sheet.dart';
 import 'package:cupola/features/music/presentation/music_screen.dart';
-import 'package:cupola/features/music/presentation/music_search_provider.dart';
 
 import '../../../test_helpers/profiles/profiles.dart';
 
@@ -55,17 +55,21 @@ Future<({ProfileHarness harness, GoRouter router})> _open(
   return (harness: harness, router: router);
 }
 
-/// Searches the wall for [term], as typing it in the field does, and waits for
-/// Lidarr's lookup.
+/// Types [term] in the field and moves the search to Lidarr, as a person does.
 Future<void> _search(
   WidgetTester tester,
   ProfileHarness harness,
   String term,
 ) async {
-  ProviderScope.containerOf(
-    tester.element(find.byType(MusicScreen)),
-  ).read(musicSearchQueryProvider.notifier).state = term;
-  // The lookup is parsed in an isolate, which answers on the real event loop.
+  await tester.enterText(find.byType(TextField), term);
+  await harness.settle(tester);
+  await tester.tap(
+    find.descendant(
+      of: find.byType(MediaFindScopeControl),
+      matching: find.text('Lidarr'),
+    ),
+  );
+  // The search is parsed on the real event loop.
   for (var i = 0; i < 6; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
@@ -81,7 +85,7 @@ void main() {
     final (:harness, :router) = await _open(tester);
     await _search(tester, harness, 'elbow');
 
-    await tester.tap(find.byType(ContentCard).first);
+    await tester.tap(find.text('Elbow').first);
     await harness.settle(tester);
 
     expect(find.byType(LidarrAddArtistSheet), findsOneWidget);
@@ -101,7 +105,7 @@ void main() {
     final (:harness, :router) = await _open(tester);
     await _search(tester, harness, 'jan');
 
-    await tester.tap(find.byType(ContentCard).first);
+    await tester.tap(find.text('Jan Morgenstern').first);
     await harness.settle(tester);
 
     expect(find.byType(LidarrAddArtistSheet), findsNothing);
@@ -114,7 +118,7 @@ void main() {
       'albums', (tester) async {
     final (:harness, :router) = await _open(tester);
     await _search(tester, harness, 'elbow');
-    await tester.tap(find.byType(ContentCard).first);
+    await tester.tap(find.text('Elbow').first);
     await harness.settle(tester);
 
     await tester.tap(find.text('Add and search'));
@@ -125,6 +129,25 @@ void main() {
     expect(find.text('artist page 100 added=1'), findsOneWidget);
     expect(find.text('Elbow added to Lidarr'), findsOneWidget);
     expect(find.byType(LidarrAddArtistSheet), findsNothing);
+
+    await harness.unmount(tester);
+  });
+
+  testWidgets('adding an album says so, and opens its artist waiting for '
+      'the albums', (tester) async {
+    final (:harness, :router) = await _open(tester);
+    await _search(tester, harness, 'elbow');
+    // The second `Elbow` is the album the catalog finds by them.
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    await harness.settle(tester);
+    expect(find.byType(LidarrAddAlbumSheet), findsOneWidget);
+
+    await tester.tap(find.text('Add and search'));
+    await harness.settle(tester);
+
+    expect(find.text('artist page 100 added=1'), findsOneWidget);
+    expect(find.text('Elbow added to Lidarr'), findsOneWidget);
+    expect(find.byType(LidarrAddAlbumSheet), findsNothing);
 
     await harness.unmount(tester);
   });

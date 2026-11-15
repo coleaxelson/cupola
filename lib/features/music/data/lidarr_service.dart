@@ -2,9 +2,12 @@ import 'package:dio/dio.dart';
 
 import 'package:cupola/core/api/api_client.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
+import 'package:cupola/features/music/domain/lidarr_add_options.dart';
+import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
+import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/settings/data/connection_providers.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -249,26 +252,6 @@ class LidarrService with ArrActivityMixin {
     await grabReleaseByGuid(guid: guid, indexerId: indexerId);
   }
 
-  /// Searches for artists by term using the lookup API.
-  ///
-  /// [cancelToken] aborts the request once the search that asked for it has
-  /// been superseded. See [ArrActivityMixin.lookupItems], which owns the
-  /// empty-term guard, the isolate mapping and the degrade-to-`[]` rule the
-  /// three arr lookups share.
-  Future<List<LidarrArtist>> lookupArtists(
-    String term, {
-    CancelToken? cancelToken,
-    bool reportFailure = false,
-  }) {
-    return lookupItems(
-      'artist/lookup',
-      term,
-      LidarrArtist.fromJson,
-      cancelToken: cancelToken,
-      reportFailure: reportFailure,
-    );
-  }
-
   /// Adds [lookupRow] (an `artist/lookup` row) to this Lidarr's library.
   ///
   /// The row is posted back as the identity Lidarr builds the artist from: its
@@ -330,6 +313,151 @@ class LidarrService with ArrActivityMixin {
       throw const FormatException('Lidarr answered without an artist');
     }
     return LidarrArtist.fromJson(data.cast<String, dynamic>());
+  }
+
+  /// Lidarr's search: artists and albums together, from its online catalog
+  /// (`GET /api/v1/search?term=`), each row with the artist it is about.
+  ///
+  /// Throws rather than degrading, so a search that failed is never "found
+  /// nothing". A catalog that did not answer while Lidarr did is its own
+  /// failure, [LidarrCatalogUnavailable]: the library still works and the
+  /// person is told so. [cancelToken] aborts the request once the search that
+  /// asked for it has been superseded.
+  Future<List<LidarrSearchHit>> search(
+    String term, {
+    CancelToken? cancelToken,
+  }) async {
+    if (term.trim().isEmpty) return const [];
+    final Response response;
+    try {
+      response = await client.get(
+        '/api/v1/search',
+        queryParameters: {'term': term},
+        cancelToken: cancelToken,
+      );
+    } catch (error) {
+      throw LidarrCatalogUnavailable.of(error) ?? error;
+    }
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Lidarr answered without search results');
+    }
+    return [
+      for (final row in data.whereType<Map>())
+        ?LidarrSearchHit.tryParse(row.cast<String, dynamic>()),
+    ];
+  }
+
+  /// Sets whether Lidarr monitors [albumIds] (`PUT /api/v1/album/monitor`).
+  /// Throws on failure.
+  Future<void> setAlbumsMonitored(List<int> albumIds, bool monitored) async {
+    await client.put(
+      '/api/v1/album/monitor',
+      data: {'albumIds': albumIds, 'monitored': monitored},
+    );
+  }
+
+  /// Monitors [albumId] and has Lidarr look for it: the two halves of "get
+  /// this album" on an album the library holds and was told to leave alone.
+  /// Throws on failure, and the search is not started when the monitor was not
+  /// written.
+  Future<void> monitorAndSearchAlbum(int albumId) async {
+    await setAlbumsMonitored([albumId], true);
+    await searchAlbums([albumId]);
+  }
+
+  /// Adds [hit]'s album (`POST /api/v1/album`), the way Lidarr's own front
+  /// end does: the album as the search described it, monitored, with
+  /// `addOptions.searchForNewAlbum`, and its artist inside.
+  ///
+  /// Where Lidarr does not hold the artist ([newArtist]), the artist is added
+  /// with it, under the folder and profiles chosen, and only this album is
+  /// monitored: `addOptions.monitor` is `none` and `albumsToMonitor` names the
+  /// album by its MusicBrainz id. Lidarr's `AlbumMonitoredService` sets every
+  /// album unmonitored under `none` and, when `albumsToMonitor` is not empty,
+  /// monitors exactly those and no other, whatever the metadata profile. The
+  /// rest of the artist's discography arrives unmonitored.
+  ///
+  /// Where it does ([libraryArtistId]), the artist goes with it as the library
+  /// holds it (read here, whole: its path and profiles are what Lidarr
+  /// validates the album against) and Lidarr adds the album under them. That is
+  /// the case of an album the artist's metadata profile leaves out.
+  ///
+  /// Answers the artist the album is under now, as the library holds them,
+  /// or null when the post succeeded and the artist could not be read after:
+  /// the album is added all the same, and a caller never reports a write that
+  /// went through as one that did not. Throws only when the post itself failed:
+  /// Lidarr answers 400 with its reason.
+  Future<LidarrArtist?> addAlbum(
+    LidarrAlbumHit hit, {
+    required bool searchForNewAlbum,
+    int? libraryArtistId,
+    LidarrNewArtistSetup? newArtist,
+  }) async {
+    assert(
+      (libraryArtistId == null) != (newArtist == null),
+      'the artist is in the library, or it is added with the album',
+    );
+    final body = Map<String, dynamic>.of(hit.raw);
+    LidarrArtist? held;
+    if (libraryArtistId != null) {
+      final record = await client.get('/api/v1/artist/$libraryArtistId');
+      if (record.data is! Map) {
+        throw const FormatException('Lidarr answered without the artist');
+      }
+      final json = (record.data as Map).cast<String, dynamic>();
+      body['artist'] = json;
+      held = LidarrArtist.fromJson(json);
+    } else {
+      final setup = newArtist!;
+      body['artist'] = {
+        ...?(body['artist'] as Map?)?.cast<String, dynamic>(),
+        'monitored': true,
+        'monitorNewItems': setup.monitorNewItems,
+        'qualityProfileId': setup.qualityProfileId,
+        'metadataProfileId': setup.metadataProfileId,
+        'rootFolderPath': setup.rootFolderPath,
+        'addOptions': {
+          'monitor': 'none',
+          'albumsToMonitor': [hit.album.foreignAlbumId],
+          'searchForMissingAlbums': false,
+        },
+        'tags': const <int>[],
+      };
+    }
+    body
+      ..['monitored'] = true
+      ..['addOptions'] = {'searchForNewAlbum': searchForNewAlbum};
+
+    final response = await client.post('/api/v1/album', data: body);
+    // The album is added. What follows only finds the artist to open, and
+    // nothing in it may read as a refusal.
+    try {
+      final data = response.data;
+      if (data is Map && data['artist'] is Map) {
+        final artist = LidarrArtist.fromJson(
+          (data['artist'] as Map).cast<String, dynamic>(),
+        );
+        if (artist.id > 0) return artist;
+      }
+      if (held != null) return held;
+      // The answer did not carry the artist as the library holds it: ask for
+      // it by its MusicBrainz id.
+      final byId = await client.get(
+        '/api/v1/artist',
+        queryParameters: {'mbId': hit.artist.foreignArtistId},
+      );
+      final found = byId.data;
+      if (found is List && found.firstOrNull is Map) {
+        final artist = LidarrArtist.fromJson(
+          (found.first as Map).cast<String, dynamic>(),
+        );
+        if (artist.id > 0) return artist;
+      }
+    } catch (_) {
+      // Added all the same.
+    }
+    return null;
   }
 
   /// Fetches all quality profiles.

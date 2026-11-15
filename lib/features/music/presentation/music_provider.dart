@@ -1,4 +1,5 @@
 import 'package:cupola/core/providers/provider_retry.dart';
+import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
@@ -32,4 +33,18 @@ final musicForProvider = FutureProvider.family<List<LidarrArtist>, String>((
     return ref.watch(musicProvider.future);
   }
   return ref.watch(lidarrServiceForProvider(instanceId)).getArtistsOrThrow();
+}, retry: noProviderRetry);
+
+/// Every album the lens's Lidarr holds, for the wall's search to find in.
+///
+/// Read only while a search is open (nothing on the wall itself shows an
+/// album), and let go when it closes, so an album that finished downloading
+/// since is read again the next time. A failed read reaches the search, which
+/// says so and still finds artists: [musicProvider] is what the wall is. Not
+/// retried on its own, as every Lidarr read.
+final musicAlbumsProvider = FutureProvider.autoDispose<List<LidarrAlbum>>((
+  ref,
+) async {
+  final service = ref.watch(lidarrServiceProvider);
+  return service.getAllAlbumsOrThrow();
 }, retry: noProviderRetry);

@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:cupola/core/app_spacing.dart';
-import 'package:cupola/core/generated/design_tokens.g.dart';
-import 'package:cupola/core/network/connection_failure.dart';
 import 'package:cupola/core/theme.dart';
-import 'package:cupola/core/utils/byte_format.dart';
 import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/utils/image_utils.dart';
-import 'package:cupola/core/utils/snack_bar_helper.dart';
-import 'package:cupola/core/utils/url_utils.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/media/presentation/media_parts.dart';
 import 'package:cupola/features/media/presentation/shelf_page.dart';
@@ -18,12 +12,9 @@ import 'package:cupola/features/music/data/lidarr_service.dart';
 import 'package:cupola/features/music/domain/lidarr_add_options.dart';
 import 'package:cupola/features/music/domain/lidarr_monitor.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
-import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
 import 'package:cupola/features/music/presentation/lidarr_add_options_provider.dart';
-import 'package:cupola/features/settings/data/connection_reach_provider.dart';
-import 'package:cupola/features/settings/domain/connection_presentation.dart';
+import 'package:cupola/features/music/presentation/lidarr_add_parts.dart';
 import 'package:cupola/features/settings/domain/service_instance.dart';
-import 'package:cupola/features/settings/domain/service_key.dart';
 
 /// What the sheet resolves to when an artist was added: the connection it went
 /// to and the artist as that Lidarr now holds it (its own id, no albums read
@@ -40,6 +31,7 @@ Future<LidarrAddedArtist?> showLidarrAddArtistSheet(
   required LidarrArtist artist,
   required List<ServiceInstance> connections,
   required String Function(ServiceInstance connection) name,
+  String Function(ServiceInstance connection)? sentenceName,
   ServiceInstance? initial,
 }) {
   assert(connections.isNotEmpty, 'nothing to add to');
@@ -49,6 +41,7 @@ Future<LidarrAddedArtist?> showLidarrAddArtistSheet(
       artist: artist,
       connections: connections,
       name: name,
+      sentenceName: sentenceName,
       initial: initial,
     ),
   );
@@ -70,13 +63,20 @@ class LidarrAddArtistSheet extends ConsumerStatefulWidget {
     required this.artist,
     required this.connections,
     required this.name,
+    String Function(ServiceInstance connection)? sentenceName,
     this.initial,
-  });
+  }) : sentenceName = sentenceName ?? name;
 
   /// The lookup row: posted back as Lidarr's own metadata for the artist.
   final LidarrArtist artist;
   final List<ServiceInstance> connections;
+
+  /// The connection's name as a pill reads it (`Lidarr · Away`).
   final String Function(ServiceInstance connection) name;
+
+  /// The connection's name inside a sentence or a button (`Lidarr Away`):
+  /// the pills' form, unless the caller gives one.
+  final String Function(ServiceInstance connection) sentenceName;
   final ServiceInstance? initial;
 
   @override
@@ -84,138 +84,34 @@ class LidarrAddArtistSheet extends ConsumerStatefulWidget {
       _LidarrAddArtistSheetState();
 }
 
-/// The rows a person can change away from the folder's defaults.
-enum _Row { quality, metadata, monitor, newItems }
-
-class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
+class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet>
+    with LidarrAddChoices<LidarrAddArtistSheet> {
   late ServiceInstance _to = widget.initial ?? widget.connections.first;
 
-  /// The options the selections were last seeded from: a new answer (another
-  /// connection, a Retry) seeds them again.
-  LidarrAddOptions? _seededFrom;
-
-  LidarrRootFolder? _folder;
-  int? _qualityId;
-  int? _metadataId;
   var _monitor = LidarrMonitor.all;
 
   /// `all`, `none`, or `new` when that is what the folder's defaults say.
   var _newItems = 'all';
   var _search = true;
 
-  /// Whether the folder's defaults filled any row.
-  var _defaultsApplied = false;
+  @override
+  ServiceInstance get target => _to;
 
-  /// What the person changed: the folder's defaults no longer describe it.
-  final _touched = <_Row>{};
+  @override
+  String get connectionName => widget.sentenceName(_to);
 
-  var _adding = false;
-  _Refusal? _refusal;
-
-  String get _connectionName => widget.name(_to);
-
-  /// Fills the rows the person has not touched from [folder]'s defaults.
-  void _applyDefaults(LidarrRootFolder folder, LidarrAddOptions options) {
-    _folder = folder;
-    var applied = false;
-    if (!_touched.contains(_Row.quality)) {
-      final wanted = folder.defaultQualityProfileId;
-      final known = options.qualityProfiles.any((p) => p.id == wanted);
-      _qualityId = known ? wanted : options.qualityProfiles.first.id;
-      applied |= known;
-    }
-    if (!_touched.contains(_Row.metadata)) {
-      final wanted = folder.defaultMetadataProfileId;
-      final known = options.metadataProfiles.any((p) => p.id == wanted);
-      _metadataId = known ? wanted : options.metadataProfiles.first.id;
-      applied |= known;
-    }
-    if (!_touched.contains(_Row.monitor)) {
+  @override
+  void applyDefaults(LidarrRootFolder folder, LidarrAddOptions options) {
+    var applied = applyFolderDefaults(folder, options);
+    if (!touched.contains(LidarrAddRow.monitor)) {
       _monitor = folder.defaultMonitor ?? LidarrMonitor.all;
       applied |= folder.defaultMonitor != null;
     }
-    if (!_touched.contains(_Row.newItems)) {
+    if (!touched.contains(LidarrAddRow.newItems)) {
       _newItems = folder.defaultNewItemMonitor ?? 'all';
       applied |= folder.defaultNewItemMonitor != null;
     }
-    _defaultsApplied = applied;
-  }
-
-  void _seed(LidarrAddOptions options) {
-    _seededFrom = options;
-    _touched.clear();
-    _refusal = null;
-    if (options.missing != null) return;
-    _applyDefaults(options.folders.first, options);
-  }
-
-  Future<void> _pickFolder(LidarrAddOptions options) async {
-    final picked = await showMediaValueSheet<String>(
-      context,
-      title: 'Folder',
-      value: _folder?.path,
-      currentLabel: _folder?.path ?? '',
-      options: [
-        for (final folder in options.folders)
-          MediaDetailValueOption(
-            value: folder.path,
-            label: folder.path,
-            detail: folder.freeSpace == null
-                ? null
-                : '${formatBytes(folder.freeSpace!)} free',
-          ),
-      ],
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _applyDefaults(
-        options.folders.firstWhere((f) => f.path == picked.value),
-        options,
-      );
-      _refusal = null;
-    });
-  }
-
-  Future<void> _pickQuality(LidarrAddOptions options) async {
-    final picked = await showMediaValueSheet<int>(
-      context,
-      title: 'Quality profile',
-      value: _qualityId,
-      currentLabel: _qualityName(options) ?? '',
-      options: [
-        for (final profile in options.qualityProfiles)
-          MediaDetailValueOption(value: profile.id, label: profile.name),
-      ],
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _qualityId = picked.value;
-      _touched.add(_Row.quality);
-      _refusal = null;
-    });
-  }
-
-  Future<void> _pickMetadata(LidarrAddOptions options) async {
-    final picked = await showMediaValueSheet<int>(
-      context,
-      title: 'Metadata profile',
-      value: _metadataId,
-      currentLabel: _metadataOf(options)?.name ?? '',
-      options: [
-        for (final profile in options.metadataProfiles)
-          MediaDetailValueOption(
-            value: profile.id,
-            label: profile.name,
-            detail: profile.typesLine,
-          ),
-      ],
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _metadataId = picked.value;
-      _touched.add(_Row.metadata);
-      _refusal = null;
-    });
+    defaultsApplied = applied;
   }
 
   Future<void> _pickMonitor() async {
@@ -236,30 +132,22 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
     if (picked == null || !mounted) return;
     setState(() {
       _monitor = picked.value;
-      _touched.add(_Row.monitor);
-      _refusal = null;
+      touched.add(LidarrAddRow.monitor);
+      refusal = null;
     });
   }
-
-  String? _qualityName(LidarrAddOptions options) => options.qualityProfiles
-      .where((p) => p.id == _qualityId)
-      .firstOrNull
-      ?.name;
-
-  LidarrMetadataProfile? _metadataOf(LidarrAddOptions options) =>
-      options.metadataProfiles.where((p) => p.id == _metadataId).firstOrNull;
 
   /// Posts the add. On success the sheet resolves to the artist as Lidarr
   /// holds it; a refusal stays in the sheet, in Lidarr's words.
   Future<void> _add({required bool search}) async {
-    final folder = _folder;
-    final quality = _qualityId;
-    final metadata = _metadataId;
+    final folder = this.folder;
+    final quality = qualityId;
+    final metadata = metadataId;
     if (folder == null || quality == null || metadata == null) return;
     final to = _to;
     setState(() {
-      _adding = true;
-      _refusal = null;
+      adding = true;
+      refusal = null;
     });
     try {
       final added = await ref
@@ -279,17 +167,13 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
       ).pop<LidarrAddedArtist>((connection: to, artist: added));
     } catch (error) {
       if (!mounted) return;
-      final name = widget.name(to);
       setState(() {
-        _adding = false;
-        _refusal = _Refusal(
-          sentence: 'Could not add ${widget.artist.artistName} to $name.',
-          // Lidarr's own words when it gave any ("This artist has already
-          // been added"), otherwise why in the classified words.
-          detail:
-              failureServiceMessage(error) ??
-              writeFailureReason(ServiceKey.lidarr, error, subject: name),
-          reason: classifyConnectionFailure(error),
+        adding = false;
+        refusal = refusalFor(
+          error,
+          sentence:
+              'Could not add ${widget.artist.artistName} to '
+              '${widget.sentenceName(to)}.',
         );
       });
     }
@@ -300,39 +184,20 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
     final room = CupolaRoom.of(context);
     final artist = widget.artist;
     final options = ref.watch(lidarrAddOptionsProvider(_to.id));
-    if (options.value case final loaded? when !identical(loaded, _seededFrom)) {
-      _seed(loaded);
-    }
+    seedFrom(options);
     final loaded = options.value;
     final usable = loaded != null && loaded.missing == null;
     final search = _monitor != LidarrMonitor.none && _search;
 
-    final Widget body = switch (options) {
-      AsyncError(:final error) => AppErrorState.compact(
-        error: error,
-        service: ServiceKey.lidarr,
-        instanceId: _to.id,
-        onRetry: () => ref.invalidate(lidarrAddOptionsProvider(_to.id)),
-      ),
-      AsyncData(:final value) when value.missing != null => _Missing(
-        sentence: '$_connectionName has no ${value.missing} yet.',
-        remedy: 'Add one in $_connectionName, then come back.',
-        name: _connectionName,
-        onOpen: () => _openInLidarr(value.missing!),
-      ),
-      AsyncData(:final value) => _rows(value, room, search: search),
-      _ => const _OptionsLoading(),
-    };
-
     return PopScope(
       // Nothing closes the sheet while the add is out: it would answer to
       // nobody, and the artist would be on the server with no word of it.
-      canPop: !_adding,
+      canPop: !adding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(artist: artist, closeEnabled: !_adding),
+          _Header(artist: artist, closeEnabled: !adding),
           const SizedBox(height: AppSpacing.lg),
           if (widget.connections.length > 1) ...[
             Text(
@@ -344,18 +209,18 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
               values: widget.connections,
               selected: _to,
               labelBuilder: widget.name,
-              onSelected: _adding
+              onSelected: adding
                   ? (_) {}
                   : (connection) => setState(() {
                       _to = connection;
-                      _seededFrom = null;
-                      _refusal = null;
+                      seededFrom = null;
+                      refusal = null;
                     }),
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
-          body,
-          if (usable && _defaultsApplied && _touched.isEmpty) ...[
+          optionsBody(options, (value) => _rows(value, room, search: search)),
+          if (usable && defaultsApplied && touched.isEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             Text(
               'The folder’s defaults, as set in Lidarr.',
@@ -363,35 +228,18 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
             ),
           ],
           // A post that failed: its sentence, and why, over the button.
-          if (usable && _refusal != null) ...[
+          if (usable && refusal != null) ...[
             const SizedBox(height: AppSpacing.md),
-            _refusal!,
+            refusal!,
           ],
           // Nothing to press while the options failed or are missing: a
           // primary action that cannot work is not drawn.
           if (options.isLoading || usable) ...[
             const SizedBox(height: AppSpacing.lg),
-            FilledButton(
-              onPressed: usable && !_adding ? () => _add(search: search) : null,
-              style: mediaLeadStyle(context, null),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_adding)
-                    const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    const Icon(Icons.add_rounded, size: 20),
-                  const SizedBox(width: AppSpacing.sm),
-                  Flexible(
-                    child: Text(
-                      search ? 'Add and search' : 'Add to $_connectionName',
-                    ),
-                  ),
-                ],
-              ),
+            LidarrAddButton(
+              onPressed: usable && !adding ? () => _add(search: search) : null,
+              adding: adding,
+              label: search ? 'Add and search' : 'Add to $connectionName',
             ),
           ],
         ],
@@ -399,80 +247,14 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
     );
   }
 
-  /// Lidarr's own settings page for what is missing, at the address the
-  /// connection is reached at now: away from home, the one at home would not
-  /// open.
-  Future<void> _openInLidarr(String missing) async {
-    final base = ref.read(connectionReachProvider(_to.id))?.url ?? '';
-    final path = missing == 'root folder'
-        ? '/settings/mediamanagement'
-        : '/settings/profiles';
-    final target = Uri.tryParse(UrlUtils.buildUrl(base, path));
-    final opened =
-        target != null &&
-        await launchUrl(target, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
-      SnackBarHelper.error(context, 'Could not open $_connectionName');
-    }
-  }
-
   Widget _rows(
     LidarrAddOptions options,
     CupolaRoom room, {
     required bool search,
   }) {
-    final folder = _folder!;
-    final metadata = _metadataOf(options);
-    // Where a value stacks under its label it starts where the label does.
-    final stacked = mediaStacked(context);
-    final align = stacked ? TextAlign.start : TextAlign.end;
     return MediaGroup(
       children: [
-        MediaValueRow(
-          label: 'Folder',
-          value: Column(
-            crossAxisAlignment: stacked
-                ? CrossAxisAlignment.start
-                : CrossAxisAlignment.end,
-            children: [
-              Text(
-                folder.path,
-                textAlign: align,
-                style: AppType.mono.copyWith(color: room.inkSecondary),
-              ),
-              if (folder.freeSpace case final free?)
-                Text(
-                  '${formatBytes(free)} free',
-                  textAlign: align,
-                  style: AppType.caption.copyWith(color: room.inkTertiary),
-                ),
-            ],
-          ),
-          onTap: options.folders.length > 1 && !_adding
-              ? () => _pickFolder(options)
-              : null,
-        ),
-        MediaValueRow(
-          label: 'Quality profile',
-          value: Text(
-            _qualityName(options) ?? '',
-            textAlign: align,
-            style: AppType.meta.copyWith(color: room.inkSecondary),
-          ),
-          onTap: options.qualityProfiles.length > 1 && !_adding
-              ? () => _pickQuality(options)
-              : null,
-        ),
-        MediaValueRow(
-          label: 'Metadata profile',
-          value: MediaChoiceValue(
-            label: metadata?.name ?? '',
-            meaning: metadata?.typesLine,
-          ),
-          onTap: options.metadataProfiles.length > 1 && !_adding
-              ? () => _pickMetadata(options)
-              : null,
-        ),
+        ...choiceRows(options, room),
         // Which albums, in Lidarr's words, with what each means.
         MediaValueRow(
           label: 'Monitor',
@@ -480,17 +262,17 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
             label: _monitor.label,
             meaning: _monitor.meaning,
           ),
-          onTap: _adding ? null : _pickMonitor,
+          onTap: adding ? null : _pickMonitor,
         ),
         MediaSwitchRow(
           label: 'Monitor new albums',
           detail: 'New releases are added and searched for',
           value: _newItems != 'none',
-          onChanged: _adding
+          onChanged: adding
               ? null
               : (on) => setState(() {
                   _newItems = on ? 'all' : 'none';
-                  _touched.add(_Row.newItems);
+                  touched.add(LidarrAddRow.newItems);
                 }),
         ),
         MediaSwitchRow(
@@ -499,7 +281,7 @@ class _LidarrAddArtistSheetState extends ConsumerState<LidarrAddArtistSheet> {
               ? 'Needs albums to monitor'
               : 'Lidarr looks for the albums it monitors',
           value: search,
-          onChanged: _monitor == LidarrMonitor.none || _adding
+          onChanged: _monitor == LidarrMonitor.none || adding
               ? null
               : (on) => setState(() => _search = on),
         ),
@@ -591,21 +373,7 @@ class _Header extends StatelessWidget {
                 ),
               ),
             ),
-            // Pulled into the corner: the glyph sits in a 44 target.
-            Transform.translate(
-              offset: const Offset(AppSpacing.row, -AppSpacing.sm),
-              child: IconButton(
-                icon: const Icon(Icons.close_rounded),
-                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                onPressed: closeEnabled
-                    ? () => Navigator.of(context).maybePop()
-                    : null,
-                constraints: const BoxConstraints.tightFor(
-                  width: DesignTokens.sizeTouch,
-                  height: DesignTokens.sizeTouch,
-                ),
-              ),
-            ),
+            LidarrAddClose(enabled: closeEnabled),
           ],
         ),
         if (overview.isNotEmpty) ...[
@@ -617,110 +385,6 @@ class _Header extends StatelessWidget {
             style: AppType.body.copyWith(color: room.inkSecondary),
           ),
         ],
-      ],
-    );
-  }
-}
-
-/// The group of rows, while the options are being read.
-class _OptionsLoading extends StatelessWidget {
-  const _OptionsLoading();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Reading the options',
-      child: ExcludeSemantics(
-        child: MediaGroup(
-          children: [
-            for (var i = 0; i < 6; i++)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-                child: Row(
-                  children: [
-                    ShimmerPlaceholder.text(width: 96),
-                    const Spacer(),
-                    ShimmerPlaceholder.text(width: 72),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// What the sheet could not do: its sentence, and why under it. Amber unless
-/// the server did not answer: a refusal is a fault, only silence is red.
-class _Refusal extends StatelessWidget {
-  const _Refusal({required this.sentence, this.detail, this.reason});
-
-  final String sentence;
-  final String? detail;
-  final ServiceFailureReason? reason;
-
-  @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          sentence,
-          style: AppType.row.copyWith(
-            color: statusToneColor(
-              Theme.of(context).colorScheme,
-              surface: room.raised,
-              switch (reason) {
-                final reason? => failureTone(reason),
-                null => StatusTone.warning,
-              },
-            ),
-          ),
-        ),
-        if ((detail ?? '').isNotEmpty)
-          Text(
-            detail!,
-            style: AppType.meta
-                .weight(FontWeight.w400)
-                .copyWith(color: room.inkSecondary),
-          ),
-      ],
-    );
-  }
-}
-
-/// A Lidarr with nothing to file under or no profile to give: what is true,
-/// and the way out, which is Lidarr's own settings.
-class _Missing extends StatelessWidget {
-  const _Missing({
-    required this.sentence,
-    required this.remedy,
-    required this.name,
-    required this.onOpen,
-  });
-
-  final String sentence;
-  final String remedy;
-  final String name;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Refusal(sentence: sentence),
-        Text(
-          remedy,
-          style: AppType.meta
-              .weight(FontWeight.w400)
-              .copyWith(color: room.inkSecondary),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        ShelfOpenIn(name: name, onTap: onOpen),
       ],
     );
   }

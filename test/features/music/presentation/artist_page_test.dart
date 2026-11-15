@@ -141,7 +141,7 @@ void main() {
       expect(find.text('On disk'), findsOneWidget);
       expect(find.text('3 albums'), findsOneWidget);
       expect(
-        find.text('2010\u00A0· 5 tracks\u00A0· 21\u00A0min'),
+        find.text('2010\u00A0· 5\u00A0tracks\u00A0· 21\u00A0min'),
         findsOneWidget,
       );
       expect(find.text('Complete'), findsNWidgets(3));
@@ -172,7 +172,9 @@ void main() {
       final harness = await _open(tester);
 
       expect(
-        find.bySemanticsLabel('Sintel, 2010, 5 tracks, 21 minutes, Complete'),
+        find.bySemanticsLabel(
+          'Sintel, 2010, 5\u00A0tracks, 21 minutes, Complete',
+        ),
         findsOneWidget,
       );
       expect(find.text('Opening'), findsNothing);

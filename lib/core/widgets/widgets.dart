@@ -44,6 +44,7 @@ export 'ambient_scaffold.dart';
 export 'glass_app_bar.dart';
 export 'domain_section.dart';
 export 'section_header.dart';
+export 'media_find.dart';
 export 'media_grid.dart';
 export 'media_browse_scaffold.dart';
 export 'media_detail_view.dart';

@@ -24,6 +24,7 @@ import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/series/data/sonarr_service.dart';
 import 'package:cupola/features/series/domain/models/sonarr_episode.dart';
@@ -324,10 +325,9 @@ class FakeLidarrService extends LidarrService {
   Future<List<Map<String, dynamic>>> getQualityProfiles() async => const [];
 
   @override
-  Future<List<LidarrArtist>> lookupArtists(
+  Future<List<LidarrSearchHit>> search(
     String term, {
     CancelToken? cancelToken,
-    bool reportFailure = false,
   }) async => const [];
 
   @override

@@ -6,6 +6,15 @@ class LidarrAlbum {
   final String foreignAlbumId;
 
   final String title;
+
+  /// The library artist the album belongs to: 0 for an album Lidarr does not
+  /// hold (a search result), where only the nested artist says whose it is.
+  final int artistId;
+
+  /// What kind of release it is, as MusicBrainz names it: `Album`, `EP`,
+  /// `Single`. Null when Lidarr did not say.
+  final String? albumType;
+
   final String? releaseDate;
   final bool monitored;
   final List<dynamic> images;
@@ -19,6 +28,8 @@ class LidarrAlbum {
     required this.id,
     this.foreignAlbumId = '',
     required this.title,
+    this.artistId = 0,
+    this.albumType,
     this.releaseDate,
     required this.monitored,
     required this.images,
@@ -51,6 +62,10 @@ class LidarrAlbum {
       title: (json['title'] as String?)?.trim().isNotEmpty == true
           ? (json['title'] as String).trim()
           : 'Unknown album',
+      artistId: (json['artistId'] as num?)?.toInt() ?? 0,
+      albumType: (json['albumType'] as String?)?.trim().isNotEmpty == true
+          ? (json['albumType'] as String).trim()
+          : null,
       releaseDate: json['releaseDate'] as String?,
       monitored: json['monitored'] as bool? ?? false,
       images: json['images'] as List<dynamic>? ?? const [],

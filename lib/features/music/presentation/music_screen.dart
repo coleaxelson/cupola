@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,20 +5,21 @@ import 'package:go_router/go_router.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/utils/service_routes.dart';
-import 'package:cupola/core/utils/snack_bar_helper.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
+import 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 import 'package:cupola/features/music/domain/lidarr_status.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
-import 'package:cupola/features/music/presentation/lidarr_add_artist_sheet.dart';
+import 'package:cupola/features/music/presentation/music_find.dart';
 import 'package:cupola/features/music/presentation/music_provider.dart';
 import 'package:cupola/features/music/presentation/music_search_provider.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
 import 'package:cupola/features/settings/data/connection_reach_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
-import 'package:cupola/features/settings/domain/service_instance.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
+
+export 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 
 /// The artist ids Lidarr reports under `wanted/cutoff`.
 ///
@@ -47,86 +46,6 @@ final lidarrCutoffUnmetArtistIdsProvider = FutureProvider.autoDispose<Set<int>>(
   },
 );
 
-/// `6 albums · complete` / `9 albums · 34 tracks missing`: the caption the
-/// circular artist tile carries instead of a status dot.
-///
-/// Top-level and pure so the wording is assertable without a pumped wall.
-///
-/// Three honest answers, and the third is why this is not a one-liner:
-/// * Lidarr omits `statistics` entirely on an artist it has not scanned. That
-///   is not "0 albums", it is *no answer*, and it reads as an em dash.
-/// * With tracks counted, the shortfall is stated **in tracks**, because tracks
-///   are what Lidarr counts. The board writes `9 albums · 1 missing`, but the
-///   artist payload carries no per-album file state, so saying "1 missing"
-///   beside an album count would be a number in the wrong unit.
-/// * An artist with albums but no tracks counted gets the album count alone
-///   rather than a completeness claim nothing supports.
-String lidarrArtistCaption(LidarrArtist artist) {
-  if (artist.statistics == null) return '\u2014';
-
-  final albums = artist.albumCount;
-  final albumTerm = albums > 0
-      ? '$albums album${albums == 1 ? '' : 's'}'
-      : null;
-
-  final tracks = artist.trackCount;
-  if (tracks <= 0) return albumTerm ?? '\u2014';
-
-  final missing = tracks - artist.trackFileCount;
-  final completeness = missing <= 0
-      ? 'complete'
-      : '$missing track${missing == 1 ? '' : 's'} missing';
-
-  return albumTerm == null ? completeness : '$albumTerm\u00A0· $completeness';
-}
-
-/// Adds [lookupRow], an artist the search found and no Lidarr holds, through
-/// the add sheet; then says so, reads the library again and opens the new
-/// artist's page, which waits for Lidarr to read the albums.
-Future<void> _addArtist(
-  BuildContext context,
-  WidgetRef ref,
-  LidarrArtist lookupRow,
-) async {
-  final settings = ref.read(currentSettingsProvider);
-  final lens = ref.read(activeInstanceProvider(ServiceKey.lidarr));
-  String name(ServiceInstance connection) =>
-      settings.connectionTitle(connection.id, connection.service);
-  final connections = settings.configuredInstancesOf(ServiceKey.lidarr);
-  if (connections.isEmpty) return;
-  final added = await showLidarrAddArtistSheet(
-    context,
-    artist: lookupRow,
-    connections: connections,
-    name: name,
-    initial: lens,
-  );
-  if (added == null || !context.mounted) return;
-  SnackBarHelper.success(
-    context,
-    '${added.artist.artistName} added to ${name(added.connection)}',
-  );
-  // The library now holds the artist, and the search's row is no longer one
-  // Lidarr does not hold.
-  ref
-    ..invalidate(musicProvider)
-    ..invalidate(musicForProvider(added.connection.id))
-    ..invalidate(musicSearchResultsProvider);
-  if (added.artist.id <= 0) return;
-  unawaited(
-    context.push(
-      ServiceRoutes.lidarrArtist(
-        added.artist.id,
-        instanceId: added.connection.id == lens?.id
-            ? null
-            : added.connection.id,
-        justAdded: true,
-      ),
-      extra: added.artist,
-    ),
-  );
-}
-
 class MusicScreen extends ConsumerWidget {
   final bool showAppBar;
   final double topPadding;
@@ -146,7 +65,7 @@ class MusicScreen extends ConsumerWidget {
 
     return MediaBrowseScaffold<LidarrArtist>(
       title: 'Music',
-      searchHint: 'Search artists',
+      searchHint: 'Artists and albums',
       activityRoute: '${ServiceRoutes.lidarr}/queue',
       navigationSection: NavigationSection.stack,
       serviceName: 'Lidarr',
@@ -156,7 +75,20 @@ class MusicScreen extends ConsumerWidget {
       searchHeroTagPrefix: 'artist_search',
       libraryProvider: musicProvider,
       searchQueryProvider: musicSearchQueryProvider,
-      searchResultsProvider: musicSearchResultsProvider,
+      find: MediaFind(
+        scopeProvider: musicFindScopeProvider,
+        serviceLabel: ref.watch(
+          currentSettingsProvider.select(
+            (s) => s.connectionTitle(lens, ServiceKey.lidarr),
+          ),
+        ),
+        libraryBody: (context, query) => MusicFindLibrary(
+          query: query,
+          onAskLidarr: () => ref.read(musicFindScopeProvider.notifier).state =
+              MediaFindScope.service,
+        ),
+        serviceBody: (context, query) => MusicFindLidarr(query: query),
+      ),
       titleExtractor: (artist) => artist.artistName,
       subtitleExtractor: lidarrArtistCaption,
       sortTitleExtractor: (artist) => artist.artistName,
@@ -181,12 +113,6 @@ class MusicScreen extends ConsumerWidget {
       // The lens's connection, never the first one's: see `movies_screen.dart`.
       settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
       onItemTap: (context, artist, heroTag) {
-        // A row Lidarr does not hold (a lookup result) has no id of its own:
-        // it opens the add sheet, never an artist's page.
-        if (artist.id <= 0) {
-          unawaited(_addArtist(context, ref, artist));
-          return;
-        }
         context.push(
           ServiceRoutes.lidarrArtist(artist.id, heroTag: heroTag),
           extra: artist,

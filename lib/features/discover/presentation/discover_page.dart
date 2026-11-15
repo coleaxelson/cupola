@@ -25,10 +25,10 @@ import 'package:cupola/core/widgets/brief_failure_line.dart';
 import 'package:cupola/core/widgets/failure_remedy.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
+import 'package:cupola/core/widgets/media_find.dart';
 import 'package:cupola/core/widgets/not_configured_placeholder.dart';
 import 'package:cupola/core/widgets/pressable_scale.dart';
 import 'package:cupola/core/widgets/search_bar_header.dart';
-import 'package:cupola/core/widgets/shimmer_placeholder.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/discover/domain/seerr_numbering.dart';
 import 'package:cupola/features/discover/domain/seerr_status.dart';
@@ -297,7 +297,7 @@ class _Recents extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Expanded(child: _Heading('Recent searches', top: 0)),
+                Expanded(child: SearchHeading('Recent searches', top: 0)),
                 TextButton(
                   onPressed: notifier.clear,
                   style: TextButton.styleFrom(
@@ -386,28 +386,6 @@ EdgeInsets _rowsPadding(double width, {required double bottom}) =>
 double _rowsInset(double width) =>
     math.max(0, width - 2 * AppSpacing.lg - AppBreakpoints.readingWell);
 
-/// A section's name, in the secondary ink.
-class _Heading extends StatelessWidget {
-  const _Heading(this.text, {this.top = AppSpacing.md});
-
-  final String text;
-  final double top;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(top: top, bottom: AppSpacing.xxs),
-    child: Semantics(
-      header: true,
-      child: Text(
-        text,
-        style: AppType.label.copyWith(
-          color: CupolaRoom.of(context).inkSecondary,
-        ),
-      ),
-    ),
-  );
-}
-
 /// What a search found, by kind.
 class _Results extends ConsumerWidget {
   const _Results({required this.query, required this.bottomPadding});
@@ -435,7 +413,7 @@ class _Results extends ConsumerWidget {
 
     final people = <Widget>[
       if (sections.people.isNotEmpty || sections.peopleAsked) ...[
-        const _Heading('People'),
+        const SearchHeading('People'),
         if (sections.people.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.s),
@@ -461,26 +439,27 @@ class _Results extends ConsumerWidget {
       // What is missing first: it qualifies everything under it.
       for (final lane in sections.silent) _SilentSource(lane: lane),
       if (sections.isEmpty && sections.searching)
-        const _Searching()
+        const SearchRowsPending(label: 'Searching')
       else if (sections.isEmpty) ...[
         if (sections.silent.length < lanes.length) _Nothing(query: query),
       ] else ...[
         if (sections.onServer.isNotEmpty) ...[
-          const _Heading('On your server', top: AppSpacing.xs),
+          const SearchHeading('On your server', top: AppSpacing.xs),
           for (final title in sections.onServer) _TitleRow(title: title),
         ],
         // A word that names someone leads with them; else the titles do.
         if (sections.peopleFirst) ...people,
         if (sections.movies.isNotEmpty) ...[
-          const _Heading('Movies'),
+          const SearchHeading('Movies'),
           for (final title in sections.movies) _TitleRow(title: title),
         ],
         if (sections.series.isNotEmpty) ...[
-          const _Heading('Series'),
+          const SearchHeading('Series'),
           for (final title in sections.series) _TitleRow(title: title),
         ],
         if (!sections.peopleFirst) ...people,
-        if (sections.searching) const _Searching(rows: 1),
+        if (sections.searching)
+          const SearchRowsPending(label: 'Searching', rows: 1),
       ],
       if (lidarr && sections.settled) _LidarrLink(query: query),
     ];
@@ -688,54 +667,6 @@ class _SilentSource extends ConsumerWidget {
   };
 }
 
-/// Rows still on their way: plates at a row's size.
-class _Searching extends StatelessWidget {
-  const _Searching({this.rows = 3});
-
-  final int rows;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    label: 'Searching',
-    child: Column(
-      children: [
-        for (var i = 0; i < rows; i++)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-            child: Row(
-              children: [
-                ShimmerPlaceholder(
-                  width: 44,
-                  height: 66,
-                  borderRadius: BorderRadius.circular(AppRadius.thumb),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ShimmerPlaceholder(
-                        height: 14,
-                        width: 160,
-                        borderRadius: AppRadius.borderRadiusXs,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      ShimmerPlaceholder(
-                        height: 12,
-                        width: 100,
-                        borderRadius: AppRadius.borderRadiusXs,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
 /// Nothing anywhere, once every source has answered.
 class _Nothing extends StatelessWidget {
   const _Nothing({required this.query});
@@ -743,28 +674,12 @@ class _Nothing extends StatelessWidget {
   final String query;
 
   @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xl),
-      child: Column(
-        children: [
-          Text(
-            'Nothing called “$query”',
-            textAlign: TextAlign.center,
-            style: AppType.section.copyWith(color: room.ink),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'No movie, series or person by that name. A release name is '
-            'often not the title: try the name of the series.',
-            textAlign: TextAlign.center,
-            style: AppType.meta.copyWith(color: room.inkSecondary),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SearchNothing(
+    title: 'Nothing called “$query”',
+    message:
+        'No movie, series or person by that name. A release name is '
+        'often not the title: try the name of the series.',
+  );
 }
 
 /// Lidarr's own search for the word: music is not in the catalogue.
@@ -780,6 +695,9 @@ class _LidarrLink extends ConsumerWidget {
       padding: const EdgeInsets.only(top: AppSpacing.lg),
       child: PressableScale(
         onTap: () {
+          // Lidarr's own search, not the library's.
+          ref.read(musicFindScopeProvider.notifier).state =
+              MediaFindScope.service;
           ref.read(musicSearchQueryProvider.notifier).state = query;
           context.go(ServiceRoutes.lidarrLibrary);
         },
