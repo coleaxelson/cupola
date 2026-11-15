@@ -110,14 +110,14 @@ Widget _music() => Column(
   crossAxisAlignment: CrossAxisAlignment.start,
   children: [
     const SearchHeading('Artists', top: 12),
-    SearchRow.artist(
+    SearchRow.disc(
       name: 'Elbow',
       line: 'Group\u00A0· Bury, England',
       onTap: () {},
       hint: 'Not in your library. Adds it to Lidarr',
       action: SearchRowAdd(label: 'Add Elbow to Lidarr', onTap: () {}),
     ),
-    SearchRow.artist(
+    SearchRow.disc(
       name: 'Ella Fitzgerald',
       line: 'Person',
       status: (label: 'In your library', tone: StatusTone.success),
@@ -236,7 +236,7 @@ void main() {
         width: 390,
       ),
       CatalogScene(
-        'SearchRow.artist and SearchRow.album · music\u2019s results: a disc '
+        'SearchRow.disc and SearchRow.album · music\u2019s results: a disc '
         'and a square cover with their initials, a state under the meta line '
         '(filled for what is held, the backlog\u2019s ring for what is '
         'wanted or left alone), the plus, and the plus while its write is out',

@@ -242,7 +242,7 @@ class _MusicFindLibraryState extends ConsumerState<MusicFindLibrary> {
 
   Widget _artistRow(LidarrArtist artist, _Reach reach) {
     final art = _artOf(artist.images, _artistTypes, reach);
-    return SearchRow.artist(
+    return SearchRow.disc(
       key: ValueKey(('artist', artist.id)),
       name: artist.artistName,
       line: lidarrArtistCaption(artist),
@@ -522,7 +522,7 @@ class _MusicFindLidarrState extends ConsumerState<MusicFindLidarr> {
     final add = held == null
         ? () => addLidarrArtist(context, ref, artist)
         : null;
-    return SearchRow.artist(
+    return SearchRow.disc(
       key: ValueKey((
         'found-artist',
         artist.foreignArtistId,

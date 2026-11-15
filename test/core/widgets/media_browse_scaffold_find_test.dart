@@ -54,7 +54,6 @@ Future<ProviderContainer> _pump(
             navigationSection: NavigationSection.stack,
             serviceName: 'Lidarr',
             heroTagPrefix: 'a',
-            searchHeroTagPrefix: 'a_search',
             libraryProvider: _libraryProvider,
             searchQueryProvider: _queryProvider,
             find: MediaFind(
@@ -248,5 +247,62 @@ void main() {
     await _type(tester, 'el');
 
     expect(tester.takeException(), isNull);
+  });
+  testWidgets('a wall with only its library has no second scope and no '
+      'control: the text finds in the library and nothing asks a service', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        currentSettingsProvider.overrideWith((ref) => const SettingsModel()),
+      ],
+    );
+    addTearDown(container.dispose);
+    tester.view
+      ..physicalSize = const Size(390, 844)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.darkTheme(),
+          home: MediaBrowseScaffold<String>(
+            title: 'Authors',
+            searchHint: 'Authors',
+            activityRoute: '/activity',
+            navigationSection: NavigationSection.stack,
+            serviceName: 'Readarr',
+            heroTagPrefix: 'a',
+            libraryProvider: _libraryProvider,
+            searchQueryProvider: _queryProvider,
+            find: MediaFind.libraryOnly(
+              libraryBody: (context, query) => Text('library:$query'),
+            ),
+            titleExtractor: (item) => item,
+            subtitleExtractor: (_) => '',
+            imagesExtractor: (_) => null,
+            idExtractor: (item) => item.hashCode,
+            settingsSelector: (settings) => (
+              settings.urlFor(ServiceKey.readarr),
+              settings.apiKeyFor(ServiceKey.readarr),
+              const NoAccess(),
+            ),
+            onItemTap: (_, _, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _type(tester, 'jules');
+
+    expect(find.text('library:jules'), findsOneWidget);
+    expect(find.byType(MediaFindScopeControl), findsNothing);
+    expect(find.text('Your library'), findsNothing);
+
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump();
+    expect(find.text('Alpha'), findsOneWidget);
   });
 }

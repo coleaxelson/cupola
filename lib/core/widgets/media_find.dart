@@ -17,31 +17,41 @@ enum MediaFindScope {
   service,
 }
 
-/// What a library wall gives [MediaBrowseScaffold] to find with, beyond the
-/// service lookup the wall has always run.
-///
-/// A wall that opts in gets the field's second half: while the field holds
-/// text, a segmented control under it chooses the [MediaFindScope], and the
-/// body under it is the wall's own for that scope. The scaffold owns the
-/// chrome (the field, the control, the scope that survives the text, Cancel
-/// and Back); the wall owns what the results are, because a result is not the
+/// What a library wall gives [MediaBrowseScaffold] to find with: while the
+/// field holds text, the body under it is the wall's own, and where the wall
+/// has a service to ask (every wall but Readarr's) a segmented control under
+/// the field chooses the [MediaFindScope] first. The scaffold owns the chrome
+/// (the field, the control, the scope that survives the text, Cancel and
+/// Back); the wall owns what the results are, because a result is not the
 /// wall's item (Lidarr's wall finds artists and albums).
-///
-/// A wall that does not pass one keeps its grid of lookup results unchanged.
 @immutable
 class MediaFind {
+  /// A wall with a library to find in and a service to ask.
   const MediaFind({
-    required this.scopeProvider,
+    required StateProvider<MediaFindScope> this.scopeProvider,
     required this.libraryBody,
-    required this.serviceBody,
+    required Widget Function(BuildContext context, String query)
+    this.serviceBody,
     this.serviceLabel,
   });
+
+  /// A wall with only its library to find in: its service has nothing to ask
+  /// (Readarr's metadata host no longer answers), so there is no second scope
+  /// and no control.
+  const MediaFind.libraryOnly({required this.libraryBody})
+    : scopeProvider = null,
+      serviceBody = null,
+      serviceLabel = null;
+
+  /// Whether there is a second scope: a service to ask.
+  bool get hasService => scopeProvider != null;
 
   /// The chosen scope. A provider rather than the scaffold's own state, so a
   /// link into the wall (Discover's `Show all music for …`) can arrive on the
   /// service scope. The scaffold sets it back to [MediaFindScope.library]
-  /// when the field is emptied: the next search starts in the library.
-  final StateProvider<MediaFindScope> scopeProvider;
+  /// when the field is emptied: the next search starts in the library. Null
+  /// for a wall with only its library.
+  final StateProvider<MediaFindScope>? scopeProvider;
 
   /// The second segment's label: the connection's name. The scaffold's
   /// `serviceName` when null.
@@ -53,7 +63,8 @@ class MediaFind {
 
   /// The service's results for the query once typing has paused (the same
   /// 400ms every lookup waits).
-  final Widget Function(BuildContext context, String query) serviceBody;
+  /// Null for a wall with only its library.
+  final Widget Function(BuildContext context, String query)? serviceBody;
 }
 
 /// The two scopes as a segmented control, under the field: `Your library` and

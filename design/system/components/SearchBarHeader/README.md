@@ -2,7 +2,7 @@
 
 The always-visible search field at the top of a browsable screen: a monochrome magnifier and a clear button once there is a query.
 
-Rendered from `lib/core/widgets/search_bar_header.dart` (a Material 3 `SearchBar`) by `test/design_catalog/search_bar_header_catalog_test.dart`. Hints are the callers' real strings: *Movies, series, people* (the Discover tab; *Movies and series* without Seerr, which is where people come from), *Search torrents* (qBittorrent), *Search movies* / *Search series* / *Search artists* (the library screens); the default is *Search*. No hint ends in an ellipsis.
+Rendered from `lib/core/widgets/search_bar_header.dart` (a Material 3 `SearchBar`) by `test/design_catalog/search_bar_header_catalog_test.dart`. Hints are the callers' real strings: *Movies, series, people* (the Discover tab; *Movies and series* without Seerr, which is where people come from), *Search torrents* (qBittorrent), *Movies* / *Series* / *Artists and albums* / *Authors* (the library walls: the field names what it finds, in the library first); the default is *Search*. No hint ends in an ellipsis.
 
 - Outer padding `AppSpacing.sm` top, `AppSpacing.lg` sides, `AppSpacing.lg` bottom.
 - Field: minimum height 52, `surfaceContainer` fill, 1px `outlineVariant` side, `AppRadius.borderRadiusMd` (14), the control radius; the theme's own text fields take the 16 field radius, elevation 0, horizontal padding `AppSpacing.sm`. Focused, the side is 1.5px `line.focus`, as every focused field's is, so the keyboard's place is never only a caret.

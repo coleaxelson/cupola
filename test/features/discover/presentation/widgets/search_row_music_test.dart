@@ -111,7 +111,7 @@ void main() {
     var taps = 0;
     await _pump(
       tester,
-      SearchRow.artist(
+      SearchRow.disc(
         name: 'Elbow',
         line: 'Group',
         onTap: () {},

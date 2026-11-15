@@ -14,10 +14,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cupola/core/models/service_kpi.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/providers/provider_retry.dart';
+import 'package:cupola/core/status/arr_queue_snapshot.dart';
+import 'package:cupola/features/discover/presentation/catalog_title_actions.dart';
+import 'package:cupola/features/discover/presentation/discover_details_provider.dart';
+import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
+import 'package:cupola/features/movies/domain/radarr_status.dart';
+import 'package:cupola/features/movies/presentation/movies_find.dart';
+import 'package:cupola/features/movies/presentation/movies_provider.dart';
+import 'package:cupola/features/movies/presentation/movies_search_provider.dart';
+import 'package:cupola/features/readarr/domain/models/readarr_models.dart';
+import 'package:cupola/features/readarr/domain/readarr_author_caption.dart';
+import 'package:cupola/features/readarr/presentation/readarr_find.dart';
+import 'package:cupola/features/readarr/presentation/readarr_provider.dart';
+import 'package:cupola/features/readarr/presentation/readarr_search_provider.dart';
+import 'package:cupola/features/series/domain/models/sonarr_series.dart';
+import 'package:cupola/features/series/domain/sonarr_status.dart';
+import 'package:cupola/features/series/presentation/series_find.dart';
+import 'package:cupola/features/series/presentation/series_provider.dart';
+import 'package:cupola/features/series/presentation/series_search_provider.dart';
 import 'package:cupola/core/widgets/media_browse_scaffold.dart';
 import 'package:cupola/core/widgets/media_find.dart';
 import 'package:cupola/core/widgets/service_kpi_peek.dart';
-import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
 import 'package:cupola/features/music/domain/lidarr_queue_snapshots.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
@@ -180,16 +197,6 @@ final _queries = [
   for (var i = 0; i < 16; i++) StateProvider<String>((ref) => ''),
 ];
 
-FutureProvider<List<_Film>?> _resultsFor(StateProvider<String> query) =>
-    FutureProvider<List<_Film>?>((ref) async {
-      final text = ref.watch(query).toLowerCase();
-      if (text.isEmpty) return null;
-      return [
-        for (final film in _library)
-          if (film.title.toLowerCase().contains(text)) film,
-      ];
-    });
-
 const _kpis = AsyncValue<List<ServiceKpi>>.data([
   ServiceKpi(label: 'Movies', value: '1,284', icon: Icons.movie_rounded),
   ServiceKpi(
@@ -206,13 +213,6 @@ const _kpis = AsyncValue<List<ServiceKpi>>.data([
   ServiceKpi(label: 'Queue', value: '3', icon: Icons.download_rounded),
 ]);
 
-final _results = [for (final query in _queries) _resultsFor(query)];
-
-/// A search that never answers, to show the spinner it draws meanwhile.
-final _pendingResults = FutureProvider<List<_Film>?>(
-  (ref) => Completer<List<_Film>?>().future,
-);
-
 Widget _scaffold(
   int phone, {
   FutureProvider<List<_Film>>? library,
@@ -221,7 +221,6 @@ Widget _scaffold(
   Set<int>? cutoff = const {5},
   MediaBrowseTileShape shape = MediaBrowseTileShape.poster,
   String title = 'Movies',
-  FutureProvider<List<_Film>?>? results,
   ServiceKey? service,
   bool status = true,
   IconData emptyIcon = Icons.video_library_outlined,
@@ -236,10 +235,13 @@ Widget _scaffold(
     service: service,
     accentColor: ServiceKey.radarr.accent,
     heroTagPrefix: 'movie',
-    searchHeroTagPrefix: 'movie_search',
     libraryProvider: library ?? _libraryProvider,
     searchQueryProvider: _queries[phone],
-    searchResultsProvider: results ?? _results[phone],
+    // What the field finds is the finds' own scenes; the wall's own are drawn
+    // with the field empty.
+    find: MediaFind.libraryOnly(
+      libraryBody: (context, query) => Center(child: Text('Finding “$query”')),
+    ),
     titleExtractor: (film) => film.title,
     subtitleExtractor: (film) => '${film.year}',
     sortTitleExtractor: (film) => film.sortTitle,
@@ -290,50 +292,6 @@ Widget _phones(List<Widget> screens) => Row(
     ],
   ],
 );
-
-/// Types [text] into the first text field below it once it has laid out, the
-/// way a user would: the scaffold's field owns its own controller, so a
-/// preset query would leave the field blank.
-class _Typed extends StatefulWidget {
-  const _Typed({required this.text, required this.child});
-
-  final String text;
-  final Widget child;
-
-  @override
-  State<_Typed> createState() => _TypedState();
-}
-
-class _TypedState extends State<_Typed> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      EditableTextState? field;
-      void visit(Element element) {
-        if (field != null) return;
-        if (element is StatefulElement && element.state is EditableTextState) {
-          field = element.state as EditableTextState;
-          return;
-        }
-        element.visitChildren(visit);
-      }
-
-      context.visitChildElements(visit);
-      field?.userUpdateTextEditingValue(
-        TextEditingValue(
-          text: widget.text,
-          selection: TextSelection.collapsed(offset: widget.text.length),
-        ),
-        SelectionChangedCause.keyboard,
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
 
 // === Music: the wall that finds in its library, then in Lidarr ============
 
@@ -482,7 +440,6 @@ Widget _music() => MediaBrowseScaffold<LidarrArtist>(
   service: ServiceKey.lidarr,
   accentColor: ServiceKey.lidarr.accent,
   heroTagPrefix: 'artist',
-  searchHeroTagPrefix: 'artist_search',
   libraryProvider: musicProvider,
   searchQueryProvider: musicSearchQueryProvider,
   find: MediaFind(
@@ -536,6 +493,269 @@ CatalogScene _musicScene(
   overrides: _musicOverrides(query, scope, search),
 );
 
+// === Movies, Series and Authors: the wall that finds ======================
+
+RadarrMovie _radarrMovie(
+  int id,
+  String title,
+  int year,
+  int runtime, {
+  int tmdbId = 0,
+  bool hasFile = false,
+  String? art,
+}) => RadarrMovie.fromJson({
+  'id': id,
+  'title': title,
+  'sortTitle': title.toLowerCase(),
+  'year': year,
+  'runtime': runtime,
+  'tmdbId': tmdbId,
+  'hasFile': hasFile,
+  'monitored': true,
+  'isAvailable': true,
+  'status': 'released',
+  'images': [
+    if (art != null) {'coverType': 'poster', 'remoteUrl': art},
+  ],
+});
+
+SonarrSeries _sonarrSeries(
+  int id,
+  String title,
+  int year,
+  int seasons, {
+  int tmdbId = 0,
+  bool complete = false,
+  String? art,
+}) => SonarrSeries.fromJson({
+  'id': id,
+  'title': title,
+  'sortTitle': title.toLowerCase(),
+  'year': year,
+  'tmdbId': tmdbId,
+  'monitored': true,
+  'status': 'ended',
+  'seasons': [
+    for (var n = 1; n <= seasons; n++) {'seasonNumber': n, 'monitored': true},
+  ],
+  'statistics': {'episodeFileCount': complete ? 8 : 0, 'episodeCount': 8},
+  'images': [
+    if (art != null) {'coverType': 'poster', 'remoteUrl': art},
+  ],
+});
+
+ReadarrAuthor _author(int id, String name, int books, int onDisk) =>
+    ReadarrAuthor(
+      id: id,
+      authorName: name,
+      monitored: true,
+      bookCount: books,
+      bookFileCount: onDisk,
+    );
+
+final _finderMovies = [
+  _radarrMovie(1, 'Sherlock Jr.', 1924, 45, tmdbId: 1, hasFile: true),
+  _radarrMovie(2, 'The Sheik', 1921, 80, tmdbId: 2),
+  _radarrMovie(3, 'Nosferatu', 1922, 94, tmdbId: 3, hasFile: true),
+];
+
+/// What Radarr's lookup answers for `sh`: the one the library holds, and two
+/// it does not.
+final _radarrLookup = [
+  _radarrMovie(1, 'Sherlock Jr.', 1924, 45, tmdbId: 1, hasFile: true),
+  _radarrMovie(0, 'Sherlock Holmes', 2009, 128, tmdbId: 77),
+  _radarrMovie(0, 'Shane', 1953, 118, tmdbId: 78),
+];
+
+final _finderSeries = [
+  _sonarrSeries(1, 'Cosmos Laundromat', 2015, 3, tmdbId: 1, complete: true),
+  _sonarrSeries(2, 'Cowboy Bebop', 1998, 1, tmdbId: 2),
+  _sonarrSeries(3, 'Hero', 2018, 2, tmdbId: 3, complete: true),
+];
+
+final _finderAuthors = [
+  _author(1, 'Jules Verne', 7, 6),
+  _author(2, 'Jules Renard', 12, 12),
+  _author(3, 'Brandon Sanderson', 20, 15),
+];
+
+/// What the three walls read: a library to find in, an empty queue, the lookup
+/// and the Seerr answers the title rows ask of it.
+List<Override> _finderOverrides({
+  String query = '',
+  MediaFindScope scope = MediaFindScope.library,
+  Future<List<RadarrMovie>?> Function()? movieLookup,
+}) => [
+  moviesProvider.overrideWith((ref) async => _finderMovies),
+  radarrQueueSnapshotProvider.overrideWith(
+    (ref) async => ArrQueueSnapshot.empty,
+  ),
+  moviesSearchQueryProvider.overrideWith((ref) => query),
+  moviesFindScopeProvider.overrideWith((ref) => scope),
+  moviesSearchResultsProvider.overrideWith(
+    (ref) => (movieLookup ?? () async => const <RadarrMovie>[])(),
+  ),
+  seriesProvider.overrideWith((ref) async => _finderSeries),
+  sonarrQueueSnapshotProvider.overrideWith(
+    (ref) async => ArrQueueSnapshot.empty,
+  ),
+  seriesSearchQueryProvider.overrideWith((ref) => query),
+  seriesFindScopeProvider.overrideWith((ref) => MediaFindScope.library),
+  readarrAuthorsProvider.overrideWith((ref) async => _finderAuthors),
+  readarrSearchQueryProvider.overrideWith((ref) => query),
+  seerrNumberingProvider.overrideWith((ref) async => null),
+  seerrSendsToProvider.overrideWith((ref, arr) async => false),
+];
+
+/// The Movies wall as `MoviesScreen` builds it, over the real find bodies.
+Widget _moviesFinder() => Consumer(
+  builder: (context, ref, _) {
+    final queue = ref.watch(radarrQueueSnapshotProvider).value;
+    MediaStatusInfo? status(RadarrMovie movie) => queue == null
+        ? null
+        : badgeOverQueue(
+            radarrMovieStatus(
+              movie,
+              queueEntry: queue.entryFor(movie.id),
+              queueUnknown: !queue.isWhole,
+            ),
+            queue,
+          );
+    return MediaBrowseScaffold<RadarrMovie>(
+      title: 'Movies',
+      searchHint: 'Movies',
+      activityRoute: '/activity',
+      navigationSection: NavigationSection.stack,
+      serviceName: 'Radarr',
+      service: ServiceKey.radarr,
+      accentColor: ServiceKey.radarr.accent,
+      heroTagPrefix: 'movie',
+      libraryProvider: moviesProvider,
+      searchQueryProvider: moviesSearchQueryProvider,
+      find: MediaFind(
+        scopeProvider: moviesFindScopeProvider,
+        libraryBody: (context, query) => MoviesFindLibrary(
+          query: query,
+          statusOf: status,
+          settingsSelector: (_) => ('', '', const NoAccess()),
+          onOpen: (_, _, _) {},
+          onAskRadarr: () => ref.read(moviesFindScopeProvider.notifier).state =
+              MediaFindScope.service,
+        ),
+        serviceBody: (context, query) => MoviesFindRadarr(
+          query: query,
+          statusOf: status,
+          onOpen: (_, _, _) {},
+        ),
+      ),
+      titleExtractor: (movie) => movie.title,
+      subtitleExtractor: (movie) => '${movie.year}',
+      imagesExtractor: (movie) => movie.images,
+      idExtractor: (movie) => movie.id,
+      settingsSelector: (_) => ('', '', const NoAccess()),
+      onItemTap: (_, _, _) {},
+    );
+  },
+);
+
+Widget _seriesFinder() => Consumer(
+  builder: (context, ref, _) {
+    final queue = ref.watch(sonarrQueueSnapshotProvider).value;
+    MediaStatusInfo? status(SonarrSeries series) => queue == null
+        ? null
+        : badgeOverQueue(
+            sonarrSeriesStatus(
+              series,
+              queueEntry: queue.entryFor(series.id),
+              queueUnknown: !queue.isWhole,
+            ),
+            queue,
+          );
+    return MediaBrowseScaffold<SonarrSeries>(
+      title: 'TV series',
+      searchHint: 'Series',
+      activityRoute: '/activity',
+      navigationSection: NavigationSection.stack,
+      serviceName: 'Sonarr',
+      service: ServiceKey.sonarr,
+      accentColor: ServiceKey.sonarr.accent,
+      heroTagPrefix: 'series',
+      libraryProvider: seriesProvider,
+      searchQueryProvider: seriesSearchQueryProvider,
+      find: MediaFind(
+        scopeProvider: seriesFindScopeProvider,
+        libraryBody: (context, query) => SeriesFindLibrary(
+          query: query,
+          statusOf: status,
+          settingsSelector: (_) => ('', '', const NoAccess()),
+          onOpen: (_, _, _) {},
+          onAskSonarr: () => ref.read(seriesFindScopeProvider.notifier).state =
+              MediaFindScope.service,
+        ),
+        serviceBody: (context, query) => SeriesFindSonarr(
+          query: query,
+          statusOf: status,
+          onOpen: (_, _, _) {},
+        ),
+      ),
+      titleExtractor: (series) => series.title,
+      subtitleExtractor: (series) => '${series.year}',
+      imagesExtractor: (series) => series.images,
+      idExtractor: (series) => series.id,
+      settingsSelector: (_) => ('', '', const NoAccess()),
+      onItemTap: (_, _, _) {},
+    );
+  },
+);
+
+Widget _authorsFinder() => MediaBrowseScaffold<ReadarrAuthor>(
+  title: 'Authors',
+  searchHint: 'Authors',
+  activityRoute: '/activity',
+  navigationSection: NavigationSection.stack,
+  serviceName: 'Readarr',
+  service: ServiceKey.readarr,
+  accentColor: ServiceKey.readarr.accent,
+  heroTagPrefix: 'author',
+  libraryProvider: readarrAuthorsProvider,
+  searchQueryProvider: readarrSearchQueryProvider,
+  find: MediaFind.libraryOnly(
+    libraryBody: (context, query) => AuthorsFindLibrary(
+      query: query,
+      settingsSelector: (_) => ('', '', const NoAccess()),
+      onOpen: (_, _, _) {},
+    ),
+  ),
+  titleExtractor: (author) => author.authorName,
+  subtitleExtractor: readarrAuthorCaption,
+  imagesExtractor: (author) => author.images,
+  idExtractor: (author) => author.id,
+  settingsSelector: (_) => ('', '', const NoAccess()),
+  onItemTap: (_, _, _) {},
+  tileShape: MediaBrowseTileShape.circle,
+);
+
+/// One phone of a wall that finds, with the field holding [query].
+CatalogScene _finderScene(
+  String caption,
+  Widget Function() wall, {
+  required String query,
+  MediaFindScope scope = MediaFindScope.library,
+  Future<List<RadarrMovie>?> Function()? movieLookup,
+  double textScale = 1,
+  String? id,
+}) => CatalogScene(
+  caption,
+  (_) => _phone(wall()),
+  id: id,
+  textScale: textScale,
+  overrides: _finderOverrides(
+    query: query,
+    scope: scope,
+    movieLookup: movieLookup,
+  ),
+);
+
 void main() {
   catalogCard(
     'MediaBrowseScaffold',
@@ -544,8 +764,12 @@ void main() {
       // A Radarr with an address, so the service-aware failure has a host to
       // name; nothing else on the sheet reads settings but the image auth.
       currentSettingsProvider.overrideWith(
-        (ref) =>
-            settingsWithServices(const [ServiceKey.radarr, ServiceKey.lidarr]),
+        (ref) => settingsWithServices(const [
+          ServiceKey.radarr,
+          ServiceKey.sonarr,
+          ServiceKey.readarr,
+          ServiceKey.lidarr,
+        ]),
       ),
     ],
     scenes: [
@@ -605,27 +829,6 @@ void main() {
         ]),
       ),
       CatalogScene(
-        'MediaBrowseScaffold · searching "Nosferatu", a search with no '
-        'match, an empty library · results are a MediaGrid with compact '
-        'badges; back arrow exits search',
-        (_) => _phones([
-          _Typed(text: 'Nosferatu', child: _scaffold(4)),
-          _Typed(text: 'Wisborg', child: _scaffold(5)),
-          _scaffold(6, library: _emptyProvider),
-        ]),
-      ),
-      CatalogScene(
-        'MediaBrowseScaffold · searching, results pending · the spinner in '
-        'the primary ink: the service accent is the lamp, and onTint resolves '
-        'it to ink',
-        (_) => _phones([
-          _Typed(
-            text: 'Nosferatu',
-            child: _scaffold(11, results: _pendingResults),
-          ),
-        ]),
-      ),
-      CatalogScene(
         'MediaBrowseScaffold · loading, a failed load with no service, the '
         'same failure with service: (ServiceOfflineState.failure: cause, '
         'address, Settings), not configured · search and chips stay put',
@@ -635,6 +838,96 @@ void main() {
           _scaffold(12, library: _failingProvider, service: ServiceKey.radarr),
           _scaffold(9, library: _unconfiguredProvider),
         ]),
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Movies, your library · the field holds '
+        '"sh": the control under it, one section headed by its count and its '
+        'noun, a poster with its year and runtime, and the word the wall '
+        'says (Available, Missing)',
+        _moviesFinder,
+        query: 'sh',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Series, your library · the count '
+        '(12 series, 1 series), the year and the seasons, the wall’s '
+        'word',
+        _seriesFinder,
+        query: 'co',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Movies, Radarr · the lookup as the '
+        'rows Discover draws: held where it is, the plus for what is not',
+        _moviesFinder,
+        query: 'sh',
+        scope: MediaFindScope.service,
+        movieLookup: () async => _radarrLookup,
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Authors · a library only: no control, '
+        'the disc and the caption the wall’s tile carries',
+        _authorsFinder,
+        query: 'jules',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Authors, nothing found · no button: '
+        'there is nothing to ask',
+        _authorsFinder,
+        query: 'tolkien',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Movies, nothing in the library · the '
+        'line and the way to Radarr as an outlined button',
+        _moviesFinder,
+        query: 'zzz',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Movies, Radarr, asked · the heading '
+        'over four poster plates',
+        _moviesFinder,
+        query: 'sh',
+        scope: MediaFindScope.service,
+        movieLookup: () => Completer<List<RadarrMovie>?>().future,
+        id: 'find-movies-asked',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Movies, Radarr found nothing · the '
+        'glyph and the line',
+        _moviesFinder,
+        query: 'zzz',
+        scope: MediaFindScope.service,
+        movieLookup: () async => const [],
+        id: 'find-movies-nothing',
+      ),
+      _finderScene(
+        'MediaBrowseScaffold · find on Movies, Radarr did not answer · the '
+        'app’s own failure state',
+        _moviesFinder,
+        query: 'sh',
+        scope: MediaFindScope.service,
+        movieLookup: () => Future.error(
+          DioException.connectionError(
+            requestOptions: RequestOptions(path: '/api/v3/movie/lookup'),
+            reason: 'Connection refused',
+          ),
+        ),
+        id: 'find-movies-unreachable',
+      ),
+      _finderScene(
+        'Text at 200% · find on Movies, your library: the heading, the rows '
+        'and the meta at twice the reading size',
+        _moviesFinder,
+        query: 'sh',
+        textScale: catalogTextScale,
+        id: 'text-200-find-movies',
+      ),
+      _finderScene(
+        'Text at 200% · find on Movies, Radarr: the held row and the plus',
+        _moviesFinder,
+        query: 'sh',
+        scope: MediaFindScope.service,
+        movieLookup: () async => _radarrLookup,
+        textScale: catalogTextScale,
+        id: 'text-200-find-radarr',
       ),
       CatalogScene(
         'MediaBrowseScaffold · 1280 desktop window · the wall sits in the '
@@ -723,13 +1016,12 @@ void main() {
         overrides: _musicOverrides('el', MediaFindScope.library, null),
       ),
       CatalogScene(
-        'Text at 200% · the library wall, a failed load with service: and a '
-        'search for Nosferatu: the header, the chips, the tile titles and the '
-        'failure at twice the reading size',
+        'Text at 200% · the library wall and a failed load with service: the '
+        'header, the chips, the tile titles and the failure at twice the '
+        'reading size',
         (_) => _phones([
           _scaffold(0, library: _shelfProvider),
           _scaffold(13, library: _failingProvider, service: ServiceKey.radarr),
-          _Typed(text: 'Nosferatu', child: _scaffold(14)),
         ]),
         textScale: catalogTextScale,
       ),

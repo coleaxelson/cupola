@@ -57,6 +57,9 @@ class CatalogTitleRow extends ConsumerWidget {
     required this.meta,
     required this.heroTag,
     required this.onChanged,
+    this.onOpen,
+    this.posterUrl,
+    this.heldAs,
   });
 
   final MediaPreview media;
@@ -70,17 +73,60 @@ class CatalogTitleRow extends ConsumerWidget {
   /// After a request or an add: the page reads its record again.
   final VoidCallback onChanged;
 
+  /// What a tap opens, when it is not the title's page by its TMDB id: a
+  /// library wall opens the copy of the connection it is on.
+  final VoidCallback? onOpen;
+
+  /// Set only by a library wall's lookup (the operator's alone), for a title
+  /// the wall's own library holds: the row then says where it stands in the
+  /// word the wall's badge gives that title (`status`, none while the queue
+  /// is unread; `hollow` for the backlog's ring), as the wall and its library
+  /// find do, instead of Seerr's word or `In Radarr`, and offers nothing: a
+  /// held title is not added or asked for again. Null, as everywhere else,
+  /// is the row Discover draws.
+  final ({({String label, StatusTone tone})? status, bool hollow})? heldAs;
+
+  /// The poster's address when it is not TMDB's own path ([media]'s
+  /// `posterPath`): an arr's lookup row carries a full address.
+  final String? posterUrl;
+
   bool get _isMovie => media.mediaType != 'tv';
 
   ServiceKey get _arr => _isMovie ? ServiceKey.radarr : ServiceKey.sonarr;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final held = heldAs;
+    if (held != null) {
+      final heldPoster =
+          posterUrl ?? ImageUtils.buildTmdbPosterUrl(media.posterPath);
+      return SearchRow.title(
+        title: media.title,
+        meta: meta,
+        status: held.status,
+        statusHollow: held.hollow,
+        poster: heldPoster,
+        heroTag: heldPoster.isEmpty ? null : heroTag,
+        onTap:
+            onOpen ??
+            () => context.openSeerrTitle(
+              mediaType: media.mediaType,
+              id: media.id,
+              heroTag: heldPoster.isEmpty ? null : heroTag,
+              posterUrl: heldPoster.isEmpty ? null : heldPoster,
+            ),
+        selected: context.paneShows(
+          media.mediaType == 'tv'
+              ? MediaKey.tv(media.id)
+              : MediaKey.movie(media.id),
+        ),
+      );
+    }
     final settings = ref.watch(currentSettingsProvider);
     final audience = ref.watch(audienceProvider);
     final numbering = ref.watch(seerrNumberingProvider).value;
     final kind = _isMovie ? SeerrMediaKind.movie : SeerrMediaKind.tv;
-    final poster = ImageUtils.buildTmdbPosterUrl(media.posterPath);
+    final poster = posterUrl ?? ImageUtils.buildTmdbPosterUrl(media.posterPath);
     // The standard copy: what a request from a row is for.
     final gate = seerrRequestGate(
       media.mediaInfo,
@@ -170,12 +216,14 @@ class CatalogTitleRow extends ConsumerWidget {
       status: status,
       poster: poster,
       heroTag: heroTag,
-      onTap: () => context.openSeerrTitle(
-        mediaType: media.mediaType,
-        id: media.id,
-        heroTag: poster.isEmpty ? null : heroTag,
-        posterUrl: poster.isEmpty ? null : poster,
-      ),
+      onTap:
+          onOpen ??
+          () => context.openSeerrTitle(
+            mediaType: media.mediaType,
+            id: media.id,
+            heroTag: poster.isEmpty ? null : heroTag,
+            posterUrl: poster.isEmpty ? null : poster,
+          ),
       action: action,
       selected: context.paneShows(
         media.mediaType == 'tv'

@@ -13,6 +13,7 @@ import 'package:cupola/features/series/data/sonarr_service.dart';
 import 'package:cupola/features/series/domain/models/sonarr_series.dart';
 import 'package:cupola/features/series/domain/sonarr_status.dart';
 import 'package:cupola/features/series/presentation/series_provider.dart';
+import 'package:cupola/features/series/presentation/series_find.dart';
 import 'package:cupola/features/series/presentation/series_search_provider.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
@@ -52,6 +53,20 @@ final sonarrCutoffUnmetSeriesIdsProvider = FutureProvider.autoDispose<Set<int>>(
   },
 );
 
+/// A series' state on the wall: the word its badge says it in, over the
+/// queue, so a title has one word on the wall and in the find.
+MediaStatusInfo? Function(SonarrSeries series) _statusOf(
+  ArrQueueSnapshot queue,
+) =>
+    (series) => badgeOverQueue(
+      sonarrSeriesStatus(
+        series,
+        queueEntry: queue.entryFor(series.id),
+        queueUnknown: !queue.isWhole,
+      ),
+      queue,
+    );
+
 class SeriesScreen extends ConsumerWidget {
   final bool showAppBar;
   final double topPadding;
@@ -66,10 +81,28 @@ class SeriesScreen extends ConsumerWidget {
     // Which of its addresses the lens's connection is reached at: the
     // posters go where the library is read from.
     final route = ref.watch(connectionRouteProvider(lens));
+    final status = _statusOf(queue);
+
+    // The series' own page, under this tab, opened on this Sonarr's copy;
+    // with no TMDB id, the way through its id here, where a Seerr can name
+    // TMDB's from TVDB's. The wall's tile, the library's find and Sonarr's
+    // all open it this way.
+    void open(BuildContext context, SonarrSeries series, String heroTag) {
+      if (series.tmdbId <= 0) {
+        context.push(ServiceRoutes.sonarrSeries(series.id, heroTag: heroTag));
+        return;
+      }
+      context.openMedia(
+        MediaKey.tv(series.tmdbId),
+        focus: lens.isEmpty ? null : lens,
+        heroTag: heroTag,
+        posterUrl: remotePosterOf(series.images),
+      );
+    }
 
     return MediaBrowseScaffold<SonarrSeries>(
       title: 'TV series',
-      searchHint: 'Search series',
+      searchHint: 'Series',
       activityRoute: '${ServiceRoutes.sonarr}/queue',
       navigationSection: NavigationSection.stack,
       serviceName: 'Sonarr',
@@ -77,23 +110,32 @@ class SeriesScreen extends ConsumerWidget {
       posterFallbackIcon: Icons.tv_outlined,
       accentColor: ServiceKey.sonarr.accent,
       heroTagPrefix: 'series',
-      searchHeroTagPrefix: 'series_search',
       libraryProvider: seriesProvider,
       searchQueryProvider: seriesSearchQueryProvider,
-      searchResultsProvider: seriesSearchResultsProvider,
+      find: MediaFind(
+        scopeProvider: seriesFindScopeProvider,
+        serviceLabel: ref.watch(
+          currentSettingsProvider.select(
+            (s) => s.connectionTitle(lens, ServiceKey.sonarr),
+          ),
+        ),
+        libraryBody: (context, query) => SeriesFindLibrary(
+          query: query,
+          statusOf: status,
+          settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
+          onOpen: open,
+          onAskSonarr: () => ref.read(seriesFindScopeProvider.notifier).state =
+              MediaFindScope.service,
+        ),
+        serviceBody: (context, query) =>
+            SeriesFindSonarr(query: query, statusOf: status, onOpen: open),
+      ),
       titleExtractor: (series) => series.title,
       subtitleExtractor: (series) => series.year > 0 ? '${series.year}' : '',
       sortTitleExtractor: (series) => series.sortTitle,
       imagesExtractor: (series) => series.images,
       idExtractor: (series) => series.id,
-      statusExtractor: (series) => badgeOverQueue(
-        sonarrSeriesStatus(
-          series,
-          queueEntry: queue.entryFor(series.id),
-          queueUnknown: !queue.isWhole,
-        ),
-        queue,
-      ),
+      statusExtractor: status,
       onRefresh: (ref) {
         // The family behind the snapshot, not the lens wrapper: see
         // `movies_screen.dart`. The read itself, which the series index is a
@@ -104,21 +146,7 @@ class SeriesScreen extends ConsumerWidget {
       },
       // The lens's connection, never the first one's: see `movies_screen.dart`.
       settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
-      onItemTap: (context, series, heroTag) {
-        // The series' own page, under this tab, opened on this Sonarr's copy;
-        // with no TMDB id, the way through its id here, where a Seerr can
-        // name TMDB's from TVDB's.
-        if (series.tmdbId <= 0) {
-          context.push(ServiceRoutes.sonarrSeries(series.id, heroTag: heroTag));
-          return;
-        }
-        context.openMedia(
-          MediaKey.tv(series.tmdbId),
-          focus: lens.isEmpty ? null : lens,
-          heroTag: heroTag,
-          posterUrl: remotePosterOf(series.images),
-        );
-      },
+      onItemTap: open,
       showAppBar: showAppBar,
       topPadding: topPadding,
       sorts: [

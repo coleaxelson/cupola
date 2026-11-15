@@ -53,10 +53,10 @@ void main() {
     scenes: [
       ..._scenes(CatalogPlatform.phone, 390),
       CatalogScene(
-        'Lidarr library · Search artists... · the hint in the field\'s own '
+        'Lidarr library · Artists and albums · the hint in the field\'s own '
         'hint ink',
         (_) => const SearchBarHeader(
-          hintText: 'Search artists',
+          hintText: 'Artists and albums',
           onQueryChanged: _ignore,
         ),
         width: 390,

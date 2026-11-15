@@ -69,10 +69,10 @@ final class SearchRowSetUp extends SearchRowAction {
 
 /// One row of a search by kind, and of the atrium's people: a
 /// title with its poster, what it is and where it stands, or a person with
-/// their face and what they are known for. Music's results are the same row
-/// in two more shapes: an album with its square cover and an artist with
-/// their disc, both of which, unlike a person, say where they stand and carry
-/// a control.
+/// their face and what they are known for. A library's own results are the
+/// same row in two more shapes: an album with its square cover and an artist
+/// or an author with their disc, both of which, unlike a person, say where
+/// they stand and carry a control.
 ///
 /// Flat on the page, no card: the section heading above groups the rows.
 /// The row is one control that speaks one sentence; a title that can be
@@ -87,6 +87,7 @@ class SearchRow extends StatelessWidget {
     required this.title,
     required this.meta,
     this.status,
+    this.statusHollow = false,
     String poster = '',
     this.posterHeaders,
     this.heroTag,
@@ -95,7 +96,6 @@ class SearchRow extends StatelessWidget {
     this.selected = false,
     this.padding = EdgeInsets.zero,
   }) : imageUrl = poster,
-       statusHollow = false,
        hint = null,
        _kind = _Kind.title;
 
@@ -120,11 +120,12 @@ class SearchRow extends StatelessWidget {
        selected = false,
        _kind = _Kind.album;
 
-  /// An artist in a search of music: their [photo] in a 44 disc (their
-  /// initials without one), what they are under the name, where they stand,
-  /// and a control at the end when there is one. Unlike [SearchRow.person]
-  /// it has no chevron: what it opens, or does, is its own.
-  const SearchRow.artist({
+  /// Someone in a list of what a library holds or a catalog found (an artist,
+  /// an author): their [photo] in a 44 disc (their initials without one), what
+  /// they are under the name, where they stand, and a control at the end when
+  /// there is one. Unlike [SearchRow.person], the atrium's, it has no chevron:
+  /// what it opens, or does, is its own.
+  const SearchRow.disc({
     super.key,
     required String name,
     required String line,
@@ -184,7 +185,9 @@ class SearchRow extends StatelessWidget {
   /// The poster flies into the title's page under this tag; null for none.
   final String? heroTag;
 
-  final VoidCallback onTap;
+  /// What a tap does; null for a row that opens nothing, which is then no
+  /// button to a screen reader and takes no press feedback.
+  final VoidCallback? onTap;
 
   /// What the row offers at its end. Null where there is nothing to add or
   /// ask for, and then there is no control at all.
@@ -228,7 +231,7 @@ class SearchRow extends StatelessWidget {
     final room = CupolaRoom.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final status = this.status;
-    // A music row's dots are commas to the ear.
+    // The dots of an album's or a disc's meta are commas to the ear.
     final said = _roomy ? splitParts(meta).join(', ') : meta;
     final statusSaid = status == null
         ? null
@@ -239,7 +242,8 @@ class SearchRow extends StatelessWidget {
       onTap: onTap,
       semanticLabel: title,
       semanticValue: spoken,
-      semanticHint: hint,
+      // A row that opens nothing has nothing to say of what a tap does.
+      semanticHint: onTap == null ? null : hint,
       semanticSelected: selected ? true : null,
       excludeChildSemantics: true,
       child: ConstrainedBox(

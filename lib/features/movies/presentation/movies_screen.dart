@@ -10,6 +10,7 @@ import 'package:cupola/features/movies/data/radarr_service.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
 import 'package:cupola/features/movies/domain/radarr_status.dart';
 import 'package:cupola/features/movies/presentation/movies_provider.dart';
+import 'package:cupola/features/movies/presentation/movies_find.dart';
 import 'package:cupola/features/movies/presentation/movies_search_provider.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
@@ -44,6 +45,20 @@ final radarrCutoffUnmetIdsProvider = FutureProvider.autoDispose<Set<int>>((
   };
 });
 
+/// A movie's state on the wall: the word its badge says it in, over the queue,
+/// so a title has one word on the wall and in the find.
+MediaStatusInfo? Function(RadarrMovie movie) _statusOf(
+  ArrQueueSnapshot queue,
+) =>
+    (movie) => badgeOverQueue(
+      radarrMovieStatus(
+        movie,
+        queueEntry: queue.entryFor(movie.id),
+        queueUnknown: !queue.isWhole,
+      ),
+      queue,
+    );
+
 class MoviesScreen extends ConsumerWidget {
   final bool showAppBar;
   final double topPadding;
@@ -60,33 +75,63 @@ class MoviesScreen extends ConsumerWidget {
     // Which of its addresses the lens's connection is reached at: the
     // posters go where the library is read from.
     final route = ref.watch(connectionRouteProvider(lens));
+    final status = _statusOf(queue);
+    // The connection the grid shows, which is the lens's, never the first
+    // one's: the posters are built off this address and key, so a 4K grid
+    // keyed on the first Radarr drew its movies' artwork from the other
+    // server, under that server's ids. Editing the lens's connection re-keys
+    // the grid, and editing another does not.
+
+    // The film's own page, under this tab, opened on this Radarr's copy. The
+    // wall's tile, the library's find and Radarr's all open it this way.
+    void open(BuildContext context, RadarrMovie movie, String heroTag) {
+      if (movie.tmdbId <= 0) {
+        context.push(ServiceRoutes.radarrMovie(movie.id, heroTag: heroTag));
+        return;
+      }
+      context.openMedia(
+        MediaKey.movie(movie.tmdbId),
+        focus: lens.isEmpty ? null : lens,
+        heroTag: heroTag,
+        posterUrl: remotePosterOf(movie.images),
+      );
+    }
 
     return MediaBrowseScaffold<RadarrMovie>(
       title: 'Movies',
-      searchHint: 'Search movies',
+      searchHint: 'Movies',
       activityRoute: '${ServiceRoutes.radarr}/queue',
       navigationSection: NavigationSection.stack,
       serviceName: 'Radarr',
       service: ServiceKey.radarr,
       accentColor: ServiceKey.radarr.accent,
       heroTagPrefix: 'movie',
-      searchHeroTagPrefix: 'movie_search',
       libraryProvider: moviesProvider,
       searchQueryProvider: moviesSearchQueryProvider,
-      searchResultsProvider: moviesSearchResultsProvider,
+      find: MediaFind(
+        scopeProvider: moviesFindScopeProvider,
+        serviceLabel: ref.watch(
+          currentSettingsProvider.select(
+            (s) => s.connectionTitle(lens, ServiceKey.radarr),
+          ),
+        ),
+        libraryBody: (context, query) => MoviesFindLibrary(
+          query: query,
+          statusOf: status,
+          settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
+          onOpen: open,
+          onAskRadarr: () => ref.read(moviesFindScopeProvider.notifier).state =
+              MediaFindScope.service,
+        ),
+        serviceBody: (context, query) =>
+            MoviesFindRadarr(query: query, statusOf: status, onOpen: open),
+      ),
       titleExtractor: (movie) => movie.title,
       subtitleExtractor: (movie) => movie.year > 0 ? '${movie.year}' : '',
       sortTitleExtractor: (movie) => movie.sortTitle,
       imagesExtractor: (movie) => movie.images,
       idExtractor: (movie) => movie.id,
-      statusExtractor: (movie) => badgeOverQueue(
-        radarrMovieStatus(
-          movie,
-          queueEntry: queue.entryFor(movie.id),
-          queueUnknown: !queue.isWhole,
-        ),
-        queue,
-      ),
+      statusExtractor: status,
       onRefresh: (ref) {
         // The family behind the snapshot, not the lens wrapper alone: that
         // one only resolves the lens and re-watches its family member, which
@@ -99,25 +144,8 @@ class MoviesScreen extends ConsumerWidget {
         // line the pull refreshed the posters and left the figures frozen.
         ref.invalidate(radarrKpiLibraryProvider);
       },
-      // The connection the grid shows, which is the lens's, never the first
-      // one's: the posters are built off this address and key, so a 4K grid
-      // keyed on the first Radarr drew its movies' artwork from the other
-      // server, under that server's ids. Editing the lens's connection re-keys
-      // the grid, and editing another does not.
       settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
-      onItemTap: (context, movie, heroTag) {
-        // The film's own page, under this tab, opened on this Radarr's copy.
-        if (movie.tmdbId <= 0) {
-          context.push(ServiceRoutes.radarrMovie(movie.id, heroTag: heroTag));
-          return;
-        }
-        context.openMedia(
-          MediaKey.movie(movie.tmdbId),
-          focus: lens.isEmpty ? null : lens,
-          heroTag: heroTag,
-          posterUrl: remotePosterOf(movie.images),
-        );
-      },
+      onItemTap: open,
       showAppBar: showAppBar,
       topPadding: topPadding,
       sorts: [

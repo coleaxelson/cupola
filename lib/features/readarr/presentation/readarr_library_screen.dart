@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
-import 'package:cupola/core/status/lexicon.dart';
-import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/readarr/domain/models/readarr_models.dart';
+import 'package:cupola/features/readarr/domain/readarr_author_caption.dart';
+import 'package:cupola/features/readarr/presentation/readarr_find.dart';
 import 'package:cupola/features/readarr/presentation/readarr_provider.dart';
 import 'package:cupola/features/readarr/presentation/readarr_search_provider.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
@@ -15,23 +15,7 @@ import 'package:cupola/features/settings/data/connection_reach_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 
-/// `3/12 books · 4 missing`: the caption under an author's portrait.
-///
-/// Top-level and pure so the wording is assertable without a pumped wall, as
-/// `lidarrArtistCaption` is. The counts are the ones the row has always shown;
-/// the missing part is left out when nothing is.
-///
-/// An author with no book counted reads an em dash. Readarr's `statistics`
-/// can be absent (an author it has not scanned yet) and the model reads an
-/// absent count as zero, so `0/0 books` would assert a fact nobody reported.
-String readarrAuthorCaption(ReadarrAuthor author) {
-  if (author.bookCount <= 0) return Lexicon.noFigure;
-  return [
-    '${author.bookFileCount}/${author.bookCount} books',
-    if (author.missingBookCount > 0)
-      '${author.missingBookCount} ${StateWord.missing.inline}',
-  ].join(dotSeparator);
-}
+export 'package:cupola/features/readarr/domain/readarr_author_caption.dart';
 
 /// Readarr's Library tab: the full author list, on the wall every other
 /// library stands on.
@@ -46,7 +30,7 @@ String readarrAuthorCaption(ReadarrAuthor author) {
 /// author whose books are downloading. With no status the wall draws none of
 /// the chips that ask one either (see `MediaBrowseScaffold.statusExtractor`).
 /// No lookup: Readarr's metadata host no longer answers, so the search is the
-/// library's own (`readarrSearchResultsProvider`).
+/// library's own (`AuthorsFindLibrary`), with no second scope.
 class ReadarrLibraryScreen extends ConsumerWidget {
   /// Whether to draw this screen's own app bar.
   ///
@@ -95,19 +79,38 @@ class ReadarrLibraryScreen extends ConsumerWidget {
     // photos go where the library is read from.
     final route = ref.watch(connectionRouteProvider(lens));
 
+    // The author's own page, under this tab, opened on this Readarr's copy:
+    // the wall's tile and the library's find both open it this way.
+    void open(BuildContext context, ReadarrAuthor author, String heroTag) {
+      context.push(
+        ServiceRoutes.readarrAuthor(
+          author.id,
+          heroTag: heroTag,
+          instanceId: lens.isEmpty ? null : lens,
+        ),
+        extra: author,
+      );
+    }
+
     return MediaBrowseScaffold<ReadarrAuthor>(
       title: 'Authors',
-      searchHint: 'Search authors',
+      searchHint: 'Authors',
       activityRoute: '${ServiceRoutes.readarr}/queue',
       navigationSection: NavigationSection.stack,
       serviceName: 'Readarr',
       service: ServiceKey.readarr,
       accentColor: ServiceKey.readarr.accent,
       heroTagPrefix: 'author',
-      searchHeroTagPrefix: 'author_search',
       libraryProvider: readarrAuthorsProvider,
       searchQueryProvider: readarrSearchQueryProvider,
-      searchResultsProvider: readarrSearchResultsProvider,
+      // Only the library: Readarr has no lookup to ask (see below).
+      find: MediaFind.libraryOnly(
+        libraryBody: (context, query) => AuthorsFindLibrary(
+          query: query,
+          settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
+          onOpen: open,
+        ),
+      ),
       titleExtractor: (author) => author.authorName,
       subtitleExtractor: readarrAuthorCaption,
       sortTitleExtractor: (author) => author.authorName,
@@ -123,18 +126,7 @@ class ReadarrLibraryScreen extends ConsumerWidget {
       // The connection the wall shows, which is the lens's, never the first
       // one's: see `movies_screen.dart`.
       settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
-      onItemTap: (context, author, heroTag) {
-        // The author's own page, under this tab, opened on this Readarr's
-        // copy.
-        context.push(
-          ServiceRoutes.readarrAuthor(
-            author.id,
-            heroTag: heroTag,
-            instanceId: lens.isEmpty ? null : lens,
-          ),
-          extra: author,
-        );
-      },
+      onItemTap: open,
       // The author's photo, as the author's page draws it: the same picture
       // on the wall and under the name, never a banner cropped to a circle.
       coverTypes: const ['poster'],

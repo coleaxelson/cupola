@@ -72,7 +72,6 @@ class MusicScreen extends ConsumerWidget {
       service: ServiceKey.lidarr,
       accentColor: ServiceKey.lidarr.accent,
       heroTagPrefix: 'artist',
-      searchHeroTagPrefix: 'artist_search',
       libraryProvider: musicProvider,
       searchQueryProvider: musicSearchQueryProvider,
       find: MediaFind(
