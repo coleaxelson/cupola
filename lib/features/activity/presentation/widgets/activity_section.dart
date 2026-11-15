@@ -24,7 +24,12 @@ class ActivitySection extends StatelessWidget {
     this.semanticLabel,
     this.slabPadding = const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
     this.light,
+    this.controls,
   });
+
+  /// What narrows the rows, between the name and the slab: filter pills.
+  /// Null for none.
+  final Widget? controls;
 
   /// The picture of the light of the section's first title: its slab glows
   /// with it. Null for an unlit slab.
@@ -145,6 +150,16 @@ class ActivitySection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         heading,
+        if (controls case final controls?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.gutter,
+              0,
+              AppSpacing.gutter,
+              AppSpacing.sm,
+            ),
+            child: controls,
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.gutter),
           child: ActivitySlab(

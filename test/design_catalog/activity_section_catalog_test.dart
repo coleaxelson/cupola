@@ -4,8 +4,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/core/widgets/selection_pills.dart';
 import 'package:cupola/features/activity/presentation/widgets/activity_section.dart';
+import 'package:cupola/features/activity/presentation/widgets/everyone_request_row.dart';
+import 'package:cupola/features/discover/domain/models/seerr_request.dart';
+import 'package:cupola/features/requests/domain/my_requests.dart';
 
 import 'catalog.dart';
 
@@ -37,6 +42,83 @@ class _Row extends StatelessWidget {
     );
   }
 }
+
+/// The filter pills as the board draws them.
+class _Pills extends StatelessWidget {
+  const _Pills({this.state, this.person});
+
+  final String? state;
+  final String? person;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: AppSpacing.sm,
+    runSpacing: AppSpacing.sm,
+    children: [
+      IntrinsicWidth(
+        child: SelectionPill(
+          label: state ?? 'Any state',
+          selected: state != null,
+          onTap: () {},
+          trailing: Icons.expand_more_rounded,
+        ),
+      ),
+      IntrinsicWidth(
+        child: SelectionPill(
+          label: person ?? 'Anyone',
+          selected: person != null,
+          onTap: () {},
+          trailing: Icons.expand_more_rounded,
+        ),
+      ),
+      if (state != null || person != null)
+        IntrinsicWidth(
+          child: SelectionPill(label: 'Clear', selected: false, onTap: () {}),
+        ),
+    ],
+  );
+}
+
+/// The slab's one line when the filters keep no request.
+class _Empty extends StatelessWidget {
+  const _Empty();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+    child: Text(
+      'No requests match these filters.',
+      textAlign: TextAlign.center,
+      style: AppType.body.copyWith(color: CupolaRoom.of(context).inkSecondary),
+    ),
+  );
+}
+
+final _now = DateTime(2026, 10, 10, 20, 30);
+
+/// A declined request as the board draws it: the operator's line (`Declined
+/// yesterday`) and who asked, over a poster-less row.
+Widget _declined(
+  String title,
+  String who, {
+  required int daysAgo,
+  bool divided = false,
+}) => EveryoneRequestRow(
+  mine: MyRequest(
+    request: SeerrRequest(
+      id: title.length,
+      status: RequestStatus.declined,
+      type: 'movie',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      media: RequestMedia(id: 1, tmdbId: 1, mediaType: 'movie', title: title),
+      requestedBy: RequestedBy(id: 1, displayName: who),
+    ),
+    stage: MyRequestStage.declined,
+    answeredAt: _now.subtract(Duration(days: daysAgo)),
+  ),
+  now: _now,
+  divided: divided,
+);
 
 void main() {
   catalogCard(
@@ -163,6 +245,32 @@ void main() {
         ),
         width: 390,
         textScale: catalogTextScale,
+      ),
+      CatalogScene(
+        'ActivitySection(controls:) · Everyone\'s requests narrowed: the '
+        'pills between the name and the slab, the one that narrows lit, '
+        'Clear while any does, and the count as 41 of 348',
+        (_) => ActivitySection(
+          title: 'Everyone\'s requests',
+          meta: '41 of 348',
+          controls: const _Pills(state: 'Declined'),
+          children: [
+            _declined('Coffee Run', 'Anna', daysAgo: 1),
+            _declined('Sprite Fright', 'Ben', daysAgo: 3, divided: true),
+          ],
+        ),
+        width: 390,
+      ),
+      CatalogScene(
+        'ActivitySection(controls:) · a filter that leaves nothing: the '
+        'section stays with its pills, and its slab says so',
+        (_) => ActivitySection(
+          title: 'Everyone\'s requests',
+          meta: '0 of 348',
+          controls: const _Pills(state: 'Blocked', person: 'Anna'),
+          children: const [_Empty()],
+        ),
+        width: 390,
       ),
       CatalogScene(
         'On the desktop · a section in the page well',

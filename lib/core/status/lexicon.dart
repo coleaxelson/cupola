@@ -259,6 +259,13 @@ abstract final class Lexicon {
   /// asked for again.
   static const removedFromServer = 'Removed from the server';
 
+  /// The first choice of Activity's state filter: nothing narrows.
+  static const anyState = 'Any state';
+
+  /// The slab of a request list the filters leave empty. Never `No requests
+  /// yet`: that says nobody asked.
+  static const noRequestsMatch = 'No requests match these filters.';
+
   /// Under [removedFromServer].
   static const askAgain = 'You can ask for it again.';
 

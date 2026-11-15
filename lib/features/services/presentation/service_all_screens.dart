@@ -6,6 +6,7 @@ import 'package:cupola/core/utils/route_utils.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
+import 'package:cupola/features/activity/domain/request_filters.dart';
 import 'package:cupola/features/activity/presentation/widgets/requests_board.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 
@@ -28,7 +29,11 @@ class ServiceAllRequestsScreen extends ConsumerWidget {
     super.key,
     this.showAppBar = true,
     this.topPadding = 0,
+    this.filters = RequestFilters.none,
   });
+
+  /// The list's filters, from the address (`?state=`, `?by=`).
+  final RequestFilters filters;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -62,7 +67,13 @@ class ServiceAllRequestsScreen extends ConsumerWidget {
                 AppSpacing.lg +
                 FloatingNavBarMetrics.getScrollViewBottomPadding(context),
           ),
-          children: const [RequestsBoard(only: '')],
+          children: [
+            RequestsBoard(
+              only: '',
+              filters: filters,
+              address: Uri(path: ServiceRoutes.seerrRequests),
+            ),
+          ],
         ),
       ),
     );

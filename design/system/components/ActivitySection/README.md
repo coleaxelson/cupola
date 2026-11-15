@@ -18,9 +18,13 @@ Every section of the Activity page: Needs you, Everyone's requests, Watching now
 
 At a large reading size (a text scale of 1.3 and over) the count goes under the name instead of beside it, left-aligned: beside it, the name broke inside its words. The same happens at any size when the count, measured as it is set, does not fit beside the name with its gap and chevron (Needs you's `3 faults · 2 violations · 3 requests` on a phone): it goes under the name rather than run past the page. A slab link at that size puts its count under its label, whole and free to wrap, rather than ellipsising it in what the label leaves of the line.
 
+## Controls
+
+`ActivitySection(controls:)` takes a widget that narrows the rows and draws it between the heading and the slab, on the gutter, `AppSpacing.sm` above the slab. Everyone's requests puts its filter pills there (`SelectionPill` with `expand_more` in a `Wrap`: `Any state`, `Anyone` where the connection names who asked, `Clear` while either narrows). The pills sit on as many lines as they need, never a row to scroll. While they narrow the list the count reads `41 of 348` (`41+ of 348` where the rows are not whole). A filter that keeps no request leaves the section and its pills, and its slab holds one centred line in `AppType.body` in `inkSecondary`: `No requests match these filters.` Never the page's `No requests yet`, which says nobody asked.
+
 ## The consumer provides
 
-`title` and `children` (the rows, already divided: the first is not, the rest are); optionally `meta`, `onOpen` with the `openHint` that says where it leads (`Opens Downloads`), a `semanticLabel` when the name and the count are not the whole sentence, and a `slabPadding`. A slab link takes `label`, `onTap`, optionally `meta` and `divided`.
+`title` and `children` (the rows, already divided: the first is not, the rest are); optionally `meta`, `controls`, `onOpen` with the `openHint` that says where it leads (`Opens Downloads`), a `semanticLabel` when the name and the count are not the whole sentence, and a `slabPadding`. A slab link takes `label`, `onTap`, optionally `meta` and `divided`.
 
 ## Semantics
 
@@ -35,6 +39,7 @@ Each sheet is drawn in the dark and the light room, on the phone and on the desk
 - A section with a count and three rows, a section with no count, and one whose count leads on (`onOpen`, with its chevron).
 - `ActivitySlabLink` as the last line of a slab, and as the slab's only line with a long count at 320pt.
 - A count too long for the name's line (`3 faults · 2 violations · 3 requests`), under the name at the default size.
+- Everyone's requests narrowed: the pills with one lit and `Clear`, and a filter that leaves nothing, its slab saying so.
 - Text at 200%: the count under the name, on a section that leads on and on one that does not, with a link line.
 - The desktop: a section in the page well.
 

@@ -124,6 +124,7 @@ void main() {
       // An approved one is deleted on its row's long press.
       final sprite = find.text('Sprite Fright');
       await tester.ensureVisible(sprite);
+      await tester.pump();
       await tester.longPress(sprite);
       await harness.settle(tester);
       expect(find.text('Delete request'), findsOneWidget);

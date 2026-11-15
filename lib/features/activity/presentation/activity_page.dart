@@ -25,6 +25,7 @@ import 'package:cupola/features/activity/domain/activity_history.dart';
 import 'package:cupola/features/activity/domain/activity_readout.dart';
 import 'package:cupola/features/activity/domain/activity_download.dart';
 import 'package:cupola/features/activity/domain/activity_tab.dart';
+import 'package:cupola/features/activity/domain/request_filters.dart';
 import 'package:cupola/core/capability/role_gate_provider.dart';
 import 'package:cupola/features/activity/data/household_requests.dart';
 import 'package:cupola/features/activity/domain/everyones_requests.dart';
@@ -114,7 +115,12 @@ final activityRoomSourceProvider = Provider.autoDispose<String?>((ref) {
 /// top of another. The page has no app bar: its name, the line under it and
 /// the views scroll with it, as the Home's day does.
 class ActivityPage extends ConsumerWidget {
-  const ActivityPage({super.key, required this.tab, this.requestsOf});
+  const ActivityPage({
+    super.key,
+    required this.tab,
+    this.requestsOf,
+    this.requestFilters = RequestFilters.none,
+  });
 
   /// The view the address names.
   final ActivityTab tab;
@@ -122,6 +128,9 @@ class ActivityPage extends ConsumerWidget {
   /// The Seerr connection the Requests view reads (`?i=`), or null for
   /// every one.
   final String? requestsOf;
+
+  /// The Requests view's filters, from the address.
+  final RequestFilters requestFilters;
 
   /// How stale the page may be before returning to it earns a refetch: the
   /// Home's two minutes, for the same reads.
@@ -240,7 +249,15 @@ class ActivityPage extends ConsumerWidget {
       const _UpNextSection(),
     ],
     ActivityTab.requests => [
-      RequestsBoard(key: ValueKey(requestsOf), only: requestsOf),
+      RequestsBoard(
+        key: ValueKey(requestsOf),
+        only: requestsOf,
+        filters: requestFilters,
+        address: Uri(
+          path: ServiceRoutes.activityRequests,
+          queryParameters: {'i': ?requestsOf},
+        ),
+      ),
     ],
     ActivityTab.history => const [
       _HistoryDays(),

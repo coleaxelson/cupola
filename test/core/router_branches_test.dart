@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:flutter_riverpod/misc.dart' show Override;
+
+import 'package:cupola/core/widgets/selection_pills.dart';
+import 'package:cupola/features/discover/data/seerr_service.dart';
+import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/home/data/featured.dart';
 import 'package:cupola/features/home/data/home_live.dart';
 import 'package:cupola/core/router.dart';
@@ -11,6 +16,7 @@ import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/page_tabs.dart';
 import 'package:cupola/features/activity/data/activity_live.dart';
 import 'package:cupola/features/activity/domain/activity_tab.dart';
+import 'package:cupola/features/activity/domain/request_filters.dart';
 import 'package:cupola/features/activity/presentation/activity_page.dart';
 import 'package:cupola/features/import/presentation/manual_import_routes.dart';
 import 'package:cupola/features/services/domain/service_tab.dart';
@@ -21,6 +27,7 @@ import 'package:cupola/features/shell/presentation/shell_screen.dart';
 import 'package:cupola/features/settings/domain/service_instance.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
 
+import '../test_helpers/fake_services.dart';
 import '../test_helpers/settings_scope.dart';
 
 const _secondSeerr = ServiceInstance(
@@ -205,6 +212,7 @@ void main() {
     String? at,
     List<ServiceKey> configured = const [],
     SettingsModel Function(SettingsModel settings)? customize,
+    List<Override> overrides = const [],
   }) async {
     // `settingsScopeOverrides` already marks onboarding complete, which is what
     // keeps the router off the onboarding gate.
@@ -221,6 +229,7 @@ void main() {
         // And Activity's, for the same reason.
         activityLivePollProvider.overrideWith((ref, tab) {}),
         featuredAdvancesProvider.overrideWithValue(false),
+        ...overrides,
       ],
     );
     addTearDown(container.dispose);
@@ -764,6 +773,66 @@ void main() {
         );
       });
     }
+
+    testWidgets('the requests view carries its filters, and keeps the '
+        'connection beside them', (tester) async {
+      final router = await pumpRouter(
+        tester,
+        at: '/activity/requests?i=${_secondSeerr.id}&state=declined',
+        configured: const [ServiceKey.seerr],
+        customize: (settings) => settings.copyWithInstance(_secondSeerr),
+      );
+
+      final page = tester.widget<ActivityPage>(find.byType(ActivityPage));
+      expect(page.requestFilters.state, RequestStateGroup.declined);
+      expect(page.requestsOf, _secondSeerr.id);
+      expect(router.state.uri.queryParameters['state'], 'declined');
+    });
+
+    // Seerr's own Requests tab reads the same address: the list it draws is
+    // the board's, so the filters narrow it the same way.
+    testWidgets('Seerr\'s Requests tab draws what ?state=declined says', (
+      tester,
+    ) async {
+      await pumpRouter(
+        tester,
+        at: '/stack/seerr/requests?state=declined',
+        configured: const [ServiceKey.seerr],
+        overrides: [
+          seerrServiceProvider.overrideWith(
+            (ref) => _SeerrWithRequests([
+              _seerrRequest(1, status: 3),
+              _seerrRequest(2, status: 3),
+              _seerrRequest(3, status: 2, media: 5),
+            ]),
+          ),
+        ],
+      );
+
+      final declined = tester.widget<SelectionPill>(
+        find.widgetWithText(SelectionPill, 'Declined'),
+      );
+      expect(declined.selected, isTrue);
+      expect(find.text('Title 1'), findsOneWidget);
+      expect(find.text('Title 2'), findsOneWidget);
+      expect(find.text('Title 3'), findsNothing);
+      expect(find.text('2 of 3'), findsOneWidget);
+    });
+
+    testWidgets('a view that is not the requests one ignores the filters', (
+      tester,
+    ) async {
+      await pumpRouter(
+        tester,
+        at: '/activity/history?state=declined',
+        configured: const [ServiceKey.radarr],
+      );
+
+      expect(
+        tester.widget<ActivityPage>(find.byType(ActivityPage)).requestFilters,
+        RequestFilters.none,
+      );
+    });
   });
 
   testWidgets('Set up X from a service page comes back to it', (tester) async {
@@ -785,4 +854,30 @@ void main() {
     expect(router.state.uri.path, landed);
     expect(tester.takeException(), isNull);
   });
+}
+
+/// Seerr's own numbering: request 2 approved, 3 declined; media 5 available.
+SeerrRequest _seerrRequest(int id, {required int status, int media = 1}) =>
+    SeerrRequest.fromJson({
+      'id': id,
+      'status': status,
+      'type': 'movie',
+      'createdAt': '2026-08-01T10:00:00.000Z',
+      'media': {
+        'id': id,
+        'tmdbId': 100 + id,
+        'mediaType': 'movie',
+        'status': media,
+        'title': 'Title $id',
+      },
+      'requestedBy': {'id': 1, 'displayName': 'Anna'},
+    }, numbering: SeerrNumbering.seerr);
+
+class _SeerrWithRequests extends FakeSeerrService {
+  _SeerrWithRequests(this.requests);
+
+  final List<SeerrRequest> requests;
+
+  @override
+  Future<List<SeerrRequest>> getRequestRows() async => requests;
 }
