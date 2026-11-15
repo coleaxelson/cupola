@@ -25,7 +25,9 @@ import 'package:cupola/features/media/domain/media_reading.dart';
 import 'package:cupola/features/media/domain/media_rows.dart';
 import 'package:cupola/core/widgets/app_bottom_sheet.dart';
 import 'package:cupola/features/media/presentation/media_add_sheet.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/media/presentation/media_page.dart';
+import 'package:cupola/features/media/presentation/media_report_provider.dart';
 import 'package:cupola/features/media/presentation/media_parts.dart';
 import 'package:cupola/features/media/presentation/media_watched_by.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
@@ -572,11 +574,14 @@ CatalogScene _addScene() => CatalogScene(
 /// An episode's sheet over its series: the still, TMDB's score, Resume on
 /// Jellyfin part-way, the synopsis, and what Sonarr holds: a 720p file below
 /// the profile's 1080p, the search for it, Monitored.
-CatalogScene _episodeScene() {
-  final rows = _series();
+CatalogScene _episodeScene({bool report = false}) {
+  final rows = _series(reportable: report);
   return CatalogScene(
-    'Episode · its still, where it plays and how far, what Sonarr holds and '
-    'the search for the quality it lacks',
+    report
+        ? 'Episode · Report a problem with this episode, at the end of the '
+              'sheet, for a season on the server'
+        : 'Episode · its still, where it plays and how far, what Sonarr holds '
+              'and the search for the quality it lacks',
     (context) => Stack(
       fit: StackFit.expand,
       children: [
@@ -602,6 +607,9 @@ CatalogScene _episodeScene() {
                 profileId: 1,
               ),
               seerr: (connectionId: _seerr.id, tvId: 358332),
+              report: report
+                  ? (key: const MediaKey.tv(358332), focus: null)
+                  : null,
               server: (connection: _jellyfin, name: 'Jellyfin'),
               light: _lights[CatalogArt.backdrop],
               onPlay: (_) {},
@@ -616,6 +624,12 @@ CatalogScene _episodeScene() {
     overrides: [
       mediaRowsProvider.overrideWith((ref, key) => rows),
       audienceProvider.overrideWithValue(Audience.operator),
+      roleGateProvider.overrideWith(
+        (ref, id) => const RoleGate(
+          audience: Audience.operator,
+          grant: SeerrGrant.apiKey(),
+        ),
+      ),
       titleLightProvider.overrideWith((ref, url) async => _lights[url]),
       mediaRecommendationsProvider.overrideWith((ref, source) async => []),
       mediaSeasonFactsProvider.overrideWith(
@@ -670,7 +684,7 @@ final _sonarr = _connection(ServiceKey.sonarr, 'sonarr');
 /// Jellyfin (two watched, the third part-way), two downloading, five aired
 /// and missing, ten upgrades waiting on an import, and a third season
 /// starting in three days.
-List<MediaRow> _series() {
+List<MediaRow> _series({bool reportable = false}) {
   final now = catalogNow;
   var id = 1000;
   final episodes = [
@@ -793,7 +807,7 @@ List<MediaRow> _series() {
     MediaConnectionRow<MediaSeerrRecord>(
       _seerr,
       _answered(
-        const MediaSeerrRecord(
+        MediaSeerrRecord(
           details: {
             'id': 358332,
             'name': 'Cosmos Laundromat',
@@ -815,7 +829,17 @@ List<MediaRow> _series() {
             'posterPath': CatalogArt.tmdbPoster,
             'backdropPath': CatalogArt.tmdbBackdrop,
             'voteAverage': 8.0,
-            'mediaInfo': {'status': 4},
+            'mediaInfo': reportable
+                ? {
+                    'id': 90,
+                    'status': 4,
+                    'issues': [],
+                    'seasons': [
+                      {'seasonNumber': 1, 'status': 5},
+                      {'seasonNumber': 2, 'status': 5},
+                    ],
+                  }
+                : {'status': 4},
           },
           rottenTomatoes: 88,
         ),
@@ -902,6 +926,79 @@ CatalogScene _graphScene({
       mediaSeasonFactsProvider.overrideWith(
         (ref, source) => _seasonFacts(source.season),
       ),
+    ],
+  );
+}
+
+/// Nosferatu on the server by Seerr's word, with one open issue: the
+/// requester's own, or the operator's to read.
+CatalogScene _reportScene(String caption, {required Audience audience}) {
+  final requester = audience == Audience.requester;
+  final issue = {
+    'id': 12,
+    'issueType': 1,
+    'status': 1,
+    'createdAt': catalogNow.subtract(const Duration(days: 1)).toIso8601String(),
+    'updatedAt': catalogNow.subtract(const Duration(days: 1)).toIso8601String(),
+    'createdBy': {
+      'id': requester ? 2 : 3,
+      'displayName': requester ? 'Anna' : 'Luca',
+    },
+  };
+  final rows = [
+    for (final row in _withSeerr(
+      mediaInfo: {
+        'id': 81,
+        'status': 5,
+        'issues': [issue],
+      },
+    ))
+      if (row is! MediaConnectionRow<MediaRadarrCopy> || !requester) row,
+  ];
+  return CatalogScene(
+    caption,
+    (_) => const MediaPage(mediaKey: _key),
+    width: 390,
+    height: requester ? 1500 : 2300,
+    overrides: [
+      mediaRowsProvider.overrideWith((ref, key) => rows),
+      audienceProvider.overrideWithValue(audience),
+      roleGateProvider.overrideWith(
+        (ref, id) => requester
+            ? RoleGate(
+                audience: audience,
+                grant: SeerrGrant.account(
+                  permissions:
+                      SeerrPermission.request.value |
+                      SeerrPermission.createIssues.value,
+                ),
+              )
+            : const RoleGate(
+                audience: Audience.operator,
+                grant: SeerrGrant.apiKey(),
+              ),
+      ),
+      seerrAccountUserIdProvider.overrideWith((ref, id) => requester ? 2 : 1),
+      mediaReportIssueProvider.overrideWith(
+        (ref, source) async => SeerrIssue.fromJson({
+          ...issue,
+          'comments': [
+            {
+              'id': 1,
+              'message': 'It plays a different movie: the file is Sintel.',
+              'user': issue['createdBy'],
+            },
+            {
+              'id': 2,
+              'message': 'Which copy?',
+              'user': {'id': 1, 'displayName': 'Matt'},
+            },
+          ],
+        }),
+      ),
+      titleLightProvider.overrideWith((ref, url) async => _lights[url]),
+      mediaCollectionHeldProvider.overrideWith((ref, c) async => null),
+      mediaRecommendationsProvider.overrideWith((ref, source) async => []),
     ],
   );
 }
@@ -1195,6 +1292,17 @@ void main() {
       ),
       _addScene(),
       _episodeScene(),
+      _episodeScene(report: true),
+      _reportScene(
+        'Requester · Report a problem under the lead, for a title on the '
+        'server: her own latest report reads under it',
+        audience: Audience.requester,
+      ),
+      _reportScene(
+        'Operator · Reported problems after On your server: the open issue '
+        'with its words, then Report a problem',
+        audience: Audience.operator,
+      ),
       _graphScene(),
       _graphScene(
         caption:

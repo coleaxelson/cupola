@@ -81,6 +81,7 @@ cards live in [`../motion/`](../motion/).
 | Media detail | [MediaDetailHero](MediaDetailHero/README.md) | `lib/core/widgets/media_detail_view.dart` |
 | Media detail | [MediaDetailSection](MediaDetailSection/README.md) | `lib/core/widgets/media_detail_slot.dart` |
 | Media detail | [MediaPage](MediaPage/README.md) | `lib/features/media/presentation/media_page.dart`, `lib/features/media/domain/media_row_view.dart`, `lib/core/title_light.dart` |
+| Media detail | [MediaReport](MediaReport/README.md) | `lib/features/media/presentation/media_report_row.dart`, `lib/features/media/presentation/report_problem_sheet.dart`, `lib/features/media/domain/media_report.dart` |
 | Media detail | [ShelfPage](ShelfPage/README.md) | `lib/features/media/presentation/shelf_page.dart`, `lib/features/music/presentation/artist_page.dart`, `lib/features/readarr/presentation/author_page.dart` |
 | Media detail | [MediaInfoCard](MediaInfoCard/README.md) | `lib/core/widgets/media_info_card.dart`, `lib/core/widgets/file_info_section.dart` |
 | Media detail | [MediaProseSection](MediaProseSection/README.md) | `lib/core/widgets/media_prose_section.dart` |

@@ -61,3 +61,4 @@ Each sheet is drawn in the dark and the light room.
 - Add: the sheet over a film nobody holds.
 - Stuck: the fault leads with its remedy. Searching: Radarr asked its indexers.
 - Text at 200%: the full household.
+- Report a problem: the requester's group under the lead with her own latest report, the operator's `Reported problems` after `On your server`, and `Report a problem with this episode` at the end of the episode's sheet. Their parts are the [MediaReport](../MediaReport/README.md) card.

@@ -21,6 +21,8 @@ import 'package:cupola/features/media/domain/media_subtitles.dart';
 import 'package:cupola/features/media/domain/quality_words.dart';
 import 'package:cupola/features/media/presentation/media_episode_providers.dart';
 import 'package:cupola/features/media/presentation/media_parts.dart';
+import 'package:cupola/features/media/presentation/media_report_provider.dart';
+import 'package:cupola/features/media/presentation/media_report_row.dart';
 import 'package:cupola/features/release_search/domain/release_search_target.dart';
 import 'package:cupola/features/release_search/presentation/release_search_entry.dart';
 import 'package:cupola/features/series/data/sonarr_service.dart';
@@ -60,6 +62,7 @@ class MediaEpisodeSheet extends ConsumerStatefulWidget {
     required this.onChanged,
     this.sonarr,
     this.seerr,
+    this.report,
     this.server,
     this.subtitles,
     this.light,
@@ -76,6 +79,10 @@ class MediaEpisodeSheet extends ConsumerStatefulWidget {
   final bool operator;
   final MediaEpisodeSonarr? sonarr;
   final ({String connectionId, int tvId})? seerr;
+
+  /// The title whose Seerr takes a problem report on this episode, and the
+  /// connection the page was opened from; null draws no way to report.
+  final MediaReportScope? report;
   final MediaEpisodeServer? server;
 
   /// What Bazarr holds of each episode, by Sonarr's episode id; null
@@ -331,6 +338,13 @@ class _MediaEpisodeSheetState extends ConsumerState<MediaEpisodeSheet> {
               ],
             ),
           ],
+        // A problem with this episode, for a season on the server.
+        if (widget.report case final report?)
+          MediaEpisodeReportRow(
+            scope: report,
+            season: episode.season,
+            number: episode.number,
+          ),
         const SizedBox(height: AppSpacing.lg),
       ],
     );
