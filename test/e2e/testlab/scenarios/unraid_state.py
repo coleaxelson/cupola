@@ -35,7 +35,7 @@ ARRAY = (
     "caches { name status temp } } }"
 )
 VMS = "query { vms { domains { id name state } } }"
-CONTAINERS = "query { dockerContainers { id names state } }"
+CONTAINERS = "query { docker { containers { id names state } } }"
 SHARES = "query { shares { id name } }"
 NOTIFICATIONS = (
     "query Notifications($filter: NotificationFilter!) { "
@@ -158,20 +158,22 @@ class UnraidStateScenario(Scenario):
         if (archive.get("overview") or {}).get("archive", {}).get("total") != 1:
             raise ScenarioError("the archive does not hold one notification")
 
-        containers = graphql(CONTAINERS).get("dockerContainers") or []
+        containers = (graphql(CONTAINERS).get("docker") or {}).get("containers") or []
         names = {str(row.get("names")[0]).removeprefix("/") for row in containers}
         missing = {"plex", "radarr", "sonarr", "jellyfin"} - names
         if missing:
             raise ScenarioError(
                 f"the Docker tab is missing the lab's stack: {sorted(missing)}"
             )
-        counts = {"running": 0, "exited": 0, "restarting": 0}
+        # The schema's enum: a restart loop is `RUNNING` here and only its
+        # status line says otherwise.
+        counts = {"RUNNING": 0, "EXITED": 0}
         for row in containers:
             state = str(row.get("state"))
             if state not in counts:
                 raise ScenarioError(f"a container is in {state!r}, not a state")
             counts[state] += 1
-        if counts["running"] < 2 or counts["exited"] < 2:
+        if counts["RUNNING"] < 2 or counts["EXITED"] < 2:
             raise ScenarioError(f"the containers are not a running lab: {counts}")
 
         shares = graphql(SHARES).get("shares") or []

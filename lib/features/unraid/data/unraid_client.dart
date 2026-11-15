@@ -23,7 +23,20 @@ class UnraidException
     this.reason = ServiceFailureReason.unknown,
     this.forbidden = false,
     this.cause,
+    this.code,
   });
+
+  /// The GraphQL error's `extensions.code`, when the server gave one.
+  ///
+  /// For the client's own use, never for words on screen: the one reading
+  /// today is [unknownField], which says the server's schema has no such
+  /// field, so a caller can withdraw what that field would have drawn.
+  final String? code;
+
+  /// The server's schema does not have a field the document asked for
+  /// (Apollo's `GRAPHQL_VALIDATION_FAILED`, answered with a 400): an API older
+  /// than the field, or one that renamed it. Asking again cannot help.
+  bool get unknownField => code == 'GRAPHQL_VALIDATION_FAILED';
 
   /// The failure this wraps, when it wraps one: what it knew (which gateway
   /// answered, for one) survives the wrapping.
@@ -59,7 +72,7 @@ class UnraidException
 /// `UNAUTHENTICATED` is a key that does not work. Anything else (an older
 /// server with no code) falls back to reading the message.
 @visibleForTesting
-UnraidException unraidGraphQlError(Object? error) {
+UnraidException unraidGraphQlError(Object? error, {Object? cause}) {
   final message = error is Map
       ? (error['message'] ?? error).toString()
       : error.toString();
@@ -68,18 +81,46 @@ UnraidException unraidGraphQlError(Object? error) {
       ? extensions['code']?.toString().toUpperCase()
       : null;
   return switch (code) {
-    'FORBIDDEN' => UnraidException(message, forbidden: true),
+    'FORBIDDEN' => UnraidException(
+      message,
+      forbidden: true,
+      cause: cause,
+      code: code,
+    ),
     'UNAUTHENTICATED' => UnraidException(
       message,
       reason: ServiceFailureReason.unauthorized,
+      cause: cause,
+      code: code,
     ),
     _ => UnraidException(
       message,
       reason: looksUnauthorizedMessage(message)
           ? ServiceFailureReason.unauthorized
           : ServiceFailureReason.unknown,
+      cause: cause,
+      code: code,
     ),
   };
+}
+
+/// The first GraphQL error a failed HTTP answer carries, or null when its body
+/// is not a GraphQL error document.
+///
+/// Apollo answers a document its schema rejects with a **400** whose body is
+/// `{"errors": [{"message": "Cannot query field …", "extensions": {"code":
+/// "GRAPHQL_VALIDATION_FAILED"}}]}`. Dio throws on the status before the body
+/// is read, so without this the server's own sentence, and its code, were lost
+/// behind Dio's generic one.
+Object? _graphQlErrorOf(Response<dynamic>? response) {
+  final raw = response?.data;
+  try {
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    final errors = decoded is Map ? decoded['errors'] : null;
+    return errors is List && errors.isNotEmpty ? errors.first : null;
+  } on FormatException {
+    return null;
+  }
 }
 
 /// Client for the Unraid GraphQL API.
@@ -98,8 +139,14 @@ UnraidException unraidGraphQlError(Object? error) {
 /// The Unraid API is built into Unraid 7.2 and later and comes with the
 /// Unraid Connect plugin before that; an API key is created under Settings →
 /// Management Access → API Keys. The GraphQL sandbox is only the explorer, not
-/// a switch for the API. Field names below follow the documented schema but may differ by
-/// Unraid release; confirm against the instance's SDL.
+/// a switch for the API.
+///
+/// **The floor is Unraid API 4.25.3 (Unraid 7.2.0).** Every document below is
+/// checked against that release's schema and against 4.37.11 (Unraid 7.3.5)
+/// by `test/features/unraid/contract/unraid_schema_test.dart`, from untouched
+/// captures of upstream's `generated-schema.graphql`. A field added after
+/// 4.25.3 must not be asked for here: a server rejects the whole document over
+/// one field it does not know.
 class UnraidClient {
   /// [certFingerprint], when non-empty, is a self-signed certificate the user
   /// explicitly trusted for this origin (trust-on-first-use, ADR-6). Ignored
@@ -177,6 +224,23 @@ class UnraidClient {
       }
       return (map['data'] as Map?)?.cast<String, dynamic>() ?? const {};
     } on DioException catch (e) {
+      final graphQl = _graphQlErrorOf(e.response);
+      if (graphQl != null) {
+        final said = unraidGraphQlError(graphQl, cause: e);
+        // The server's verdict on the key wins over the status; anything else
+        // keeps the status's classification, with the server's sentence and
+        // code instead of Dio's.
+        if (said.forbidden ||
+            said.reason == ServiceFailureReason.unauthorized) {
+          throw said;
+        }
+        throw UnraidException(
+          said.message,
+          reason: classifyConnectionFailure(e),
+          cause: e,
+          code: said.code,
+        );
+      }
       throw UnraidException(
         e.message ?? 'Unraid request failed',
         reason: classifyConnectionFailure(e),
@@ -193,8 +257,17 @@ class UnraidClient {
       'query { array { state capacity { kilobytes { free used total } } '
       'parities { name status temp } disks { name status temp } '
       'caches { name status temp } } }';
+  // `docker { containers }` from API 4.0.0 on. The root `dockerContainers`
+  // that Unraid's own API guide still shows left the schema before 4.9.0, so
+  // every Unraid from 7.2 on rejected the whole document with a 400.
   static const _dockerQuery =
-      'query { dockerContainers { id names state status autoStart } }';
+      'query { docker { containers { id names state status autoStart } } }';
+  // CPU and memory only. `metrics` is in the schema from API 4.15.0, and
+  // `network` and `temperature` only after 4.25.3 (Unraid 7.2.0): asked for
+  // here, they would take CPU and memory down with them on 7.2.
+  static const _metricsQuery =
+      'query { metrics { cpu { percentTotal } '
+      'memory { total available percentTotal } } }';
   static const _capabilitiesQuery =
       'query { me { roles permissions { resource actions } } }';
   static const _vmsQuery = 'query { vms { domains { id name state } } }';
@@ -241,6 +314,7 @@ class UnraidClient {
     'getInfo': _infoQuery,
     'getArray': _arrayQuery,
     'getDockerContainers': _dockerQuery,
+    'getMetrics': _metricsQuery,
     'getCapabilities': _capabilitiesQuery,
     'getVms': _vmsQuery,
     'getNotifications': _notificationsQuery,
@@ -264,13 +338,30 @@ class UnraidClient {
     );
   }
 
+  /// Every container. Throws rather than answering an empty list when the
+  /// server answered without them: `[]` is "no containers", and the readout
+  /// would print `0/0` for a list nobody received.
   Future<List<UnraidDockerContainer>> getDockerContainers() async {
     final data = await _query(_dockerQuery);
-    final list = (data['dockerContainers'] as List?) ?? const [];
+    final list = (data['docker'] as Map?)?['containers'];
+    if (list is! List) {
+      throw const UnraidException(
+        'Unraid answered without its containers',
+        reason: ServiceFailureReason.invalidResponse,
+      );
+    }
     return list
         .whereType<Map>()
         .map((e) => UnraidDockerContainer.fromJson(e.cast<String, dynamic>()))
         .toList(growable: false);
+  }
+
+  /// CPU load and memory use, as the server reads them now.
+  Future<UnraidMetrics> getMetrics() async {
+    final data = await _query(_metricsQuery);
+    return UnraidMetrics.fromJson(
+      (data['metrics'] as Map?)?.cast<String, dynamic>() ?? const {},
+    );
   }
 
   Future<UnraidCapabilities> getCapabilities() async {

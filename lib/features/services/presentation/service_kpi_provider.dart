@@ -1940,34 +1940,57 @@ final class _ReadFailed {
 Future<Object?> _failureOr(Future<Object?> read) =>
     read.then<Object?>((value) => value, onError: (Object e) => _ReadFailed(e));
 
-Future<List<ServiceKpi>> _unraidKpis(Ref ref) async {
-  final results = await Future.wait([
-    ref.watch(unraidArrayProvider.future),
-    ref.watch(unraidDockerProvider.future),
-  ]);
-  return _unraidKpisFrom(
-    results[0] as UnraidArray,
-    results[1] as List<UnraidDockerContainer>,
-  );
-}
+Future<List<ServiceKpi>> _unraidKpis(Ref ref) => _unraidKpisOf(
+  ref.watch(unraidArrayProvider.future),
+  ref.watch(unraidDockerProvider.future),
+);
 
-Future<List<ServiceKpi>> _unraidKpisFor(Ref ref, String instanceId) async {
+Future<List<ServiceKpi>> _unraidKpisFor(Ref ref, String instanceId) {
   final client = ref.watch(unraidClientForProvider(instanceId));
-  final results = await Future.wait([
-    client.getArray(),
-    client.getDockerContainers(),
+  return _unraidKpisOf(client.getArray(), client.getDockerContainers());
+}
+
+/// The array and the containers are two documents, and one failing leaves the
+/// other's figures standing: a stopped Docker service, or an API that does not
+/// know the containers document, is not a reason to hide the array. Only when
+/// both fail does the rail fail, into its single card.
+Future<List<ServiceKpi>> _unraidKpisOf(
+  Future<UnraidArray> array,
+  Future<List<UnraidDockerContainer>> containers,
+) async {
+  final results = await Future.wait<Object?>([
+    _failureOr(array),
+    _failureOr(containers),
   ]);
+  final failures = results.whereType<_ReadFailed>().toList();
+  if (failures.length == results.length) throw failures.first.error;
   return _unraidKpisFrom(
-    results[0] as UnraidArray,
-    results[1] as List<UnraidDockerContainer>,
+    results[0] is UnraidArray ? results[0] as UnraidArray : null,
+    results[1] is List<UnraidDockerContainer>
+        ? results[1] as List<UnraidDockerContainer>
+        : null,
   );
 }
 
+/// [array] or [containers] null: that document failed, and its figures read
+/// `—` with their labels kept, as Tracearr's do. The note stays off them: the
+/// section below that document says why, once.
 List<ServiceKpi> _unraidKpisFrom(
-  UnraidArray array,
-  List<UnraidDockerContainer> containers,
+  UnraidArray? array,
+  List<UnraidDockerContainer>? containers,
 ) {
-  final running = containers.where((c) => c.running).length;
+  final running = containers?.where((c) => c.running).length;
+  if (array == null) {
+    return [
+      const ServiceKpi.unavailable(label: 'Array', icon: Icons.dns_rounded),
+      const ServiceKpi.unavailable(
+        label: 'Used',
+        icon: Icons.pie_chart_rounded,
+      ),
+      _containersKpi(running, containers),
+      const ServiceKpi.unavailable(label: 'Disks', icon: Icons.storage_rounded),
+    ];
+  }
   // Null when the array answered with no capacity block, which is nullable in
   // the committed SDL. `Used 0%` would read as an empty array: the one
   // conclusion a user acts on, and would contradict the Overview's Array
@@ -1992,11 +2015,7 @@ List<ServiceKpi> _unraidKpisFrom(
         icon: Icons.pie_chart_rounded,
         tone: _faultIf(usedPercent >= 80),
       ),
-    ServiceKpi(
-      label: 'Containers',
-      value: '$running/${containers.length}',
-      icon: Icons.widgets_rounded,
-    ),
+    _containersKpi(running, containers),
     // Same rule for the census: `disks` is nullable too, and a `0` here is an
     // assertion that the array has no drives, built out of silence.
     if (array.reportedDisks)
@@ -2014,3 +2033,12 @@ List<ServiceKpi> _unraidKpisFrom(
       ),
   ];
 }
+
+ServiceKpi _containersKpi(
+  int? running,
+  List<UnraidDockerContainer>? containers,
+) => _figure(
+  label: 'Containers',
+  value: containers == null ? null : '$running/${containers.length}',
+  icon: Icons.widgets_rounded,
+);

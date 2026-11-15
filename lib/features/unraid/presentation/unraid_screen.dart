@@ -48,11 +48,12 @@ enum UnraidSection { array, docker, vms, notifications, shares }
 /// on a section tab would be the same four figures twice in one scroll.
 ///
 /// **Two pages write; Array, Docker and Shares only read.** The contract this
-/// app is written against (`test/fixtures/unraid/schema.graphql`) declares two
-/// mutations Cupola uses: `vm { start stop resume … }` and
-/// `archiveNotification`, and those are the VMs and Notifications writes,
-/// each gated on the key's scope (`unraid_capability.dart`). Container writes
-/// stay absent on purpose: decision 14 draws Stop and Restart a container, but
+/// app is written against (`test/fixtures/unraid/schema_v4.25.3.graphql` and
+/// `schema_v4.37.11.graphql`) declares two mutations Cupola uses:
+/// `vm { start stop resume … }` and `archiveNotification`, and those are the
+/// VMs and Notifications writes, each gated on the key's scope
+/// (`unraid_capability.dart`). Container writes stay absent on purpose:
+/// decision 14 draws Stop and Restart a container, but
 /// the contract declares no container mutation, and guessing a name would ship
 /// a confirm dialog that names the user's server and then fails, which is
 /// worse than not offering it. See the notes on

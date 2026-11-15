@@ -5,9 +5,11 @@
 /// Tolerant is not the same as inventive: a field the server did not answer
 /// degrades to **null**, so the page above can say it has no figure. It never
 /// degrades to a zero, an empty list stated as a census, or a word nobody sent.
-/// Confirm exact field names against the target instance's schema (SDL / Apollo
-/// sandbox) before relying on any one of them.
+/// The field names are held to upstream's schema captures (API 4.25.3 and
+/// 4.37.11) by `test/features/unraid/contract/unraid_schema_test.dart`.
 library;
+
+import 'package:flutter/foundation.dart' show immutable;
 
 import 'package:cupola/core/status/media_status.dart';
 import 'package:cupola/core/utils/dot_separator.dart';
@@ -561,7 +563,7 @@ final _exitPattern = RegExp(
   caseSensitive: false,
 );
 
-/// A Docker container (`dockerContainers`).
+/// A Docker container (`docker { containers }`).
 class UnraidDockerContainer {
   const UnraidDockerContainer({
     required this.id,
@@ -666,11 +668,14 @@ class UnraidDockerContainer {
       // why, which is not enough to call it either deliberate or a crash.
       condition = UnraidContainerCondition.unknown;
     } else if (trimmed.isEmpty) {
-      // No status line: fall back to the two-member state enum, which at least
-      // says up or down.
-      condition = state.toLowerCase() == 'running'
-          ? UnraidContainerCondition.running
-          : UnraidContainerCondition.unknown;
+      // No status line: fall back to the state enum, which at least says up,
+      // held or down. `PAUSED` is in the enum from API 4.30.0 on; the floor,
+      // 4.25.3 (Unraid 7.2.0), has only `RUNNING` and `EXITED`.
+      condition = switch (state.toLowerCase()) {
+        'running' => UnraidContainerCondition.running,
+        'paused' => UnraidContainerCondition.paused,
+        _ => UnraidContainerCondition.unknown,
+      };
     } else {
       condition = UnraidContainerCondition.unknown;
     }
@@ -703,4 +708,66 @@ class UnraidDockerContainer {
       autoStart: json['autoStart'] == true,
     );
   }
+}
+
+/// CPU load and memory use, as `metrics` answers them now.
+///
+/// Every figure is nullable, and null is "Unraid did not say", never 0: a
+/// server that answered without a CPU block has not reported an idle CPU.
+/// `BigInt` fields cross the wire as a number or as a string, by server, and
+/// both are read.
+@immutable
+class UnraidMetrics {
+  const UnraidMetrics({
+    this.cpuPercent,
+    this.memoryPercent,
+    this.memoryUsed,
+    this.memoryTotal,
+  });
+
+  /// Load across every core, 0 to 100.
+  final double? cpuPercent;
+
+  /// Memory in use, 0 to 100, as Unraid counts it: `(total - available) /
+  /// total`, so the page cache is not in it. On a host with a ZFS pool the
+  /// ARC is, because the kernel does not count it as available; the figure is
+  /// Unraid's own and is not corrected here.
+  final double? memoryPercent;
+
+  /// Bytes in use, `total - available`: the same count [memoryPercent] is a
+  /// share of, so `41% · 26 of 64 GB` never contradicts itself. (Unraid's own
+  /// `used` counts the page cache, and next to that percentage it would read
+  /// `41% · 60 of 64 GB`.) Only read for that clause, and only when both
+  /// figures are there.
+  final int? memoryUsed;
+  final int? memoryTotal;
+
+  factory UnraidMetrics.fromJson(Map<String, dynamic> json) {
+    final cpu = mapOrNull(json['cpu']);
+    final memory = mapOrNull(json['memory']);
+    final total = intOrNull(memory?['total']);
+    final available = intOrNull(memory?['available']);
+    // A server that reports no memory answers `percentTotal: 0` (the resolver
+    // divides only when the total is positive), which is not a reading.
+    final known = total != null && total > 0;
+    final inUse = known && available != null && available <= total
+        ? total - available
+        : null;
+    return UnraidMetrics(
+      cpuPercent: _percentOrNull(cpu?['percentTotal']),
+      memoryPercent: known ? _percentOrNull(memory?['percentTotal']) : null,
+      memoryUsed: inUse,
+      memoryTotal: inUse == null ? null : total,
+    );
+  }
+}
+
+/// A percentage on the 0 to 100 scale, or null when it is missing or could not
+/// be one.
+double? _percentOrNull(Object? raw) {
+  final value = doubleOrNull(raw);
+  if (value == null || !value.isFinite || value < 0 || value > 100) {
+    return null;
+  }
+  return value;
 }

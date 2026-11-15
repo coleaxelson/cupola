@@ -433,8 +433,13 @@ class UnraidFake extends ServiceFake {
     if (query.contains('array {')) {
       return NetworkReply.json(jsonFixtureMap('unraid/array.json'));
     }
-    if (query.contains('dockerContainers')) {
+    if (query.contains('docker {')) {
       return NetworkReply.json(jsonFixtureMap('unraid/docker.json'));
+    }
+    if (query.contains('metrics {')) {
+      return NetworkReply.json({
+        'data': {'metrics': _metrics},
+      });
     }
     if (query.contains('vms {')) {
       return NetworkReply.json({
@@ -454,6 +459,16 @@ class UnraidFake extends ServiceFake {
     if (query.trimLeft().startsWith('mutation')) return _mutation(r, c);
     return NetworkReply.json({'data': const <String, Object?>{}});
   }
+
+  // A quiet afternoon: a little transcoding, half the memory in use.
+  static const _metrics = {
+    'cpu': {'percentTotal': 9.6},
+    'memory': {
+      'total': 34359738368,
+      'available': 17716740096,
+      'percentTotal': 48.4,
+    },
+  };
 
   // The server's virtual machines: the home automation one that never
   // stops, a build box, and a Windows lab that is off until it is needed.

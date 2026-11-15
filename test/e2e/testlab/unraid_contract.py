@@ -10,8 +10,9 @@ Two questions, and they are different ones:
     `docker_lab.json`) because the lab's Unraid is a *day*: a disabled disk and a
     restarting container. `array.json` and `docker.json`, beside them, are the
     smaller payloads the client's own unit tests read. Nothing here claims a real
-    Unraid was ever asked: the SDL next door says the same thing about itself.
-  * **Does it answer what the client understands?** The nine documents are the
+    Unraid was ever asked: the simulator answers what the schema captures in
+    `test/fixtures/unraid/` declare, and no more.
+  * **Does it answer what the client understands?** The ten documents are the
     ones `lib/features/unraid/data/unraid_client.dart` sends, spelled as that
     file spells them, and each answer is then read the way the client reads it:
     capacity as strings that parse, a Docker status line in the shape the
@@ -60,7 +61,14 @@ ARRAY = (
     "parities { name status temp } disks { name status temp } "
     "caches { name status temp } } }"
 )
-DOCKER = "query { dockerContainers { id names state status autoStart } }"
+DOCKER = "query { docker { containers { id names state status autoStart } } }"
+METRICS = (
+    "query { metrics { cpu { percentTotal } "
+    "memory { total available percentTotal } } }"
+)
+# What Unraid 7.2 and later answer to the root the client used to ask for.
+RETIRED_DOCKER = "query { dockerContainers { id names state status autoStart } }"
+VALIDATION_FAILED = "GRAPHQL_VALIDATION_FAILED"
 CAPABILITIES = "query { me { roles permissions { resource actions } } }"
 VMS = "query { vms { domains { id name state } } }"
 NOTIFICATIONS = (
@@ -239,10 +247,13 @@ def error_of(payload: dict[str, Any]) -> dict[str, Any]:
 def readings(url: str, key: str, contract: Contract) -> dict[str, Any]:
     """Every reading, compared to its fixture and then read as the client does."""
     answers: dict[str, Any] = {}
-    cases: list[tuple[str, str, dict[str, Any] | None, str]] = [
+    cases: list[tuple[str, str, dict[str, Any] | None, str | None]] = [
         ("getInfo", INFO, None, "info.json"),
         ("getArray", ARRAY, None, "array_emulated.json"),
         ("getDockerContainers", DOCKER, None, "docker_lab.json"),
+        # No fixture: the figures move on a real server, so what is checked
+        # below is their shape and that they agree with each other.
+        ("getMetrics", METRICS, None, None),
         ("getCapabilities", CAPABILITIES, None, "me_admin.json"),
         ("getVms", VMS, None, "vms.json"),
         (
@@ -267,13 +278,14 @@ def readings(url: str, key: str, contract: Contract) -> dict[str, Any]:
             not payload.get("errors"),
             _brief(payload.get("errors")),
         )
-        expected = data_of(fixture(fixture_name))
         actual = data_of(payload)
-        contract.check(
-            f"{call} matches {fixture_name}",
-            actual == expected,
-            _difference(actual, expected),
-        )
+        if fixture_name is not None:
+            expected = data_of(fixture(fixture_name))
+            contract.check(
+                f"{call} matches {fixture_name}",
+                actual == expected,
+                _difference(actual, expected),
+            )
         answers[call] = actual or {}
 
     # The client's own reading of each answer. A field that is present but of
@@ -359,7 +371,9 @@ def readings(url: str, key: str, contract: Contract) -> dict[str, Any]:
         _brief(slots),
     )
 
-    containers = answers["getDockerContainers"].get("dockerContainers") or []
+    containers = (
+        (answers["getDockerContainers"].get("docker") or {}).get("containers") or []
+    )
     contract.check(
         "docker: every row has a name prefixed the way Docker writes it",
         all(
@@ -376,8 +390,8 @@ def readings(url: str, key: str, contract: Contract) -> dict[str, Any]:
         _brief([row.get("status") for row in containers]),
     )
     contract.check(
-        "docker: every state is a word the SDL's enum declares",
-        all(str(row.get("state")) in {"running", "exited", "restarting"} for row in containers),
+        "docker: every state is a word the schema's enum declares at the floor",
+        all(str(row.get("state")) in {"RUNNING", "EXITED"} for row in containers),
         _brief([row.get("state") for row in containers]),
     )
     statuses = [str(row.get("status") or "") for row in containers]
@@ -393,6 +407,52 @@ def readings(url: str, key: str, contract: Contract) -> dict[str, Any]:
         and any(status.startswith("Exited (137)") for status in statuses)
         and any(status.startswith("Restarting (1)") for status in statuses),
         _brief(statuses),
+    )
+
+    metrics = answers["getMetrics"].get("metrics") or {}
+    cpu = (metrics.get("cpu") or {}).get("percentTotal")
+    memory = metrics.get("memory") or {}
+    memory_total = _number(memory.get("total"))
+    memory_available = _number(memory.get("available"))
+    memory_percent = memory.get("percentTotal")
+    contract.check(
+        "metrics: the CPU load is a percentage",
+        isinstance(cpu, (int, float)) and 0 <= cpu <= 100,
+        _brief(cpu),
+    )
+    contract.check(
+        "metrics: memory has a total, an availability below it and a percentage",
+        memory_total is not None
+        and memory_available is not None
+        and 0 < memory_total
+        and 0 <= memory_available <= memory_total
+        and isinstance(memory_percent, (int, float))
+        and 0 <= memory_percent <= 100,
+        _brief(memory),
+    )
+    contract.check(
+        "metrics: the memory percentage is the share not available, as Unraid counts it",
+        memory_total is not None
+        and memory_available is not None
+        and isinstance(memory_percent, (int, float))
+        and abs((memory_total - memory_available) / memory_total * 100 - memory_percent) < 1,
+        _brief(memory),
+    )
+    contract.check(
+        "metrics: the document asks for no field the floor (API 4.25.3) lacks",
+        "network" not in METRICS and "temperature" not in METRICS,
+    )
+
+    status, payload = graphql(url, key, RETIRED_DOCKER)
+    contract.equal(
+        "dockerContainers: the retired root is refused with a 400, as Apollo does",
+        status,
+        400,
+    )
+    contract.equal(
+        "dockerContainers: the refusal is a validation failure with no data",
+        (error_of(payload).get("extensions", {}).get("code"), "data" in payload),
+        (VALIDATION_FAILED, False),
     )
 
     domains = ((answers["getVms"].get("vms") or {}).get("domains")) or []
@@ -499,7 +559,7 @@ def readings(url: str, key: str, contract: Contract) -> dict[str, Any]:
 
     # Every key of every fixture is a field the client actually selects: a
     # fixture the app never reads is a fixture that proves nothing.
-    documents = [INFO, ARRAY, DOCKER, CAPABILITIES, VMS, NOTIFICATIONS, SHARES]
+    documents = [INFO, ARRAY, DOCKER, METRICS, CAPABILITIES, VMS, NOTIFICATIONS, SHARES]
     selected = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", " ".join(documents)))
     fixture_keys = set()
     for name in (

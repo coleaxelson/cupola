@@ -24,6 +24,24 @@ UnraidDockerContainer _container({
 }
 
 void main() {
+  group('UnraidDockerContainer: the state enum when there is no status', () {
+    test('PAUSED with an empty status is paused', () {
+      final container = _container(status: '', state: 'PAUSED');
+      expect(container.condition, UnraidContainerCondition.paused);
+      expect(container.running, isFalse);
+    });
+
+    test('RUNNING with an empty status is running', () {
+      final container = _container(status: '', state: 'RUNNING');
+      expect(container.condition, UnraidContainerCondition.running);
+    });
+
+    test('EXITED with an empty status is not guessed at', () {
+      final container = _container(status: '', state: 'EXITED');
+      expect(container.condition, UnraidContainerCondition.unknown);
+    });
+  });
+
   group('UnraidDockerContainer: the status line is read, not skimmed', () {
     test('a clean exit is a deliberate stop, and neutral', () {
       final container = _container(status: 'Exited (0) 2 days ago');

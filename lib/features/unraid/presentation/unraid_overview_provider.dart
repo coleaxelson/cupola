@@ -1,11 +1,12 @@
 /// What the Unraid Overview reads, and the pure functions that shape it.
 ///
-/// Everything on this page is folded from the **three documents
-/// [UnraidClient] speaks**: `info`, `array` and `dockerContainers`, and two
-/// of them are already loaded by the service home: the KPI rail reads
-/// [unraidArrayProvider] and [unraidDockerProvider]. Only `info` is a call this
-/// page adds, and it is the one that carries the uptime and the release the
-/// board prints on the identity line.
+/// Everything on this page is folded from the **four documents the Overview
+/// reads**: `info`, `array`, `docker { containers }` and `metrics`, and two of
+/// them are already loaded by the service home: the KPI rail reads
+/// [unraidArrayProvider] and [unraidDockerProvider]. `info` is a call this
+/// page adds, and it carries the uptime and the release the board prints on
+/// the identity line; `metrics` is the other, read again every few seconds
+/// for the CPU and Memory rows.
 ///
 /// Every windowing and folding rule lives in a top-level pure function taking
 /// an explicit `now` where it needs a clock, so the boundaries are testable
@@ -13,28 +14,39 @@
 ///
 /// ## What is deliberately not here
 ///
-/// The board draws Parity, VMs, Notifications, Shares and a CPU/RAM/Net strip.
-/// None of them is stubbed, because `UnraidClient` makes no call that could
-/// fill them and the committed SDL (`test/fixtures/unraid/schema.graphql`),
-/// which is this app's contract with the API, declares no field for them
-/// either. A section given a fake zero is worse than a section that was never
-/// promised: "0 notifications" is a sentence about a quiet server, and what we
-/// actually have is silence about a question nobody asked.
+/// The board draws a Net figure in its System strip, and the parity history
+/// and each disk's size and SMART verdict. None of them is stubbed: the
+/// network figure (`metrics.network`) is not in the API Unraid 7.2.0 ships
+/// (4.25.3), and asking for it would make that server refuse the whole metrics
+/// document, CPU and Memory with it; the `array` document carries no parity
+/// history, and `ArrayDisk` no size or SMART verdict. A figure given a fake
+/// zero is worse than one that was never promised: "0 errors" is a sentence
+/// about a healthy array, and what we actually have is silence about a
+/// question nobody asked.
 ///
-/// Unraid has never been run against a real instance here, which is the second
-/// reason nothing below is guessed: every figure this file produces comes from
-/// a field the three committed queries name.
+/// The documents are held to the schema captures in `test/fixtures/unraid/`
+/// (`schema_v4.25.3.graphql`, `schema_v4.37.11.graphql`) by the contract test,
+/// so every figure this file produces comes from a field both of them declare.
+///
+/// Unraid has never been run against a real instance here: the captures are
+/// upstream's schema, not an instance's answers, so no real Unraid has
+/// answered these documents yet and the schema is the only proof of their
+/// shape.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:cupola/core/lifecycle/gated_poll.dart';
 import 'package:cupola/core/providers/provider_retry.dart';
+import 'package:cupola/core/status/lexicon.dart';
 import 'package:cupola/core/status/media_status.dart';
 import 'package:cupola/core/utils/arr_activity_display.dart';
 import 'package:cupola/core/utils/byte_format.dart';
+import 'package:cupola/core/utils/percent_format.dart';
 import 'package:cupola/core/utils/unit_space.dart';
 import 'package:cupola/features/services/domain/services_semantics.dart';
+import 'package:cupola/features/unraid/data/unraid_client.dart';
 import 'package:cupola/features/unraid/domain/unraid_alerts.dart';
 import 'package:cupola/features/unraid/domain/models/unraid_models.dart';
 import 'package:cupola/features/unraid/presentation/unraid_provider.dart';
@@ -75,9 +87,10 @@ class UnraidSystemFact {
     required this.label,
     required this.value,
     required this.icon,
+    this.spokenValue,
   });
 
-  /// `Uptime`, `Release`.
+  /// `CPU`, `Memory`, `Uptime`, `Release`.
   final String label;
 
   /// The figure, or `—` when Unraid answered without it.
@@ -85,9 +98,14 @@ class UnraidSystemFact {
 
   final IconData icon;
 
+  /// [value] as the ear wants it, where the two differ: the Memory row's
+  /// visible `41% · 26.4 of 64.0 GB` would be spoken with its middle dot, and
+  /// `spokenFromDotted` turns it into `41 percent, 26.4 of 64.0 GB`.
+  final String? spokenValue;
+
   /// Label first, figure second: the order a person says it, which is the
   /// inverse of the visual order the row draws (figure large, label under it).
-  String get spoken => joinSpokenParts([label, value]);
+  String get spoken => joinSpokenParts([label, spokenValue ?? value]);
 }
 
 /// `18 days`, `7 hours`, `12 minutes`: how long the server has been up.
@@ -152,7 +170,8 @@ List<UnraidSystemFact> unraidSystemFacts(
     UnraidSystemFact(
       label: 'Release',
       value: release.isEmpty ? '—' : release,
-      icon: Icons.memory_rounded,
+      // Not the chip: that is Memory's, two rows up.
+      icon: Icons.info_outline_rounded,
     ),
   ]);
 }
@@ -167,6 +186,76 @@ final unraidOverviewSystemProvider =
       final info = await ref.watch(unraidInfoProvider.future);
       return unraidSystemFacts(info, now: DateTime.now());
     }, retry: noProviderRetry);
+
+// ─── System (`metrics`) ─────────────────────────────────────────────────────
+
+/// How often the CPU and memory figures are read again while the Overview is
+/// on screen. Slower than the TrueNAS dashboard's 3s gauges: two figures in a
+/// list, not a chart, and Unraid's API runs on the server being measured.
+const unraidMetricsInterval = Duration(seconds: 5);
+
+/// CPU load and memory use, from `query { metrics { … } }`.
+///
+/// Its own document, read beside `info` rather than folded into it: a server
+/// whose API has no `metrics` (older than 4.15) rejects the whole document,
+/// and the uptime and release must not go down with two figures it never had.
+/// `noProviderRetry` for the reason [unraidInfoProvider] gives; the poll below
+/// is what reads it again.
+final unraidMetricsProvider = FutureProvider.autoDispose<UnraidMetrics>((
+  ref,
+) async {
+  return ref.watch(unraidClientProvider).getMetrics();
+}, retry: noProviderRetry);
+
+/// Reads [unraidMetricsProvider] again every [unraidMetricsInterval] while the
+/// Overview is the page on screen (`watchWhileLive`), and never while a read
+/// is still out: a slow server answers before it is asked again.
+final unraidMetricsPollProvider = Provider.autoDispose<void>((ref) {
+  ref.gatedPoll(
+    id: 'unraid.metrics',
+    interval: unraidMetricsInterval,
+    onTick: () => ref.readAgainUnlessInFlight([unraidMetricsProvider]),
+  );
+});
+
+/// The CPU and Memory rows, from whatever [metrics] holds now.
+///
+/// Two rows with `—` while the first read is out or after a read failed: the
+/// server has these figures and did not give them this time. **No rows** when
+/// the server's API does not know `metrics` at all
+/// ([UnraidException.unknownField]): a figure that will never come is not a
+/// dash to wait on, it is a row the page should not have. A later read keeps
+/// the last figures on screen while it runs.
+List<UnraidSystemFact> unraidMetricFacts(AsyncValue<UnraidMetrics> metrics) {
+  final error = metrics.error;
+  if (error is UnraidException && error.unknownField) return const [];
+  final reading = metrics.hasError ? null : metrics.value;
+
+  final cpu = reading?.cpuPercent;
+  final memory = reading?.memoryPercent;
+  final used = reading?.memoryUsed;
+  final total = reading?.memoryTotal;
+  final ofTotal = used != null && total != null && used >= 0
+      ? formatBytesOfTotal(used, total)
+      : null;
+
+  final memoryWords = memory == null
+      ? Lexicon.noFigure
+      : joinDisplayParts([formatPercent(memory), ofTotal]);
+  return List.unmodifiable([
+    UnraidSystemFact(
+      label: 'CPU',
+      value: cpu == null ? Lexicon.noFigure : formatPercent(cpu),
+      icon: Icons.speed_rounded,
+    ),
+    UnraidSystemFact(
+      label: 'Memory',
+      value: memoryWords,
+      spokenValue: spokenFromDotted(memoryWords),
+      icon: Icons.memory_rounded,
+    ),
+  ]);
+}
 
 // ─── Array ──────────────────────────────────────────────────────────────────
 
@@ -371,9 +460,9 @@ class UnraidDockerDigest {
     required this.preview,
   });
 
-  /// Every container `dockerContainers` answered with. The query is not paged,
-  /// so this is a census and may be stated as a total, unlike the length of
-  /// [preview], which never may.
+  /// Every container `docker { containers }` answered with. The query is not
+  /// paged, so this is a census and may be stated as a total, unlike the
+  /// length of [preview], which never may.
   final int total;
 
   final int running;
