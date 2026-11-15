@@ -1,0 +1,31 @@
+{
+  "id": 31,
+  "issueType": 1,
+  "status": 1,
+  "problemSeason": 0,
+  "problemEpisode": 0,
+  "createdAt": "2026-11-15T10:00:00.000Z",
+  "updatedAt": "2026-11-15T10:00:00.000Z",
+  "media": {
+    "id": 81,
+    "mediaType": "movie",
+    "tmdbId": 550,
+    "tvdbId": null,
+    "imdbId": null,
+    "status": 5,
+    "status4k": 1,
+    "createdAt": "2026-07-20T10:00:00.000Z",
+    "updatedAt": "2026-07-28T11:00:00.000Z"
+  },
+  "createdBy": { "id": 4, "displayName": "Anna", "username": "anna", "email": "anna@example.com", "permissions": 4194336 },
+  "modifiedBy": null,
+  "comments": [
+    {
+      "id": 9,
+      "message": "The picture freezes at the start",
+      "createdAt": "2026-11-15T10:00:00.000Z",
+      "updatedAt": "2026-11-15T10:00:00.000Z",
+      "user": { "id": 4, "displayName": "Anna", "username": "anna", "email": "anna@example.com", "permissions": 4194336 }
+    }
+  ]
+}

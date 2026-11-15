@@ -6,6 +6,7 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/widgets/not_configured_placeholder.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_numbering.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/discover/presentation/seerr_admin_screens.dart';
@@ -25,9 +26,8 @@ void main() {
       ..issues = [
         SeerrIssue(
           id: 7,
-          issueType: 2,
-          // Overseerr's own spelling: 1 open, 2 resolved.
-          status: 1,
+          type: SeerrIssueType.audio,
+          status: SeerrIssueStatus.open,
           media: const SeerrIssueMedia(title: 'Dune: Part Two'),
           createdBy: const SeerrUser(id: 1, username: 'Matt'),
         ),

@@ -73,6 +73,9 @@ const _table = <SeerrAbility, String>{
   SeerrAbility.manageUsers: '- - - - - - - - - - - - A - - - A',
   // `server/routes/index.ts:156`: ADMIN, for every `/settings` route.
   SeerrAbility.readSettings: '- - - - - - - - - - - - - - - - A',
+  // `issue.ts`, `POST /`: CREATE_ISSUES or MANAGE_ISSUES. VIEW_ISSUES alone
+  // may read, not report.
+  SeerrAbility.reportIssue: '- - - - - - - - - - - - - - A A A',
 };
 
 void main() {
@@ -224,6 +227,94 @@ void main() {
     for (final (name, grant, own, may) in rows) {
       test(name, () => expect(grant.mayResolveIssue(own: own), may));
     }
+  });
+
+  group('the conversation of one issue', () {
+    final viewer = SeerrGrant.account(
+      permissions: SeerrPermission.viewIssues.value,
+    );
+    final reporter = SeerrGrant.account(
+      permissions: SeerrPermission.createIssues.value,
+    );
+    final keeper = SeerrGrant.account(
+      permissions: SeerrPermission.manageIssues.value,
+    );
+    final plain = SeerrGrant.account(
+      permissions: SeerrPermission.request.value,
+    );
+    const key = SeerrGrant.apiKey();
+
+    group('commenting: own with CREATE, anybody\'s with MANAGE', () {
+      final rows = <(String, SeerrGrant, bool own, bool may)>[
+        ('a reporter, own', reporter, true, true),
+        ('a reporter, somebody else\'s', reporter, false, false),
+        ('a viewer, own', viewer, true, false),
+        ('a plain account, own', plain, true, false),
+        ('a manager, somebody else\'s', keeper, false, true),
+        ('the key, somebody else\'s', key, false, true),
+      ];
+      for (final (name, grant, own, may) in rows) {
+        test(name, () => expect(grant.mayCommentOnIssue(own: own), may));
+      }
+    });
+
+    // `issueComment.ts`: the route admits CREATE_ISSUES or MANAGE_ISSUES.
+    group('editing a reply: only its author, even a manager', () {
+      final rows = <(String, SeerrGrant, bool own, bool may)>[
+        ('a reporter, own reply', reporter, true, true),
+        ('a reporter, another\'s reply', reporter, false, false),
+        ('a manager, own reply', keeper, true, true),
+        ('a manager, another\'s reply', keeper, false, false),
+        ('a viewer, own reply', viewer, true, false),
+        ('a plain account, own reply', plain, true, false),
+        ('the key', key, false, true),
+      ];
+      for (final (name, grant, own, may) in rows) {
+        test(name, () => expect(grant.mayEditComment(own: own), may));
+      }
+    });
+
+    group('deleting a reply: own with CREATE, anybody\'s with MANAGE', () {
+      final rows = <(String, SeerrGrant, bool own, bool may)>[
+        ('a reporter, own reply', reporter, true, true),
+        ('a reporter, another\'s reply', reporter, false, false),
+        ('a manager, another\'s reply', keeper, false, true),
+        ('a manager, own reply', keeper, true, true),
+        ('a viewer, own reply', viewer, true, false),
+        ('the key, another\'s', key, false, true),
+      ];
+      for (final (name, grant, own, may) in rows) {
+        test(name, () => expect(grant.mayDeleteComment(own: own), may));
+      }
+    });
+
+    group('deleting the issue: MANAGE, or own with one comment', () {
+      final rows = <(String, SeerrGrant, bool own, int comments, bool may)>[
+        ('a reporter, own, only the report', reporter, true, 1, true),
+        ('a reporter, own, once answered', reporter, true, 2, false),
+        ('a reporter, own, no comment read', reporter, true, 0, false),
+        (
+          'a reporter, somebody else\'s, one comment',
+          reporter,
+          false,
+          1,
+          false,
+        ),
+        ('a viewer, own, one comment', viewer, true, 1, false),
+        ('a manager, somebody else\'s, answered', keeper, false, 5, true),
+        ('a manager, own, answered', keeper, true, 2, true),
+        ('the key, answered', key, false, 9, true),
+      ];
+      for (final (name, grant, own, comments, may) in rows) {
+        test(
+          name,
+          () => expect(
+            grant.mayDeleteIssue(own: own, commentCount: comments),
+            may,
+          ),
+        );
+      }
+    });
   });
 
   group('asCapability', () {

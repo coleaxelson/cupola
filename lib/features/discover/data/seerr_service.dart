@@ -11,6 +11,7 @@ import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/models/person_credits.dart';
 import 'package:cupola/features/discover/domain/models/seerr_genre.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/seerr_arr_server.dart';
 import 'package:cupola/features/discover/domain/seerr_known_arr.dart';
@@ -410,8 +411,73 @@ class SeerrService {
     return (items: items, total: total);
   }
 
-  Future<void> resolveIssue(int issueId) async {
-    await _client.post('/api/v1/issue/$issueId/resolved');
+  Future<void> resolveIssue(int issueId) =>
+      setIssueStatus(issueId, SeerrIssueStatus.resolved);
+
+  /// Every issue the connection's account may see, newest activity first.
+  ///
+  /// For a requester that is their own: without MANAGE_ISSUES or VIEW_ISSUES
+  /// the server limits the list to the caller (`issue.ts`, `GET /`), so the
+  /// same call is the operator's list with `all` and the requester's list. Read
+  /// and hydrated like [getIssuesResult].
+  Future<SeerrAdminResult<SeerrIssue>> getOwnIssuesResult() =>
+      getIssuesResult(filter: SeerrIssueFilter.all);
+
+  /// Reports a problem (`POST /issue`), answering the issue the server made.
+  ///
+  /// The caller is the reporter: the body never carries a user. A draft that
+  /// cannot be sent throws a [StateError] before anything leaves the app.
+  Future<SeerrIssue> reportIssue(SeerrIssueDraft draft) async {
+    final response = await _client.post('/api/v1/issue', data: draft.toJson());
+    return SeerrIssue.fromJson(response.data);
+  }
+
+  /// One issue with its whole conversation, authors included
+  /// (`GET /issue/{id}`), named from its title's page like the list.
+  Future<SeerrIssue> getIssue(int issueId) async {
+    final response = await _client.get('/api/v1/issue/$issueId');
+    final data = response.data;
+    if (data is! Map) throw const FormatException('Seerr sent no issue');
+    return _hydrateIssue(SeerrIssue.fromJson(data));
+  }
+
+  /// Adds a reply (`POST /issue/{id}/comment`).
+  Future<void> commentOnIssue(int issueId, String message) async {
+    await _client.post(
+      '/api/v1/issue/$issueId/comment',
+      data: {'message': message.trim()},
+    );
+  }
+
+  /// Rewrites one reply (`PUT /issueComment/{id}`).
+  Future<void> editComment(int commentId, String message) async {
+    await _client.put(
+      '/api/v1/issueComment/$commentId',
+      data: {'message': message.trim()},
+    );
+  }
+
+  /// Deletes one reply (`DELETE /issueComment/{id}`).
+  Future<void> deleteComment(int commentId) async {
+    await _client.delete('/api/v1/issueComment/$commentId');
+  }
+
+  /// Resolves or reopens an issue (`POST /issue/{id}/open|resolved`).
+  Future<void> setIssueStatus(int issueId, SeerrIssueStatus status) async {
+    await _client.post('/api/v1/issue/$issueId/${status.route}');
+  }
+
+  /// Deletes an issue with its conversation (`DELETE /issue/{id}`).
+  Future<void> deleteIssue(int issueId) async {
+    await _client.delete('/api/v1/issue/$issueId');
+  }
+
+  /// How many issues the server holds (`GET /issue/count`).
+  Future<SeerrIssueCount> getIssueCount() async {
+    final response = await _client.get('/api/v1/issue/count');
+    final data = response.data;
+    if (data is! Map) throw const FormatException('Seerr sent no count');
+    return SeerrIssueCount.fromJson(data);
   }
 
   /// Every user this server holds, with the same partial-page contract as

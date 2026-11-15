@@ -52,7 +52,11 @@ enum SeerrAbility {
   manageUsers,
 
   /// Read the server's settings, its Radarr and Sonarr servers included.
-  readSettings;
+  readSettings,
+
+  /// Report a problem with a title: the requester's own ability, not the
+  /// operator's.
+  reportIssue;
 
   /// Whether the answer differs for a movie and a series.
   bool get dependsOnKind => switch (this) {
@@ -66,7 +70,8 @@ enum SeerrAbility {
     viewIssues ||
     manageIssues ||
     manageUsers ||
-    readSettings => false,
+    readSettings ||
+    reportIssue => false,
   };
 
   /// Whether this is the operator's to do rather than the requester's own.
@@ -75,7 +80,7 @@ enum SeerrAbility {
   /// whatever the account may do: they are left out of it, not dimmed in it.
   bool get belongsToOperator => switch (this) {
     request || request4k || autoApproved || autoApproved4k => false,
-    cancelOwnPending => false,
+    cancelOwnPending || reportIssue => false,
     chooseDestination ||
     bypassQuota ||
     approve ||
@@ -217,6 +222,12 @@ final class SeerrGrant {
       SeerrAbility.manageUsers => one(SeerrPermission.manageUsers),
       // `routes/index.ts:156`: every `/settings` route.
       SeerrAbility.readSettings => one(SeerrPermission.admin),
+      // `issue.ts`, `POST /`: the route admits CREATE_ISSUES or
+      // MANAGE_ISSUES, and nobody else.
+      SeerrAbility.reportIssue => any([
+        SeerrPermission.createIssues,
+        SeerrPermission.manageIssues,
+      ]),
     };
   }
 
@@ -239,6 +250,46 @@ final class SeerrGrant {
     if (value == null) return true;
     if (hasSeerrPermission(value, SeerrPermission.manageIssues)) return true;
     return own && hasSeerrPermission(value, SeerrPermission.createIssues);
+  }
+
+  /// Whether this connection may comment on one issue: anybody's with
+  /// MANAGE_ISSUES, otherwise only an [own] issue, and only with
+  /// CREATE_ISSUES (`issue.ts`, `POST /:issueId/comment`).
+  bool mayCommentOnIssue({required bool own}) => mayResolveIssue(own: own);
+
+  /// Whether this connection may edit one reply: only its own author, even
+  /// with MANAGE_ISSUES, and only with CREATE_ISSUES or MANAGE_ISSUES, the
+  /// two the route admits (`issueComment.ts`, `PUT /:commentId`, which
+  /// refuses anybody else's with a 403).
+  bool mayEditComment({required bool own}) {
+    final value = permissions;
+    if (value == null) return true;
+    return own &&
+        (hasSeerrPermission(value, SeerrPermission.createIssues) ||
+            hasSeerrPermission(value, SeerrPermission.manageIssues));
+  }
+
+  /// Whether this connection may delete one reply: anybody's with
+  /// MANAGE_ISSUES, otherwise only an [own] one, with CREATE_ISSUES
+  /// (`issueComment.ts`, `DELETE /:commentId`).
+  bool mayDeleteComment({required bool own}) {
+    final value = permissions;
+    if (value == null) return true;
+    if (hasSeerrPermission(value, SeerrPermission.manageIssues)) return true;
+    return own && hasSeerrPermission(value, SeerrPermission.createIssues);
+  }
+
+  /// Whether this connection may delete one issue: anybody's with
+  /// MANAGE_ISSUES, otherwise only an [own] one that still has exactly one
+  /// comment, the report itself, with CREATE_ISSUES (`issue.ts`,
+  /// `DELETE /:issueId`).
+  bool mayDeleteIssue({required bool own, required int commentCount}) {
+    final value = permissions;
+    if (value == null) return true;
+    if (hasSeerrPermission(value, SeerrPermission.manageIssues)) return true;
+    return own &&
+        commentCount == 1 &&
+        hasSeerrPermission(value, SeerrPermission.createIssues);
   }
 
   /// A manager decides on requests; everybody else asks.
