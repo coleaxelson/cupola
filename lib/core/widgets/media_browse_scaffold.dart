@@ -13,6 +13,7 @@ import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/service_theme.dart';
 import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/arr_activity_display.dart';
+import 'package:cupola/core/utils/find_match.dart';
 import 'package:cupola/core/utils/image_utils.dart';
 import 'package:cupola/core/widgets/ambient_scaffold.dart';
 import 'package:cupola/core/widgets/app_empty_state.dart';
@@ -21,7 +22,10 @@ import 'package:cupola/core/widgets/async_value_widget.dart';
 import 'package:cupola/core/widgets/content_card.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
+import 'package:cupola/core/widgets/inline_error_retry.dart';
 import 'package:cupola/core/widgets/media_find.dart';
+import 'package:cupola/core/widgets/media_browse_index.dart';
+import 'package:cupola/core/widgets/media_browse_wanted.dart';
 import 'package:cupola/core/widgets/media_grid.dart';
 import 'package:cupola/core/widgets/media_poster_card.dart';
 import 'package:cupola/core/widgets/search_bar_header.dart';
@@ -29,6 +33,7 @@ import 'package:cupola/core/widgets/service_offline_state.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/connection_access.dart';
+import 'package:cupola/features/settings/domain/connection_presentation.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 import 'package:cupola/features/settings/domain/service_not_configured.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
@@ -49,6 +54,10 @@ enum MediaBrowseFilter {
   all,
   available,
   missing,
+
+  /// A wall's own answer to what it is short of, in the place of [missing]
+  /// (see [MediaBrowseWanted]). Never offered beside it.
+  wanted,
   inQueue,
 
   /// On disk, but not at the quality the profile asks for. Its own chip rather
@@ -69,6 +78,7 @@ String mediaBrowseFilterEmptyTitle(MediaBrowseFilter filter) =>
       MediaBrowseFilter.all => 'Nothing to show',
       MediaBrowseFilter.available => 'Nothing is available yet',
       MediaBrowseFilter.missing => 'Nothing is missing',
+      MediaBrowseFilter.wanted => 'Nothing is wanted',
       MediaBrowseFilter.inQueue => 'Nothing is in the queue',
       MediaBrowseFilter.cutoffUnmet => 'Nothing is below its cutoff',
       MediaBrowseFilter.unmonitored => 'Everything is monitored',
@@ -129,11 +139,13 @@ MediaBrowseBucket mediaBrowseBucketOf(MediaStatusInfo? status) {
 /// is in the service's own `wanted/cutoff` set. It arrives as a plain bool so
 /// this function stays a function of its arguments: the caller owns the id
 /// set and the lookup, and a screen with no cutoff source passes `false` and
-/// does not offer the chip at all.
+/// does not offer the chip at all. [isWanted] is the same kind of fact for the
+/// Wanted chip: whether the item is in the wall's own wanted set.
 bool mediaBrowseFilterMatches(
   MediaBrowseFilter filter,
   MediaStatusInfo? status, {
   bool belowCutoff = false,
+  bool isWanted = false,
 }) {
   return switch (filter) {
     MediaBrowseFilter.all => true,
@@ -141,6 +153,9 @@ bool mediaBrowseFilterMatches(
       mediaBrowseBucketOf(status) == MediaBrowseBucket.onDisk,
     MediaBrowseFilter.missing =>
       mediaBrowseBucketOf(status) == MediaBrowseBucket.gap,
+    // The service's own list, not a reading of the status: it is what the
+    // chip exists for (see `MediaBrowseWanted`).
+    MediaBrowseFilter.wanted => isWanted,
     // Orthogonal to the buckets on purpose: what is moving is a different
     // question from what is on disk, and a downloading title belongs in both
     // In queue and Missing.
@@ -339,6 +354,10 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
   /// question is a claim the screen cannot honour.
   final Set<int>? cutoffUnmetIds;
 
+  /// The wall's own Wanted chip, which takes the Missing chip's place, or null
+  /// for a wall that keeps Missing. See [MediaBrowseWanted].
+  final MediaBrowseWanted? wanted;
+
   const MediaBrowseScaffold({
     super.key,
     required this.title,
@@ -367,6 +386,7 @@ class MediaBrowseScaffold<T> extends ConsumerStatefulWidget {
     this.kpiPeek,
     this.sorts = const [],
     this.cutoffUnmetIds,
+    this.wanted,
     this.tileShape = MediaBrowseTileShape.poster,
     this.posterFallbackIcon = Icons.movie_outlined,
     this.emptyIcon = Icons.video_library_outlined,
@@ -405,10 +425,21 @@ class _MediaBrowseScaffoldState<T>
   /// text once typing has paused, which is what the service scope asks for.
   String _liveText = '';
 
+  /// The outer scroll position of the wall's `NestedScrollView`: the header
+  /// (field, peek, chips). How much of it is still showing is what a jump to a
+  /// letter has to count in (see [_jumpToLetter]).
+  final ScrollController _outer = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _liveText = ref.read(widget.searchQueryProvider);
+  }
+
+  @override
+  void dispose() {
+    _outer.dispose();
+    super.dispose();
   }
 
   /// Takes [text] as what the field holds. An emptied field ends the search,
@@ -449,6 +480,10 @@ class _MediaBrowseScaffoldState<T>
     if (_sortIndex >= _sortOptions.length) {
       _sortIndex = 0;
     }
+    // Likewise a chip the screen no longer offers.
+    if (_selectedFilter == MediaBrowseFilter.wanted && widget.wanted == null) {
+      _selectedFilter = MediaBrowseFilter.all;
+    }
   }
 
   /// Title A–Z first, then whatever the service declared.
@@ -464,10 +499,9 @@ class _MediaBrowseScaffoldState<T>
         if (bySortTitle != 0) {
           return bySortTitle;
         }
-        return widget
-            .titleExtractor(left)
-            .toLowerCase()
-            .compareTo(widget.titleExtractor(right).toLowerCase());
+        return foldForFind(
+          widget.titleExtractor(left),
+        ).compareTo(foldForFind(widget.titleExtractor(right)));
       },
     ),
     ...widget.sorts,
@@ -476,7 +510,8 @@ class _MediaBrowseScaffoldState<T>
   /// The chips this screen can honestly offer.
   ///
   /// Cutoff unmet is conditional on a source; see
-  /// [MediaBrowseScaffold.cutoffUnmetIds]. Available, Missing, In queue and
+  /// [MediaBrowseScaffold.cutoffUnmetIds]. Wanted stands where Missing would
+  /// ([MediaBrowseScaffold.wanted]). Available, Missing, In queue and
   /// Unmonitored are questions put to each title's status, so they are
   /// conditional on [MediaBrowseScaffold.statusExtractor]: a title with no
   /// status reads as a gap, which would answer Missing for the whole library
@@ -488,7 +523,12 @@ class _MediaBrowseScaffoldState<T>
       MediaBrowseFilter.all,
       if (hasStatus) ...[
         MediaBrowseFilter.available,
-        MediaBrowseFilter.missing,
+        // Wanted where the wall can say what it is short of, Missing where a
+        // title's own status is the answer.
+        if (widget.wanted != null)
+          MediaBrowseFilter.wanted
+        else
+          MediaBrowseFilter.missing,
         MediaBrowseFilter.inQueue,
       ],
       if (widget.cutoffUnmetIds != null) MediaBrowseFilter.cutoffUnmet,
@@ -503,6 +543,7 @@ class _MediaBrowseScaffoldState<T>
     // that spares a server; and the search ends the moment the field is
     // empty, not 400ms later.
     final isSearching = _liveText.isNotEmpty;
+    final wantedLine = isSearching ? null : _wantedSummary();
     final scopeProvider = find.scopeProvider;
     final scope = scopeProvider == null
         ? MediaFindScope.library
@@ -565,13 +606,10 @@ class _MediaBrowseScaffoldState<T>
       // header slivers as non-pinned adapters, so it scrolls away with the
       // content instead of staying fixed above the list.
       body: NestedScrollView(
+        controller: _outer,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           if (widget.topPadding > 0)
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: widget.topPadding + MediaQuery.paddingOf(context).top,
-              ),
-            ),
+            SliverToBoxAdapter(child: SizedBox(height: _chromeInset(context))),
           SliverToBoxAdapter(
             child: SearchBarHeader(
               hintText: widget.searchHint,
@@ -607,6 +645,7 @@ class _MediaBrowseScaffoldState<T>
                     _selectedFilter = filter;
                   });
                 },
+                wantedLabel: widget.wanted?.label,
                 sortLabel: _sortOptions[_sortIndex].label,
                 sortOptions: [for (final sort in _sortOptions) sort.label],
                 selectedSort: _sortIndex,
@@ -615,6 +654,23 @@ class _MediaBrowseScaffoldState<T>
                     _sortIndex = index;
                   });
                 },
+              ),
+            ),
+          if (wantedLine != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                ),
+                child: Text(
+                  wantedLine,
+                  style: AppType.meta.copyWith(
+                    color: CupolaRoom.of(context).inkSecondary,
+                  ),
+                ),
               ),
             ),
         ],
@@ -629,6 +685,27 @@ class _MediaBrowseScaffoldState<T>
               },
       ),
     );
+  }
+
+  /// The line under the chips while Wanted is on: how many of the wall's titles
+  /// the service wants something for, and what *wanted* means. Null while the
+  /// answer or the library is out, and when nothing is wanted: the empty wall
+  /// says that on its own.
+  ///
+  /// Counted over the library the wall shows, not the service's set: an id the
+  /// library does not hold is not a tile.
+  String? _wantedSummary() {
+    final wanted = widget.wanted;
+    if (wanted == null || _selectedFilter != MediaBrowseFilter.wanted) {
+      return null;
+    }
+    final answer = wanted.answer.value;
+    final items = ref.watch(widget.libraryProvider).value;
+    if (answer == null || items == null) return null;
+    final count = items
+        .where((item) => answer.countById.containsKey(widget.idExtractor(item)))
+        .length;
+    return count == 0 ? null : wanted.summaryOf(count, answer.isFloor);
   }
 
   Widget _buildLibraryContent(BuildContext context) {
@@ -701,19 +778,44 @@ class _MediaBrowseScaffoldState<T>
     required String baseUrl,
     required String apiKey,
   }) {
+    // The wall's own Wanted answer is not in yet, or never came: the wall
+    // says which, rather than filter itself down to nothing on a question
+    // nobody answered.
+    final wanted = widget.wanted;
+    if (_selectedFilter == MediaBrowseFilter.wanted &&
+        wanted != null &&
+        !wanted.answer.hasValue) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _stateListPadding(context),
+        children: [
+          const SizedBox(height: AppSpacing.xxl),
+          if (wanted.answer.error case final error?)
+            InlineErrorRetry.flush(
+              message: sectionFailureMessage(
+                wanted.service,
+                error,
+                consequence: wanted.failureConsequence,
+              ),
+              error: error,
+              service: wanted.service,
+              instanceId: wanted.instanceId,
+              onRetry: wanted.onRetry,
+            )
+          else
+            Center(
+              child: CircularProgressIndicator(color: _spinnerInk(context)),
+            ),
+        ],
+      );
+    }
+
     final visibleItems = _filteredItems(items);
 
     if (visibleItems.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(
-          left: AppSpacing.lg,
-          right: AppSpacing.lg,
-          top: AppSpacing.lg,
-          bottom:
-              AppSpacing.lg +
-              FloatingNavBarMetrics.getScrollViewBottomPadding(context),
-        ),
+        padding: _stateListPadding(context),
         children: [
           const SizedBox(height: AppSpacing.xxl),
           // The two absences are different facts: a library with nothing in
@@ -740,6 +842,15 @@ class _MediaBrowseScaffoldState<T>
     }
 
     final sections = _buildSections(visibleItems);
+    // The strip belongs to the alphabetical order alone, which is the one
+    // that has headings, and only to a wall long enough to need it.
+    final showIndex =
+        sections.isNotEmpty &&
+        sections.first.label.isNotEmpty &&
+        visibleItems.length >= MediaBrowseIndex.minTitles;
+    // The strip sits in the right margin; the wall gives it that margin so no
+    // tile is ever under a finger meant for a letter.
+    final rightMargin = showIndex ? MediaBrowseIndex.width : AppSpacing.lg;
 
     // **Built a row at a time, as the rows scroll in.** This used to be one
     // `ListView` item per section with every tile of the section in a `Wrap`,
@@ -753,61 +864,311 @@ class _MediaBrowseScaffoldState<T>
     // a top-aligned `Row` as tall as its tallest tile, `gridGap` between
     // columns and `space-lg` between rows, `space-xl` after a section's last
     // row. Only the building is lazy.
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      // The tiles are what a screen reader counts ("items 13 to 24 of 60"),
-      // not the rows or the headings the list happens to be built from.
-      semanticChildCount: visibleItems.length,
-      slivers: [
-        SliverPadding(
-          padding: EdgeInsets.only(
-            left: AppSpacing.lg,
-            right: AppSpacing.lg,
-            top: AppSpacing.sm,
-            bottom:
-                AppSpacing.lg +
-                FloatingNavBarMetrics.getScrollViewBottomPadding(context),
-          ),
-          sliver: SliverLayoutBuilder(
-            builder: (context, constraints) {
-              // One column math for the whole app, and the tiles fill the row
-              // they are given.
-              //
-              // This used to pin a 96pt tile, under the 130pt floor every
-              // other grid is held to, and then compute a spacing to
-              // distribute the leftover, only to `.clamp(0, gridGap)` that
-              // spacing away again. The slack it had just measured came back
-              // as a ragged right edge: at 390pt, three 96pt tiles and two
-              // 12pt gaps are 312 inside 358, so 46pt of dead space sat at the
-              // end of every row. The boards draw `repeat(N, minmax(0, 1fr))`:
-              // the count is resolved first, then the tiles take what is left.
-              final width = constraints.crossAxisExtent;
-              final columns = MediaGrid.columnsFor(width, _minBrowseColumns);
-              final tileWidth = math.max(
-                1.0,
-                (width - (AppSpacing.gridGap * (columns - 1))) / columns,
-              );
-              final entries = _browseEntries(sections, columns);
+    //
+    // The scroll view is the Stack's first child whether or not the strip
+    // shows, so a chip that takes the wall across the strip's threshold keeps
+    // its scroll position.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          // The tiles are what a screen reader counts ("items 13 to 24 of
+          // 60"), not the rows or the headings the list happens to be built
+          // from.
+          semanticChildCount: visibleItems.length,
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.only(
+                left: AppSpacing.lg,
+                right: rightMargin,
+                top: _wallTopPadding,
+                bottom:
+                    AppSpacing.lg +
+                    FloatingNavBarMetrics.getScrollViewBottomPadding(context),
+              ),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  // One column math for the whole app, and the tiles fill the
+                  // row they are given.
+                  //
+                  // This used to pin a 96pt tile, under the 130pt floor every
+                  // other grid is held to, and then compute a spacing to
+                  // distribute the leftover, only to `.clamp(0, gridGap)` that
+                  // spacing away again. The slack it had just measured came
+                  // back as a ragged right edge: at 390pt, three 96pt tiles
+                  // and two 12pt gaps are 312 inside 358, so 46pt of dead
+                  // space sat at the end of every row. The boards draw
+                  // `repeat(N, minmax(0, 1fr))`: the count is resolved first,
+                  // then the tiles take what is left.
+                  final width = constraints.crossAxisExtent;
+                  // What a jump to a letter measures its offsets against: the
+                  // very extent this layout was given.
+                  _wallExtent = width;
+                  final (:columns, :tileWidth) = _gridFor(width);
+                  final entries = _browseEntries(sections, columns);
 
-              return SliverList.builder(
-                itemCount: entries.length,
-                // Indexed per tile inside each row instead; see
-                // `semanticChildCount` above.
-                addSemanticIndexes: false,
-                itemBuilder: (context, index) => _buildBrowseEntry(
-                  context: context,
-                  entry: entries[index],
-                  items: visibleItems,
-                  tileWidth: tileWidth,
-                  baseUrl: baseUrl,
-                  apiKey: apiKey,
-                ),
-              );
-            },
-          ),
+                  return SliverList.builder(
+                    itemCount: entries.length,
+                    // Indexed per tile inside each row instead; see
+                    // `semanticChildCount` above.
+                    addSemanticIndexes: false,
+                    itemBuilder: (context, index) => _buildBrowseEntry(
+                      context: context,
+                      entry: entries[index],
+                      items: visibleItems,
+                      tileWidth: tileWidth,
+                      baseUrl: baseUrl,
+                      apiKey: apiKey,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
+        if (showIndex)
+          _buildIndexLayer(
+            context: context,
+            items: visibleItems,
+            sections: sections,
+          ),
       ],
     );
+  }
+
+  /// The padding of a body that is not a wall of tiles (a wait, a failure, an
+  /// empty chip): the wall's own margins, and room above the bar.
+  EdgeInsets _stateListPadding(BuildContext context) => EdgeInsets.only(
+    left: AppSpacing.lg,
+    right: AppSpacing.lg,
+    top: AppSpacing.lg,
+    bottom:
+        AppSpacing.lg +
+        FloatingNavBarMetrics.getScrollViewBottomPadding(context),
+  );
+
+  /// The air over the first heading of the wall.
+  static const double _wallTopPadding = AppSpacing.sm;
+
+  /// What the wall's column count and tile width come out as for a cross-axis
+  /// extent: the one math the layout and a jump to a letter share.
+  static ({int columns, double tileWidth}) _gridFor(double crossAxisExtent) {
+    final columns = MediaGrid.columnsFor(crossAxisExtent, _minBrowseColumns);
+    return (
+      columns: columns,
+      tileWidth: math.max(
+        1.0,
+        (crossAxisExtent - (AppSpacing.gridGap * (columns - 1))) / columns,
+      ),
+    );
+  }
+
+  /// The cross-axis extent the wall's grid was last laid out in, for the
+  /// offsets of [_jumpToLetter]. Written by the layout itself, which is the
+  /// only thing that knows it: the wall's width less its margins, and the
+  /// strip's.
+  double? _wallExtent;
+
+  /// How far the room above the body reaches: the tab bar and the status bar
+  /// that a service tab lays over the top of the page ([topPadding]). Zero on
+  /// a page with a bar of its own, whose body begins under it.
+  double _chromeInset(BuildContext context) => widget.topPadding > 0
+      ? widget.topPadding + MediaQuery.paddingOf(context).top
+      : 0;
+
+  /// How much of the header (field, peek, chips) is still showing over the
+  /// body, or null when its scroll position has not been laid out yet.
+  ///
+  /// The body is exactly what the header leaves of the page, so this is how
+  /// far the body's top is from the page's: it grows by that much when the
+  /// header folds away.
+  double? _headerShowing() {
+    if (!_outer.hasClients) return null;
+    final position = _outer.position;
+    if (!position.hasContentDimensions) return null;
+    return math.max(0.0, position.maxScrollExtent - position.pixels);
+  }
+
+  /// The strip, over the right margin of the body: from under the header (and
+  /// under the chrome of a service tab, once the header has gone) to above
+  /// the floating bar.
+  Widget _buildIndexLayer({
+    required BuildContext context,
+    required List<T> items,
+    required List<_MediaBrowseSection> sections,
+  }) {
+    final inset = _chromeInset(context);
+    final bottom = FloatingNavBarMetrics.getScrollViewBottomPadding(context);
+    final present = {
+      for (final section in sections)
+        if (section.label.isNotEmpty) section.label,
+    };
+    return Positioned.fill(
+      // Built again whenever the body's height changes, which is what the
+      // header folding away does to it: only the strip, never the wall.
+      child: LayoutBuilder(
+        builder: (body, _) {
+          // The body starts `showing` below the page's top; the chrome covers
+          // `inset` of it from the top.
+          final clearance = math.max(0.0, inset - (_headerShowing() ?? inset));
+          return Padding(
+            padding: EdgeInsets.only(
+              top: clearance + AppSpacing.xs,
+              bottom: bottom,
+            ),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: MediaBrowseIndex(
+                present: present,
+                onJump: (letter) => _jumpToLetter(
+                  // The wall is measured from the context that built it, the
+                  // scroll position is the body's.
+                  measuredFrom: context,
+                  body: body,
+                  letter: letter,
+                  items: items,
+                  sections: sections,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The air between the top of the body and a heading a jump lands on: the
+  /// chrome a service tab lays over it, or the fade a bar casts on it, so the
+  /// heading is whole and in the clear, and a little of the wall's own top
+  /// margin.
+  double _landingAir(BuildContext context) {
+    final inset = _chromeInset(context);
+    final cover = inset > 0
+        ? inset
+        : (widget.showAppBar ? ScrollEdgeFade.height : 0.0);
+    return cover + _wallTopPadding;
+  }
+
+  /// Jumps the wall to the heading of [letter]: at once, no animation, with
+  /// the heading at the top of what the body shows (see [_landingAir]).
+  ///
+  /// The wall is lazy, so a section that is not built has no key and no box to
+  /// ask: its offset is the sum of everything before it, from the same grid
+  /// the layout uses ([_gridFor], [_browseEntries]) and the heights its rows
+  /// come out at ([_measureWall]).
+  ///
+  /// The scroll position is the nested one, whose offset counts the header
+  /// first: a jump folds the header away (the body is then as tall as the page)
+  /// and lands the heading under its top. So the wall may not be asked for more
+  /// than it can scroll once the header is gone, or it would be sent back by
+  /// the position's own ballistics a frame later. That limit is the measured
+  /// wall less the page, not the position's `maxScrollExtent`: a lazy list
+  /// only *estimates* its end from the rows it has built, and an estimate from
+  /// the top of a long wall would stop a jump to its last letters short.
+  void _jumpToLetter({
+    required BuildContext measuredFrom,
+    required BuildContext body,
+    required String letter,
+    required List<T> items,
+    required List<_MediaBrowseSection> sections,
+  }) {
+    final context = measuredFrom;
+    final extent = _wallExtent;
+    final controller = PrimaryScrollController.maybeOf(body);
+    if (extent == null || controller == null || !controller.hasClients) return;
+    final wall = _measureWall(context, items, sections, extent);
+    final heading = wall.headings[letter];
+    if (heading == null) return;
+    final position = controller.position;
+    final showing = _headerShowing() ?? 0;
+    final furthest = math.max(
+      0.0,
+      wall.extent - (position.viewportDimension + showing),
+    );
+    position.jumpTo((heading - _landingAir(context)).clamp(0.0, furthest));
+  }
+
+  /// Where each heading starts in the body's scroll extent, and how long the
+  /// whole of it is, with its padding.
+  ///
+  /// The same walk the layout makes, over the same entries, with each row as
+  /// tall as its tallest tile: the artwork, the gap, the title, and the
+  /// subtitle when any tile of the run has one.
+  ({Map<String, double> headings, double extent}) _measureWall(
+    BuildContext context,
+    List<T> items,
+    List<_MediaBrowseSection> sections,
+    double crossAxisExtent,
+  ) {
+    final (:columns, :tileWidth) = _gridFor(crossAxisExtent);
+    final lines = MediaPosterCaption.lineHeightsOf(context);
+    final heading = _headingExtent(context);
+    final artwork = widget.tileShape == MediaBrowseTileShape.circle
+        ? tileWidth
+        : tileWidth * 3 / 2;
+
+    final headings = <String, double>{};
+    var offset = _wallTopPadding;
+    for (final entry in _browseEntries(sections, columns)) {
+      if (entry.label case final label?) {
+        headings[label] = offset;
+        offset += heading;
+        continue;
+      }
+      var anySubtitle = false;
+      for (var index = entry.start; index < entry.end; index++) {
+        if (_subtitleFor(items[index]).isNotEmpty) {
+          anySubtitle = true;
+          break;
+        }
+      }
+      offset +=
+          artwork +
+          MediaPosterCaption.gap +
+          lines.title +
+          (anySubtitle ? lines.subtitle : 0) +
+          entry.gapBelow;
+    }
+    return (
+      headings: headings,
+      extent:
+          offset +
+          AppSpacing.lg +
+          FloatingNavBarMetrics.getScrollViewBottomPadding(context),
+    );
+  }
+
+  /// A section heading's style: the room's section title.
+  TextStyle _headingStyle(BuildContext context) =>
+      Theme.of(context).textTheme.titleLarge!.weight(FontWeight.w600);
+
+  /// A section heading's height at the reading size: its line and the gap
+  /// under it ([_buildBrowseEntry]).
+  double _headingExtent(BuildContext context) {
+    final painter = TextPainter(
+      text: TextSpan(text: 'Ag', style: _headingStyle(context)),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final height = painter.height;
+    painter.dispose();
+    return height + AppSpacing.md;
+  }
+
+  /// What the tile of [item] says under its title: the screen's own caption,
+  /// or the Wanted count while that chip is on.
+  String _subtitleFor(T item) {
+    final wanted = widget.wanted;
+    if (wanted != null && _selectedFilter == MediaBrowseFilter.wanted) {
+      final answer = wanted.answer.value;
+      final count = answer?.countById[widget.idExtractor(item)];
+      if (answer != null && count != null) {
+        return wanted.captionOf(count, answer.isFloor);
+      }
+    }
+    return widget.subtitleExtractor(item);
   }
 
   /// The wall flattened into headings and rows for [columns] across.
@@ -869,12 +1230,7 @@ class _MediaBrowseScaffoldState<T>
         key: entry.key,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge!.weight(FontWeight.w600),
-          ),
+          Text(label, style: _headingStyle(context)),
           const SizedBox(height: AppSpacing.md),
         ],
       );
@@ -922,7 +1278,7 @@ class _MediaBrowseScaffoldState<T>
       shape: widget.tileShape,
       fallbackIcon: widget.posterFallbackIcon,
       title: widget.titleExtractor(item),
-      subtitle: widget.subtitleExtractor(item),
+      subtitle: _subtitleFor(item),
       imageSource: ImageUtils.extractPosterUrl(
         widget.imagesExtractor(item),
         baseUrl: baseUrl,
@@ -937,6 +1293,7 @@ class _MediaBrowseScaffoldState<T>
 
   List<T> _filteredItems(List<T> items) {
     final cutoff = widget.cutoffUnmetIds;
+    final wanted = widget.wanted?.answer.value;
     return _sortedItems(items)
         .where(
           (item) => mediaBrowseFilterMatches(
@@ -944,6 +1301,9 @@ class _MediaBrowseScaffoldState<T>
             widget.statusExtractor?.call(item),
             belowCutoff:
                 cutoff != null && cutoff.contains(widget.idExtractor(item)),
+            isWanted:
+                wanted != null &&
+                wanted.countById.containsKey(widget.idExtractor(item)),
           ),
         )
         .toList(growable: false);
@@ -996,13 +1356,13 @@ class _MediaBrowseScaffoldState<T>
     return sections;
   }
 
-  String _sortKeyFor(T item) {
-    final sortTitle =
-        (widget.sortTitleExtractor?.call(item) ?? widget.titleExtractor(item))
-            .trim()
-            .toLowerCase();
-    return sortTitle;
-  }
+  /// The key the wall sorts and sections by: the sort title, folded the way
+  /// the field matches (`foldForFind`), so `Édith Piaf` sorts and is headed
+  /// with the Es and `Øyvind` with the Os, not after Z under `#`.
+  String _sortKeyFor(T item) => foldForFind(
+    (widget.sortTitleExtractor?.call(item) ?? widget.titleExtractor(item))
+        .trim(),
+  );
 
   String _sectionLabelFor(T item) {
     final sortKey = _sortKeyFor(item);
@@ -1064,6 +1424,7 @@ class _MediaBrowseFilterChips extends StatelessWidget {
   final MediaBrowseFilter selectedFilter;
   final Color color;
   final ValueChanged<MediaBrowseFilter> onSelected;
+  final String? wantedLabel;
   final String sortLabel;
   final List<String> sortOptions;
   final int selectedSort;
@@ -1074,6 +1435,7 @@ class _MediaBrowseFilterChips extends StatelessWidget {
     required this.selectedFilter,
     required this.color,
     required this.onSelected,
+    required this.wantedLabel,
     required this.sortLabel,
     required this.sortOptions,
     required this.selectedSort,
@@ -1113,6 +1475,7 @@ class _MediaBrowseFilterChips extends StatelessWidget {
                           MediaBrowseFilter.all => 'All',
                           MediaBrowseFilter.available => 'Available',
                           MediaBrowseFilter.missing => 'Missing',
+                          MediaBrowseFilter.wanted => wantedLabel ?? 'Wanted',
                           MediaBrowseFilter.inQueue => 'In queue',
                           MediaBrowseFilter.cutoffUnmet => 'Cutoff unmet',
                           MediaBrowseFilter.unmonitored => 'Unmonitored',

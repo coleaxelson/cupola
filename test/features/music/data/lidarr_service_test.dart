@@ -230,6 +230,50 @@ void main() {
       expect(client.lastGetQueryParameters?['includeArtist'], isTrue);
     });
 
+    test('the wanted walk with its account asks for the artist, and a caller '
+        'may leave it out', () async {
+      client.getResponseData = const {'records': [], 'totalRecords': 0};
+
+      await service.getAllMissingPage();
+      expect(client.lastGetPath, '/api/v1/wanted/missing');
+      expect(client.lastGetQueryParameters?['includeArtist'], isTrue);
+
+      // The Wanted chip reads ids alone.
+      await service.getAllMissingPage(
+        queryParameters: const {'includeArtist': false},
+      );
+      expect(client.lastGetQueryParameters?['includeArtist'], isFalse);
+    });
+
+    test('the wanted walk says when it stopped before the end', () async {
+      // Fifty pages of 250, and the server still names more.
+      client.getResponseData = {
+        'records': [
+          for (var id = 0; id < 250; id++) {'id': id, 'artistId': id % 7},
+        ],
+        'totalRecords': 30000,
+      };
+
+      final page = await service.getAllMissingPage();
+
+      expect(page.cutShort, isTrue);
+      expect(page.total, 30000);
+      expect(page.records, hasLength(12500));
+    });
+
+    test('the wanted walk that reaches the end is whole', () async {
+      client.getResponseData = const {
+        'records': [
+          {'id': 1, 'artistId': 4},
+        ],
+        'totalRecords': 1,
+      };
+
+      final page = await service.getAllMissingPage();
+
+      expect(page.cutShort, isFalse);
+    });
+
     test('a caller may still add its own wanted parameters', () async {
       client.getResponseData = const {'records': [], 'totalRecords': 0};
 

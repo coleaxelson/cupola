@@ -105,6 +105,16 @@ class FakeRadarrService extends RadarrService {
     Map<String, dynamic>? queryParameters,
   }) async => const [];
 
+  /// The walk with its account of itself, inverted like the others: a scripted
+  /// [getAllMissing] is the whole wanted list, so its total is its length.
+  @override
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final records = await getAllMissing(queryParameters: queryParameters);
+    return ArrRecordPage(records: records, total: records.length);
+  }
+
   /// The paged primitives, delegating **back** to the record-only getters.
   ///
   /// The inverse of the production layering, and deliberately so. In the real
@@ -247,6 +257,16 @@ class FakeSonarrService extends SonarrService {
     Map<String, dynamic>? queryParameters,
   }) async => const [];
 
+  /// The walk with its account of itself, inverted like the others: a scripted
+  /// [getAllMissing] is the whole wanted list, so its total is its length.
+  @override
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final records = await getAllMissing(queryParameters: queryParameters);
+    return ArrRecordPage(records: records, total: records.length);
+  }
+
   /// See [FakeRadarrService.getHistoryPage]: the fakes invert the production
   /// delegation, so a subclass scripting the record-only getter is still what a
   /// page caller reaches.
@@ -371,6 +391,16 @@ class FakeLidarrService extends LidarrService {
   Future<List<dynamic>> getAllCutoff({
     Map<String, dynamic>? queryParameters,
   }) async => const [];
+
+  /// The walk with its account of itself, inverted like the others: a scripted
+  /// [getAllMissing] is the whole wanted list, so its total is its length.
+  @override
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final records = await getAllMissing(queryParameters: queryParameters);
+    return ArrRecordPage(records: records, total: records.length);
+  }
 
   /// See [FakeRadarrService.getHistoryPage]: the fakes invert the production
   /// delegation, so a subclass scripting the record-only getter is still what a

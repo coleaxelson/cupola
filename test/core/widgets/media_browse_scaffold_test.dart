@@ -929,7 +929,10 @@ void main() {
       await _pumpLargeWall(tester, count: 2000);
 
       // Title A–Z over titles that all start with one letter: one section.
-      expect(find.text('A'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('media-browse-section-A')),
+        findsOneWidget,
+      );
       final lettered = find.byType(ContentCard).evaluate().length;
       expect(lettered, greaterThan(0));
       expect(lettered, lessThan(60));

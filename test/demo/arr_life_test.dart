@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/demo/demo_session.dart';
+import 'package:cupola/demo/world/fakes/arr_fakes.dart';
 import 'package:cupola/demo/world/profiles.dart';
 
 /// The arrs once the world lives: a film or a series added, monitored, let
@@ -288,10 +289,13 @@ void main() {
               as Map;
       expect(added['id'], 2);
       expect(added['artistName'], 'Elbow');
-      expect((await list('$lidarr/artist')).map((a) => a['artistName']), [
-        'Jan Morgenstern',
-        'Elbow',
-      ]);
+      // After the world's own artist and the shelf the library holds.
+      final library = (await list(
+        '$lidarr/artist',
+      )).map((a) => a['artistName']).toList();
+      expect(library.first, 'Jan Morgenstern');
+      expect(library.last, 'Elbow');
+      expect(library, hasLength(LidarrFake.shelfCount + 2));
       expect(((await send('GET', '$lidarr/artist/2')) as Map)['id'], 2);
 
       // Lidarr has not read the albums yet.
@@ -308,7 +312,10 @@ void main() {
         '$lidarr/artist',
         json: {'artistName': 'Elbow', 'foreignArtistId': 'lookup-elbow'},
       );
-      expect(await list('$lidarr/artist'), hasLength(2));
+      expect(
+        await list('$lidarr/artist'),
+        hasLength(LidarrFake.shelfCount + 2),
+      );
     });
 
     test('finds the world\'s own artist and albums as the library holds '
@@ -400,7 +407,10 @@ void main() {
                 )
                 as Map;
         expect((added['artist'] as Map)['id'], 1);
-        expect(await list('$lidarr/artist'), hasLength(1));
+        expect(
+          await list('$lidarr/artist'),
+          hasLength(LidarrFake.shelfCount + 1),
+        );
         expect(
           (await list('$lidarr/album?artistId=1')).last['title'],
           'Sintel Live',

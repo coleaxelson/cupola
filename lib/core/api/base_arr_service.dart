@@ -581,11 +581,24 @@ mixin ArrActivityMixin {
   Future<List<dynamic>> getAllMissing({
     Map<String, dynamic>? queryParameters,
   }) async {
-    final result = await _fetchAllPages(
+    final result = await getAllMissingPage(queryParameters: queryParameters);
+    return result.records;
+  }
+
+  /// [getAllMissing] with the walk's own account of itself: the envelope's
+  /// total and whether it stopped before the end ([ArrRecordPage.cutShort]).
+  ///
+  /// For a caller that *counts* what it read: a walk that gave up after its
+  /// last page has only a floor, and a figure taken from the rows alone would
+  /// state it as the whole. Throws when the server does not answer, as
+  /// [getAllMissing] does.
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return _fetchAllPages(
       'wanted/missing',
       extraParams: {..._wantedParams(), ...?queryParameters},
     );
-    return result.records;
   }
 
   /// Fetches one page of cutoff-unmet items, **with the envelope's total**.

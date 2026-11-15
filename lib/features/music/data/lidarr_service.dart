@@ -132,6 +132,17 @@ class LidarrService with ArrActivityMixin {
     );
   }
 
+  /// As [getAllMissing], for the caller that needs to know whether the walk
+  /// reached the end.
+  @override
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return super.getAllMissingPage(
+      queryParameters: {'includeArtist': true, ...?queryParameters},
+    );
+  }
+
   @override
   Future<List<dynamic>> getAllCutoff({Map<String, dynamic>? queryParameters}) {
     return super.getAllCutoff(

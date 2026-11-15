@@ -1400,6 +1400,153 @@ class LidarrFake extends ArrFake {
     },
   };
 
+  /// The rest of the library: made-up groups, so that the wall has a few
+  /// screens of artists to scroll and letters to jump to (it grows its A–Z
+  /// strip at forty), with some of them short of albums Lidarr still wants.
+  /// Every letter but Q, U, X and Z has one, so the strip shows dimmed
+  /// letters too. Their ids start at [_shelfFirstId], well clear of the world's
+  /// own (1) and of the artists the demo adds, which count up from 2.
+  static const _shelfNames = [
+    'Alder Quartet',
+    'Amber Static',
+    'Aurelia Row',
+    'Birch & Hollow',
+    'Brass Lantern',
+    'Blue Harbor Choir',
+    'Cobalt Meadow',
+    'Copper Tide',
+    'Cedar Lines',
+    'Dune Orchestra',
+    'Dust Cathedral',
+    'Echo Parade',
+    'Elm Street Brass',
+    'Fable Hours',
+    'Fern & Flint',
+    'Garden Machine',
+    'Glass Orchard',
+    'Harbor Lights Trio',
+    'Hollow Pines',
+    'Indigo Ferry',
+    'Juniper Wire',
+    'Jade Cassette',
+    'Kestrel Union',
+    'Lantern Society',
+    'Low Tide Radio',
+    'Lumen Choir',
+    'Marble Valley',
+    'Moss Telegraph',
+    'Midnight Orchard',
+    'Night Ferry',
+    'North Pier',
+    'Oak Frequency',
+    'Opal Room',
+    'Paper Cranes',
+    'Pale Harbor',
+    'Rivet Sky',
+    'Rust Garden',
+    'Slate Meadow',
+    'Soft Engines',
+    'Salt Flats Ensemble',
+    'Tin Orchard',
+    'Tidal Archive',
+    'Tundra Mail',
+    'Velvet Static',
+    'Willow Machine',
+    'Winter Dock',
+    'Yarrow Lines',
+    '1000 Paper Boats',
+  ];
+
+  /// How many artists the shelf holds, beside the world's own.
+  static int get shelfCount => _shelfNames.length;
+
+  static const _shelfFirstId = 1001;
+  static const _shelfTracksPerAlbum = 10;
+
+  /// Albums the shelf artist at [index] holds: three to ten.
+  static int _shelfAlbumCount(int index) => 3 + (index * 5) % 8;
+
+  /// Albums of the artist at [index] that Lidarr wants (released, monitored,
+  /// nothing on disk): one artist in five has one to three.
+  static int _shelfWantedCount(int index) => index % 5 == 1 ? 1 + index % 3 : 0;
+
+  /// Tracks short on an album that is otherwise there: now and then.
+  static int _shelfTracksShort(int index) => index % 7 == 3 ? 3 : 0;
+
+  /// The artist at [index] of [_shelfNames], as `GET /api/v1/artist` sends it.
+  JsonMap _shelfArtist(ServerContext c, int index) {
+    final albums = _shelfAlbumCount(index);
+    final tracks = albums * _shelfTracksPerAlbum;
+    final onDisk =
+        (albums - _shelfWantedCount(index)) * _shelfTracksPerAlbum -
+        _shelfTracksShort(index);
+    final name = _shelfNames[index];
+    return {
+      'id': _shelfFirstId + index,
+      'artistName': name,
+      'sortName': name.toLowerCase(),
+      'foreignArtistId': 'artist-shelf-${_shelfFirstId + index}',
+      'status': 'continuing',
+      'monitored': true,
+      'monitorNewItems': 'all',
+      'path': '${rootFolder(c)}/$name',
+      'qualityProfileId': 1,
+      'metadataProfileId': 1,
+      'added': c.ago(Duration(days: 30 + index * 7)),
+      'images': const <Object?>[],
+      'statistics': {
+        'albumCount': albums,
+        'trackFileCount': onDisk,
+        'trackCount': tracks,
+        'totalTrackCount': tracks,
+        'sizeOnDisk': onDisk * 30000000,
+        'percentOfTracks': 100.0 * onDisk / tracks,
+      },
+    };
+  }
+
+  /// The albums of the artist at [index], as `GET /api/v1/album` sends them:
+  /// the wanted ones last, with no file.
+  List<JsonMap> _shelfAlbums(ServerContext c, int index) {
+    final artist = _shelfArtist(c, index);
+    final count = _shelfAlbumCount(index);
+    final wanted = _shelfWantedCount(index);
+    return [
+      for (var n = 0; n < count; n++)
+        {
+          'id': (_shelfFirstId + index) * 100 + n,
+          'artistId': _shelfFirstId + index,
+          'title': 'Record ${n + 1}',
+          'foreignAlbumId': 'album-shelf-${_shelfFirstId + index}-$n',
+          'albumType': 'Album',
+          'monitored': true,
+          'releaseDate': '${1996 + (index + n * 3) % 28}-06-01T00:00:00Z',
+          'images': const <Object?>[],
+          'artist': artist,
+          'statistics': {
+            'trackFileCount': n >= count - wanted
+                ? 0
+                : (n == 0
+                      ? _shelfTracksPerAlbum - _shelfTracksShort(index)
+                      : _shelfTracksPerAlbum),
+            'trackCount': _shelfTracksPerAlbum,
+            'totalTrackCount': _shelfTracksPerAlbum,
+          },
+        },
+    ];
+  }
+
+  /// Every album of the shelf artists, for the routes that list them all.
+  List<JsonMap> _allShelfAlbums(ServerContext c) => [
+    for (var i = 0; i < _shelfNames.length; i++) ..._shelfAlbums(c, i),
+  ];
+
+  /// The index in [_shelfNames] of the artist with library id [id], or null.
+  static int? _shelfIndexOf(int id) {
+    final index = id - _shelfFirstId;
+    return index >= 0 && index < _shelfNames.length ? index : null;
+  }
+
   /// Sintel's five tracks, as `GET /api/v1/track?albumId=3` sends them; the
   /// other albums list none.
   static const _sintelTracks = [
@@ -1460,11 +1607,11 @@ class LidarrFake extends ArrFake {
       if (album['id'] == 4) album,
   ];
 
-  /// The wishlist: the albums Lidarr monitors and holds no file of, which
-  /// in this library is the anniversary edition alone.
+  /// The wishlist: the albums Lidarr monitors and holds no file of: the
+  /// anniversary edition, and the ones the shelf's artists are short of.
   @override
   List<JsonMap> missing(ServerContext c) => [
-    for (final album in _albums(c))
+    for (final album in [..._albums(c), ..._allShelfAlbums(c)])
       if ((album['statistics'] as JsonMap)['trackFileCount'] == 0) album,
   ];
 
@@ -1845,14 +1992,21 @@ class LidarrFake extends ArrFake {
         ? null
         : arrs?.artist(c.server.id, int.parse(one.group(1)!));
     if (addedOne != null) return NetworkReply.json(_added(c, addedOne));
+    final shelved = one == null
+        ? null
+        : _shelfIndexOf(int.parse(one.group(1)!));
+    if (shelved != null) return NetworkReply.json(_shelfArtist(c, shelved));
     if (r.path == '/api/v1/album') {
       final asked = int.tryParse(r.query['artistId'] ?? '');
       final added = asked == null ? null : arrs?.artist(c.server.id, asked);
       if (added != null) return NetworkReply.json(_addedAlbums(c, added));
+      final onShelf = asked == null ? null : _shelfIndexOf(asked);
+      if (onShelf != null) return NetworkReply.json(_shelfAlbums(c, onShelf));
     }
     return switch (r.path) {
       '/api/v1/artist' => NetworkReply.json([
         _artist(c),
+        for (var i = 0; i < _shelfNames.length; i++) _shelfArtist(c, i),
         for (final artist in arrs?.artists(c.server.id) ?? const <LiveArtist>[])
           _added(c, artist),
       ]),
@@ -1865,6 +2019,8 @@ class LidarrFake extends ArrFake {
       // the artists the demo added are answered above.
       '/api/v1/album' => NetworkReply.json([
         ..._albums(c),
+        // Asked for one artist's albums it is the world's, as above.
+        if (!r.query.containsKey('artistId')) ..._allShelfAlbums(c),
         ..._liveAlbums(c, artistId: r.query.containsKey('artistId') ? 1 : null),
       ]),
       '/api/v1/search' => NetworkReply.json(_search(c, r.query['term'] ?? '')),

@@ -32,11 +32,15 @@ import 'package:cupola/features/series/domain/sonarr_status.dart';
 import 'package:cupola/features/series/presentation/series_find.dart';
 import 'package:cupola/features/series/presentation/series_provider.dart';
 import 'package:cupola/features/series/presentation/series_search_provider.dart';
+import 'package:cupola/core/widgets/media_browse_index.dart';
 import 'package:cupola/core/widgets/media_browse_scaffold.dart';
+import 'package:cupola/core/widgets/media_browse_wanted.dart';
 import 'package:cupola/core/widgets/media_find.dart';
 import 'package:cupola/core/widgets/service_kpi_peek.dart';
 import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
+import 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 import 'package:cupola/features/music/domain/lidarr_queue_snapshots.dart';
+import 'package:cupola/features/music/domain/lidarr_wanted.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
@@ -756,6 +760,188 @@ CatalogScene _finderScene(
   ),
 );
 
+// === A long wall: the A–Z strip, and Lidarr's Wanted chip =================
+
+/// Fifty artists over every letter but Q, U, X and Z, and one under `#`.
+final _longArtists = [
+  for (final (index, name) in const [
+    '1000 Paper Boats',
+    'Alder Quartet',
+    'Amber Static',
+    'Aurelia Row',
+    'Birch & Hollow',
+    'Brass Lantern',
+    'Blue Harbor Choir',
+    'Cobalt Meadow',
+    'Copper Tide',
+    'Cedar Lines',
+    'Dune Orchestra',
+    'Dust Cathedral',
+    'Echo Parade',
+    'Élan Static',
+    'Elm Street Brass',
+    'Fable Hours',
+    'Fern & Flint',
+    'Garden Machine',
+    'Glass Orchard',
+    'Harbor Lights Trio',
+    'Hollow Pines',
+    'Indigo Ferry',
+    'Jade Cassette',
+    'Jan Morgenstern',
+    'Juniper Wire',
+    'Kestrel Union',
+    'Lantern Society',
+    'Low Tide Radio',
+    'Lumen Choir',
+    'Marble Valley',
+    'Midnight Orchard',
+    'Moss Telegraph',
+    'Night Ferry',
+    'North Pier',
+    'Oak Frequency',
+    'Opal Room',
+    'Paper Cranes',
+    'Pale Harbor',
+    'Rivet Sky',
+    'Rust Garden',
+    'Salt Flats Ensemble',
+    'Slate Meadow',
+    'Soft Engines',
+    'Tidal Archive',
+    'Tin Orchard',
+    'Tundra Mail',
+    'Velvet Static',
+    'Willow Machine',
+    'Winter Dock',
+    'Yarrow Lines',
+    'Yellow Ledger',
+  ].indexed)
+    _artist(
+      index + 1,
+      name,
+      statistics: {
+        'albumCount': 3 + index % 8,
+        'trackCount': (3 + index % 8) * 10,
+        'trackFileCount': (3 + index % 8) * 10 - (index % 5 == 1 ? 10 : 0),
+      },
+    ),
+];
+
+/// Every fifth artist has an album Lidarr wants, one to three.
+final _longWanted = MediaBrowseWantedSet(
+  countById: {
+    for (final artist in _longArtists)
+      if (artist.id % 5 == 2) artist.id: 1 + artist.id % 3,
+  },
+);
+
+/// Lidarr's wall as `MusicScreen` builds it, over [_longArtists]: the
+/// circular tiles with their completeness, and Wanted where Missing would be.
+Widget _lidarrWall() => MediaBrowseScaffold<LidarrArtist>(
+  title: 'Music',
+  searchHint: 'Artists and albums',
+  activityRoute: '/activity',
+  navigationSection: NavigationSection.stack,
+  serviceName: 'Lidarr',
+  service: ServiceKey.lidarr,
+  accentColor: ServiceKey.lidarr.accent,
+  heroTagPrefix: 'artist',
+  libraryProvider: musicProvider,
+  searchQueryProvider: musicSearchQueryProvider,
+  find: MediaFind(
+    scopeProvider: musicFindScopeProvider,
+    libraryBody: (context, query) =>
+        MusicFindLibrary(query: query, onAskLidarr: () {}),
+    serviceBody: (context, query) => MusicFindLidarr(query: query),
+  ),
+  titleExtractor: (artist) => artist.artistName,
+  subtitleExtractor: lidarrArtistCaption,
+  imagesExtractor: (artist) => artist.images,
+  idExtractor: (artist) => artist.id,
+  statusExtractor: (artist) =>
+      const MediaStatusInfo(availability: MediaAvailability.available),
+  settingsSelector: (_) => ('', '', const NoAccess()),
+  onItemTap: (_, _, _) {},
+  tileShape: MediaBrowseTileShape.circle,
+  cutoffUnmetIds: const {},
+  wanted: MediaBrowseWanted(
+    answer: AsyncData(_longWanted),
+    service: ServiceKey.lidarr,
+    instanceId: '',
+    failureConsequence: 'the artists with a wanted album are not shown',
+    onRetry: () {},
+    captionOf: lidarrWantedCaption,
+    summaryOf: lidarrWantedSummary,
+  ),
+  kpiPeek: ServiceKpiPeek(kpis: _kpis, service: ServiceKey.lidarr),
+);
+
+List<Override> _longOverrides() => [
+  musicProvider.overrideWith((ref) async => _longArtists),
+  lidarrQueueSnapshotsProvider.overrideWith(
+    (ref) async => LidarrQueueSnapshots.empty,
+  ),
+  musicSearchQueryProvider.overrideWith((ref) => ''),
+  musicFindScopeProvider.overrideWith((ref) => MediaFindScope.library),
+];
+
+/// Sixty movies from A to Z, for Movies' wall.
+final _longFilms = <_Film>[
+  for (var i = 0; i < 60; i++)
+    (
+      id: 100 + i,
+      title:
+          '${String.fromCharCode(65 + i % 26)}${'aeiou'[i % 5]}rora ${i ~/ 26 + 1}',
+      sortTitle:
+          '${String.fromCharCode(97 + i % 26)}${'aeiou'[i % 5]}rora ${i ~/ 26 + 1}',
+      year: 1990 + i % 30,
+      poster: null,
+      status: const MediaStatusInfo(availability: MediaAvailability.available),
+      added: '2026-09-${10 + i % 15}T10:00:00Z',
+    ),
+];
+final _longFilmsProvider = FutureProvider<List<_Film>>(
+  (ref) async => _longFilms,
+);
+
+/// Puts a finger on the strip, [fraction] of the way down it, and keeps it
+/// there: the sheet is drawn with the finger down.
+Future<void> _holdStrip(
+  WidgetTester tester,
+  Finder scene,
+  double fraction,
+) async {
+  final rect = tester.getRect(
+    find.descendant(of: scene, matching: find.byType(MediaBrowseIndex)),
+  );
+  final finger = await tester.startGesture(
+    Offset(rect.center.dx, rect.top + rect.height * fraction),
+  );
+  await finger.moveBy(const Offset(0, 1));
+  await tester.pump();
+}
+
+CatalogScene _lidarrWallScene(
+  String caption, {
+  double textScale = 1,
+  String? id,
+  Future<void> Function(WidgetTester, Finder)? act,
+  double? width,
+  double? height,
+  CatalogPlatform platform = CatalogPlatform.phone,
+}) => CatalogScene(
+  caption,
+  (_) => width == null ? _phone(_lidarrWall()) : _lidarrWall(),
+  id: id,
+  textScale: textScale,
+  overrides: _longOverrides(),
+  act: act,
+  width: width,
+  height: height,
+  platform: platform,
+);
+
 void main() {
   catalogCard(
     'MediaBrowseScaffold',
@@ -1014,6 +1200,53 @@ void main() {
         height: 1000,
         platform: CatalogPlatform.desktop,
         overrides: _musicOverrides('el', MediaFindScope.library, null),
+      ),
+      _lidarrWallScene(
+        'MediaBrowseScaffold · Lidarr, Title A–Z, long wall · the A–Z strip '
+        'on the right edge, 28 wide, the wall giving it 28 of margin; letters '
+        'with no artist (Q, U, X, Z) dimmed',
+        id: 'index-lidarr',
+      ),
+      _lidarrWallScene(
+        'MediaBrowseScaffold · the strip under a finger · the letter large in '
+        'a 72 bubble left of the strip, centred on it, while the finger is '
+        'down; the wall is already at that letter',
+        id: 'index-dragging',
+        act: (tester, scene) => _holdStrip(tester, scene, 0.46),
+      ),
+      _lidarrWallScene(
+        'MediaBrowseScaffold · Lidarr, Wanted chip · it stands where Missing '
+        'does on the other walls; each tile says how many albums are wanted, '
+        'and a line under the chips says what wanted means',
+        id: 'wanted-lidarr',
+        act: (tester, scene) async {
+          final chip = find.descendant(
+            of: scene,
+            matching: find.text('Wanted'),
+          );
+          await tester.tap(chip);
+          await tester.pump(const Duration(milliseconds: 400));
+        },
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · Movies, Title A–Z, long wall · the same strip '
+        'over posters',
+        (_) => _phone(_scaffold(11, library: _longFilmsProvider, cutoff: null)),
+        id: 'index-movies',
+      ),
+      _lidarrWallScene(
+        'Text at 200% · the strip: letters take their larger line height, and '
+        'what no longer fits is a dot for the letters left out',
+        textScale: catalogTextScale,
+        id: 'text-200-index',
+      ),
+      _lidarrWallScene(
+        'MediaBrowseScaffold · 1280 desktop window · the strip at the edge of '
+        'the 1140 well, which the wall gives 28 of margin',
+        id: 'index-desktop',
+        width: 1280,
+        height: 1000,
+        platform: CatalogPlatform.desktop,
       ),
       CatalogScene(
         'Text at 200% · the library wall and a failed load with service: the '
