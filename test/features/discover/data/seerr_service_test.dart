@@ -595,6 +595,34 @@ void main() {
       });
     });
 
+    test('getLatestIssues asks one page of the newest, no more, and names '
+        'its titles', () async {
+      final routed = _RoutedClient(
+        pages: jsonFixtureMap('seerr/issues.json'),
+        titles: {
+          '/api/v1/movie/550': {'title': 'Fight Club'},
+          '/api/v1/tv/1399': {'name': 'Game of Thrones'},
+          '/api/v1/movie/603': {'title': 'The Matrix'},
+        },
+      );
+
+      final issues = await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getLatestIssues(take: 3);
+
+      expect(issues.map((issue) => issue.media?.title), [
+        'Fight Club',
+        'Game of Thrones',
+        'The Matrix',
+      ]);
+      // One request, whatever Seerr holds: the walk of every page is the
+      // Issues tab's.
+      expect(routed.issueQueries, [
+        {'take': 3, 'skip': 0, 'sort': 'modified', 'filter': 'open'},
+      ]);
+    });
+
     group('issue titles', () {
       // Seerr's issue rows carry no title: the names come from each title's
       // own page, once per title, and a title that will not read leaves its

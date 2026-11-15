@@ -57,7 +57,10 @@ final desktopStackFigureProvider =
 Map<ServiceKey, int> faultCountsByService(List<DashboardDecision> decisions) {
   final counts = <ServiceKey, int>{};
   for (final decision in decisions) {
-    if (!decision.isFault) continue;
+    // What people reported is not the service failing: its light stays.
+    if (!decision.isFault || decision.kind == DecisionKind.reportedProblems) {
+      continue;
+    }
     counts.update(
       decision.service,
       (count) => count + decision.count,

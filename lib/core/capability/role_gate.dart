@@ -193,6 +193,12 @@ final class RoleGate {
     );
   }
 
+  /// Whether this connection's account may list issues at all (view, create
+  /// or manage them): the question every surface that reads Seerr's issues
+  /// asks before it asks the server, which would refuse the rest. False with
+  /// no grant, since a surface with no Seerr has nothing to list.
+  bool get mayListIssues => grant?.may(SeerrAbility.viewIssues) ?? false;
+
   /// Report a problem with a title: the requester's own ability, [Live] with
   /// CREATE_ISSUES or MANAGE_ISSUES, otherwise [Dimmed] with the reason. For
   /// the operator the same, so the control is never hidden from them.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/app_spacing.dart';
 
@@ -13,11 +14,20 @@ import 'package:cupola/core/text_scale.dart';
 import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/title_light.dart';
 
+import 'package:cupola/core/utils/arr_activity_display.dart'
+    show joinDisplayParts;
+import 'package:cupola/core/utils/date_format.dart';
 import 'package:cupola/core/utils/image_utils.dart';
+import 'package:cupola/core/utils/service_routes.dart';
 
 import 'package:cupola/core/widgets/widgets.dart';
 
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_grant.dart';
+import 'package:cupola/features/discover/domain/seerr_issue_words.dart';
+import 'package:cupola/features/services/domain/services_semantics.dart'
+    show spokenFromDotted;
+import 'package:cupola/features/settings/data/settings_provider.dart';
 
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 
@@ -68,6 +78,7 @@ class SeerrOverviewScreen extends StatelessWidget {
       refresh: _refresh,
       sections: (ref) => [
         const _DecisionsSection(),
+        const _ReportedProblemsSection(),
         const _ProcessingSection(),
         const _TrendingSection(),
       ],
@@ -78,6 +89,7 @@ class SeerrOverviewScreen extends StatelessWidget {
 /// What a pull re-reads besides the readout (`ServiceOverviewPage`).
 void _refresh(WidgetRef ref) {
   invalidateSeerrRequestsOf(ref.container, '');
+  invalidateSeerrIssues(ref.container);
   ref.invalidate(seerrOverviewDecisionsProvider);
   ref.invalidate(seerrOverviewProcessingProvider);
   ref.invalidate(discoverTrendingProvider);
@@ -178,6 +190,100 @@ class _DecisionRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── 1b. Reported problems ──────────────────────────────────────────────────
+
+/// How many of the newest open issues the section lists.
+const int seerrOverviewIssueRows = 2;
+
+/// What people reported with what they watch: how many are open and the
+/// newest two, each opening its issue, and the Issues tab behind the link.
+///
+/// **Absent when nothing is open**, and while the count is out or did not
+/// answer (the readout above says `—` for that, once): an empty region would
+/// promise a clean server on a read that proved nothing. Absent too for an
+/// account that may not view issues: the tab already says why, and nothing is
+/// asked of a server that would refuse.
+class _ReportedProblemsSection extends ConsumerWidget {
+  const _ReportedProblemsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mayList = ref.watch(roleGateProvider('')).mayListIssues;
+    if (!mayList) return const SizedBox.shrink();
+    final open = ref.watch(issueCountProvider('')).asData?.value.open;
+    if (open == null || open <= 0) return const SizedBox.shrink();
+    final rows = ref.watch(latestOpenIssuesProvider(''));
+    final leadPoster = ImageUtils.buildTmdbPosterUrl(
+      rows.asData?.value.firstOrNull?.media?.posterPath,
+      size: 'w154',
+    );
+    final lens = ref.watch(
+      activeInstanceProvider(ServiceKey.seerr).select((i) => i?.id),
+    );
+
+    return ServiceOverviewSection(
+      service: ServiceKey.seerr,
+      title: 'Reported problems',
+      light: leadPoster.isEmpty
+          ? null
+          : ref.watch(titleLightProvider(leadPoster)).value?.art,
+      subtitle: '$open open',
+      destination: ServiceTab.issues,
+      child: AsyncValueWidget<List<SeerrIssue>>.section(
+        value: rows,
+        service: ServiceKey.seerr,
+        consequence: 'what was reported is not shown',
+        loadingLabel: 'Loading the reported problems',
+        onRetry: () => ref.invalidate(latestOpenIssuesProvider),
+        skeleton: const ServiceOverviewRowsSkeleton(rows: 2),
+        isEmpty: (issues) => issues.isEmpty,
+        emptyBuilder: const SizedBox.shrink(),
+        data: (issues) => Column(
+          children: [
+            for (final issue in issues.take(seerrOverviewIssueRows))
+              _IssueRow(issue: issue, lens: lens ?? ''),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One open issue: its title, who said what about where and when, and the
+/// issue it opens.
+class _IssueRow extends StatelessWidget {
+  const _IssueRow({required this.issue, required this.lens});
+
+  final SeerrIssue issue;
+  final String lens;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = issue.media?.title ?? 'Unknown media';
+    final at = DateTime.tryParse(issue.createdAt ?? '');
+    final detail = joinDisplayParts([
+      issueWho(issue),
+      if (at != null) formatDayWords(at, now: DateTime.now()),
+    ]);
+    final poster = ImageUtils.buildTmdbPosterUrl(
+      issue.media?.posterPath,
+      size: 'w154',
+    );
+    return ServiceOverviewRow(
+      spoken: '$title. ${spokenFromDotted(detail)}',
+      leading: ServiceOverviewArt(
+        posterUrl: poster.isEmpty ? null : poster,
+        title: title,
+      ),
+      title: title,
+      detail: detail,
+      onTap: () =>
+          context.push(ServiceRoutes.seerrIssue(issue.id, instanceId: lens)),
+      doorHint: 'opens the issue',
     );
   }
 }

@@ -14,6 +14,7 @@ import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/features/activity/presentation/activity_needs_you_page.dart';
 import 'package:cupola/features/activity/presentation/widgets/activity_section.dart';
 import 'package:cupola/features/activity/presentation/widgets/fault_card.dart';
+import 'package:cupola/features/activity/presentation/widgets/reported_problems_card.dart';
 import 'package:cupola/features/home/presentation/widgets/needs_you_banner.dart';
 import 'package:cupola/features/services/presentation/dashboard_sections.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
@@ -98,13 +99,32 @@ void main() {
     await _answer(tester);
 
     expect(find.byType(ActivityNeedsYouPage), findsOneWidget);
-    expect(find.text('3 faults'), findsOneWidget);
+    // The three faults of the stack and the one grouped fault of the problems
+    // reported on Seerr: one card each, counted once.
+    expect(find.text('4 faults'), findsOneWidget);
     expect(find.text('3 requests'), findsOneWidget);
     expect(
       find.textContaining(RegExp(r'^All \d+ services answered at 20:53$')),
       findsOneWidget,
     );
     expect(find.byType(FaultCard), findsNWidgets(3));
+    // The world's one open issue, Anna's: the group's own card, with its
+    // glyph by the source, who said it, and the issue it opens.
+    expect(find.byType(ReportedProblemsCard), findsOneWidget);
+    expect(find.text('1 reported problem'), findsOneWidget);
+    expect(find.text('Seerr\u00A0· Issues'), findsOneWidget);
+    expect(
+      find.text('Anna says something is wrong with what they watch.'),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ReportedProblemsCard),
+        matching: find.text('Tears of Steel'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Review'), findsWidgets);
     // The pool's evidence, whole, and TrueNAS's own words already open.
     expect(find.text('Pool tank\u00A0· Healthy\u00A0· 72%'), findsOneWidget);
     expect(find.text('Disk sdd\u00A0· 8 errors'), findsOneWidget);
@@ -152,7 +172,7 @@ void main() {
         of: find.byWidgetPredicate(
           (widget) => widget is ActivitySection && widget.title == 'Needs you',
         ),
-        matching: find.text('3 faults\u00A0· 3 requests'),
+        matching: find.text('4 faults\u00A0· 3 requests'),
       ),
     );
     expect(router.state.uri.path, ServiceRoutes.activityNeedsYou);

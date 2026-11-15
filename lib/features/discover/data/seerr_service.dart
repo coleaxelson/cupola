@@ -315,6 +315,17 @@ class SeerrService {
     );
   }
 
+  /// The newest [take] issues of [filter], the first page alone, named from
+  /// their titles' pages like [getIssuesResult]: what a surface that shows a
+  /// few issues reads, where the whole list would be a walk of every page.
+  Future<List<SeerrIssue>> getLatestIssues({
+    SeerrIssueFilter filter = SeerrIssueFilter.open,
+    int take = 3,
+  }) async {
+    final page = await _issuePage(0, filter: filter, take: take);
+    return List.unmodifiable(await _hydrateIssues(page.items));
+  }
+
   Future<List<SeerrIssue>> _hydrateIssues(List<SeerrIssue> issues) async {
     if (issues.isEmpty) return issues;
     final hydrated = await runInLanes(
@@ -388,11 +399,12 @@ class SeerrService {
   Future<({List<SeerrIssue> items, int total})> _issuePage(
     int skip, {
     required SeerrIssueFilter filter,
+    int take = _adminPageSize,
   }) async {
     final response = await _client.get(
       '/api/v1/issue',
       queryParameters: {
-        'take': _adminPageSize,
+        'take': take,
         'skip': skip,
         'sort': 'modified',
         'filter': filter.apiValue,

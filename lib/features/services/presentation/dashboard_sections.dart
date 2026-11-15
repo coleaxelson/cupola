@@ -355,6 +355,12 @@ Future<void> runDecision(
     case DecisionKind.violation:
       // The violation's own page, where the owner answers it.
       return openDecision(context, ref, decision);
+    case DecisionKind.reportedProblems:
+      // The Issues tab of the Seerr they were reported on, on Open: the tab
+      // reads the lens, so that Seerr is brought under it first.
+      await bringUnderLens(ref, decision.service, decision.instanceId);
+      if (!context.mounted) return;
+      context.go(decision.route ?? ServiceRoutes.seerrIssues);
     case DecisionKind.stalledDownload:
       // A service's page reads its lens, so the client this transfer is on
       // is brought under the lens first: with two qBittorrent, "Open in

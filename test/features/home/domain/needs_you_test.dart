@@ -438,4 +438,67 @@ void main() {
     )!;
     expect(exact.moreLabel, '+1');
   });
+
+  group('reported problems', () {
+    test('three problems lead over one stuck download and one request, and '
+        'the line is the count', () {
+      final needs = needsYouOf(
+        silent: const [],
+        decisions: [
+          decision(DecisionKind.stalledDownload, 'Big Buck Bunny'),
+          decision(
+            DecisionKind.reportedProblems,
+            '3 reported problems',
+            count: 3,
+            service: ServiceKey.seerr,
+          ),
+          decision(DecisionKind.pendingRequest, 'Charge'),
+        ],
+        now: now,
+      )!;
+
+      expect(needs.line, '3 reported problems');
+      expect(needs.lead?.kind, DecisionKind.reportedProblems);
+      // The stuck download is the one thing more: a request is no fault.
+      expect(needs.more, 1);
+      expect(needs.action, 'Review');
+      expect(
+        needs.spoken,
+        '3 reported problems, and 1 more thing needs you. Review',
+      );
+    });
+
+    test('one problem reads in the singular, the largest group still leads '
+        'when it is another', () {
+      final lone = needsYouOf(
+        silent: const [],
+        decisions: [
+          decision(
+            DecisionKind.reportedProblems,
+            '1 reported problem',
+            service: ServiceKey.seerr,
+          ),
+        ],
+        now: now,
+      )!;
+      expect(lone.line, '1 reported problem');
+      expect(lone.more, 0);
+
+      final outweighed = needsYouOf(
+        silent: const [],
+        decisions: [
+          decision(
+            DecisionKind.reportedProblems,
+            '2 reported problems',
+            count: 2,
+            service: ServiceKey.seerr,
+          ),
+          decision(DecisionKind.importBlocked, 'x', count: 18),
+        ],
+        now: now,
+      )!;
+      expect(outweighed.line, '18 downloads need a manual import');
+      expect(outweighed.more, 1);
+    });
+  });
 }

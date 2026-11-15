@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:cupola/core/providers/provider_retry.dart';
@@ -11,7 +12,9 @@ import 'package:cupola/core/utils/arr_activity_display.dart';
 import 'package:cupola/core/utils/image_utils.dart';
 import 'package:cupola/features/bazarr/presentation/bazarr_provider.dart';
 import 'package:cupola/features/readarr/presentation/readarr_provider.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_grant.dart';
+import 'package:cupola/features/discover/domain/seerr_issue_words.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/movies/data/radarr_service.dart';
@@ -162,6 +165,11 @@ final dashboardDecisionSourceProvider =
             decisions: _connectionFaultDecisions(ref),
             coverage: SourceCoverage.none,
           );
+        case DecisionSource.issues:
+          // Every Seerr, each answering for itself, like its requests: the
+          // problems reported on the second one are the operator's as much
+          // as the first's.
+          return _reportedProblemDecisions(ref);
         case DecisionSource.violations:
           // Every Tracearr, each answering for itself: a violation on the
           // second one is as much the owner's as one on the first, and the
@@ -349,6 +357,130 @@ Future<DashboardDecisions> _pendingRequestDecisions(Ref ref) async {
         .expand((result) => result.decisions)
         .toList(growable: false),
     coverage: SourceCoverage.merge(results.map((result) => result.coverage)),
+  );
+}
+
+/// The problems reported on every configured Seerr, one grouped fault each.
+///
+/// Only a Seerr whose account may view issues is asked anything: the server
+/// would refuse the rest, and a requester has no Needs you at all. The count
+/// is Seerr's own (`GET /issue/count`, cheap), the rows the newest
+/// [seerrLatestIssueRows] open issues, one page. A count that did not answer
+/// adds nothing and is named in the coverage: never a zero, and never the
+/// rows alone, which would say a number Seerr did not. Rows that did not
+/// arrive leave the group with its count and no rows.
+Future<DashboardDecisions> _reportedProblemDecisions(Ref ref) async {
+  Future<DashboardDecisions> from(MergeConnection source) async {
+    final mayView = ref
+        .watch(roleGateOfProvider(source.instanceId))
+        .mayListIssues;
+    final answered = SourceCoverage.answeredBy(
+      ServiceKey.seerr,
+      instanceId: source.instanceId,
+      name: source.name,
+    );
+    if (!mayView) {
+      return (decisions: const <DashboardDecision>[], coverage: answered);
+    }
+    try {
+      final open = (await ref.watch(
+        issueCountProvider(source.instanceId).future,
+      )).open;
+      if (open == null) {
+        throw const FormatException('Seerr sent no count of open issues');
+      }
+      if (open <= 0) {
+        return (decisions: const <DashboardDecision>[], coverage: answered);
+      }
+      List<SeerrIssue> rows;
+      try {
+        rows = await ref.watch(
+          latestOpenIssuesProvider(source.instanceId).future,
+        );
+      } catch (_) {
+        rows = const [];
+      }
+      return (
+        decisions: [reportedProblemsDecision(open, rows, source: source)],
+        coverage: answered,
+      );
+    } catch (error) {
+      return (
+        decisions: const <DashboardDecision>[],
+        coverage: SourceCoverage.failure(
+          ServiceKey.seerr,
+          error,
+          instanceId: source.instanceId,
+          name: source.name,
+        ),
+      );
+    }
+  }
+
+  final results = await Future.wait([
+    for (final source in watchMergeConnections(ref, ServiceKey.seerr))
+      from(source),
+  ]);
+  return (
+    decisions: results
+        .expand((result) => result.decisions)
+        .toList(growable: false),
+    coverage: SourceCoverage.merge(results.map((result) => result.coverage)),
+  );
+}
+
+/// The [open] issues of one Seerr as the one fault Needs you draws, the newest
+/// of them [rows] under it: each row opens its own issue, on the connection it
+/// was read from, and the card's control opens the Issues tab.
+@visibleForTesting
+DashboardDecision reportedProblemsDecision(
+  int open,
+  List<SeerrIssue> rows, {
+  required MergeConnection source,
+}) {
+  final members = [
+    for (final issue in rows)
+      DashboardDecision(
+        kind: DecisionKind.reportedProblems,
+        id: 'seerr-issue-${source.instanceId}-${issue.id}',
+        service: ServiceKey.seerr,
+        title: issue.media?.title ?? 'Unknown media',
+        detail: issueWho(issue),
+        occurredAt: DateTime.tryParse(issue.createdAt ?? ''),
+        actionId: issue.id,
+        instanceId: source.instanceId,
+        connectionName: source.name,
+        posterUrl: ImageUtils.buildTmdbPosterUrl(issue.media?.posterPath),
+        route: ServiceRoutes.seerrIssue(
+          issue.id,
+          instanceId: source.instanceId,
+        ),
+      ),
+  ];
+  final reporters = <String>[];
+  for (final issue in rows) {
+    final name = issue.createdBy?.displayName;
+    if (name != null && name.isNotEmpty && !reporters.contains(name)) {
+      reporters.add(name);
+    }
+  }
+  return DashboardDecision(
+    kind: DecisionKind.reportedProblems,
+    id: 'seerr-issues-${source.instanceId}',
+    service: ServiceKey.seerr,
+    title: reportedProblemsClause(open),
+    // `Seerr · Issues`, the Seerr's own name once there are two to tell apart.
+    detail: joinDisplayParts([
+      serviceWithConnection(ServiceKey.seerr, source.name, joiner: ' '),
+      'Issues',
+    ]),
+    occurredAt: members.firstOrNull?.occurredAt,
+    route: ServiceRoutes.seerrIssues,
+    count: open,
+    instanceId: source.instanceId,
+    connectionName: source.name,
+    members: members,
+    reporters: reporters,
   );
 }
 

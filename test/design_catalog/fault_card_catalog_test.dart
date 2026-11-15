@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/core/utils/image_utils.dart';
 import 'package:cupola/core/widgets/failure_remedy.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/activity/presentation/widgets/activity_section.dart';
 import 'package:cupola/features/activity/presentation/widgets/fault_card.dart';
 import 'package:cupola/features/activity/presentation/widgets/needs_you_cards.dart'
     show RequestsWaitRow;
+import 'package:cupola/features/activity/presentation/widgets/reported_problems_card.dart';
 import 'package:cupola/features/activity/presentation/widgets/violation_rows.dart';
 import 'package:cupola/features/home/presentation/widgets/home_module_parts.dart';
 import 'package:cupola/features/services/domain/dashboard_decision.dart';
@@ -56,6 +58,54 @@ FaultCard _stuck({bool divided = false}) => FaultCard(
   ],
   divided: divided,
 );
+
+/// The problems reported on a Seerr, as Needs you holds them: Seerr's count,
+/// the newest three under it, who said it.
+DashboardDecision _reported() {
+  DashboardDecision row(int id, String title, String detail, DateTime at) =>
+      DashboardDecision(
+        kind: DecisionKind.reportedProblems,
+        id: 'seerr-issue-seerr-$id',
+        service: ServiceKey.seerr,
+        title: title,
+        detail: detail,
+        occurredAt: at,
+        actionId: id,
+        posterUrl: ImageUtils.buildTmdbPosterUrl(CatalogArt.tmdbPoster),
+        route: '/stack/seerr/issues/$id',
+      );
+  return DashboardDecision(
+    kind: DecisionKind.reportedProblems,
+    id: 'seerr-issues-seerr',
+    service: ServiceKey.seerr,
+    title: '3 reported problems',
+    detail: 'Seerr\u00A0· Issues',
+    occurredAt: null,
+    route: '/stack/seerr/issues',
+    count: 3,
+    reporters: const ['Luca', 'Anna'],
+    members: [
+      row(
+        3,
+        'Tears of Steel',
+        'Video\u00A0· Luca',
+        catalogNow.subtract(const Duration(days: 1)),
+      ),
+      row(
+        2,
+        'Cosmos Laundromat',
+        'S2\u00A0E3\u00A0· Audio\u00A0· Anna',
+        catalogNow.subtract(const Duration(days: 13)),
+      ),
+      row(
+        1,
+        'Big Buck Bunny',
+        'Subtitles\u00A0· Anna',
+        catalogNow.subtract(const Duration(days: 15)),
+      ),
+    ],
+  );
+}
 
 void main() {
   catalogCard(
@@ -135,6 +185,44 @@ void main() {
           ],
         ),
         width: 390,
+      ),
+      CatalogScene(
+        'ReportedProblemsCard.whole · the problems people reported, as one '
+        'fault: the flag by the Seerr, who said it, the newest three, '
+        'Review with their number',
+        (_) => ScaffoldMessenger(
+          child: ActivitySlab(
+            children: [
+              ReportedProblemsCard(decision: _reported(), whole: true),
+            ],
+          ),
+        ),
+        width: 390,
+      ),
+      CatalogScene(
+        'ReportedProblemsCard · the same in All on a phone, the headline at '
+        'the row size, beside a stuck download',
+        (_) => ScaffoldMessenger(
+          child: ActivitySlab(
+            children: [
+              ReportedProblemsCard(decision: _reported()),
+              _stuck(divided: true),
+            ],
+          ),
+        ),
+        width: 390,
+      ),
+      CatalogScene(
+        'ReportedProblemsCard · text at 200%: every line wraps, nothing cut',
+        (_) => ScaffoldMessenger(
+          child: ActivitySlab(
+            children: [
+              ReportedProblemsCard(decision: _reported(), whole: true),
+            ],
+          ),
+        ),
+        width: 390,
+        textScale: catalogTextScale,
       ),
       CatalogScene(
         'FaultCard(running:) · work the remedy started, in blue in place of '

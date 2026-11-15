@@ -237,6 +237,7 @@ String needsYouLine(
       DecisionKind.expiringCertificate => '$count certificates are expiring',
       DecisionKind.violation => '$count violations need a look',
       DecisionKind.pendingRequest => '$count requests wait for approval',
+      DecisionKind.reportedProblems => reportedProblemsClause(decision.count),
     };
   }
   final title = decision.title;
@@ -261,6 +262,7 @@ String needsYouLine(
     // sentence stays total: the rule and whose it was.
     DecisionKind.violation => '$title by ${decision.detail}',
     DecisionKind.pendingRequest => '$title waits for approval',
+    DecisionKind.reportedProblems => reportedProblemsClause(1),
   };
 }
 

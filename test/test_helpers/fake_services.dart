@@ -512,6 +512,29 @@ class FakeSeerrService extends SeerrService {
     return SeerrAdminResult(items: items, total: items.length);
   }
 
+  /// What the server's count says; null is a count that does not answer.
+  SeerrIssueCount? issueCount;
+
+  /// How many times the count and the newest page were asked.
+  int issueCountReads = 0;
+  int latestIssueReads = 0;
+
+  @override
+  Future<SeerrIssueCount> getIssueCount() async {
+    issueCountReads++;
+    return issueCount ?? (throw Exception('Seerr gave no count'));
+  }
+
+  /// The newest of [issues] the filter asks for, as many as [take].
+  @override
+  Future<List<SeerrIssue>> getLatestIssues({
+    SeerrIssueFilter filter = SeerrIssueFilter.open,
+    int take = 3,
+  }) async {
+    latestIssueReads++;
+    return (await getIssuesResult(filter: filter)).items.take(take).toList();
+  }
+
   @override
   Future<SeerrAdminResult<SeerrUser>> getUsersResult() async =>
       SeerrAdminResult(items: users, total: users.length);

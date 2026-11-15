@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/app_breakpoints.dart';
-import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/capability/role_gate_provider.dart';
 import 'package:cupola/core/lifecycle/refresh_on_return.dart';
@@ -25,6 +24,8 @@ import 'package:cupola/features/requests/data/my_requests_provider.dart';
 import 'package:cupola/features/requests/domain/my_requests.dart';
 import 'package:cupola/features/requests/presentation/my_request_actions.dart';
 import 'package:cupola/features/requests/presentation/widgets/requester_request_row.dart';
+import 'package:cupola/features/requests/presentation/widgets/requests_slab.dart';
+import 'package:cupola/features/requests/presentation/widgets/your_reports_section.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 import 'package:cupola/core/widgets/screen_title.dart';
@@ -54,10 +55,13 @@ class RequestsScreen extends ConsumerWidget {
     final bottomPadding = FloatingNavBarMetrics.getScrollViewBottomPadding(
       context,
     );
-    ref.listen<int>(
-      navigationRefreshProvider(NavigationSection.requests),
-      (_, _) => invalidateSeerrRequestsOf(ref.container, ''),
-    );
+    ref.listen<int>(navigationRefreshProvider(NavigationSection.requests), (
+      _,
+      _,
+    ) {
+      invalidateSeerrRequestsOf(ref.container, '');
+      invalidateSeerrIssues(ref.container);
+    });
     final configured = ref.watch(
       currentSettingsProvider.select(
         (s) => s.isServiceConfigured(ServiceKey.seerr),
@@ -74,6 +78,7 @@ class RequestsScreen extends ConsumerWidget {
             RefreshIndicator(
               onRefresh: () async {
                 invalidateSeerrRequestsOf(ref.container, '');
+                invalidateSeerrIssues(ref.container);
                 try {
                   await ref.read(requestsProvider.future);
                 } catch (_) {}
@@ -170,6 +175,7 @@ class _RequestsBody extends ConsumerWidget {
           _Header(requests: mine),
           ?failure,
           const _NothingAsked(),
+          const YourReportsSection(),
         ],
       );
     }
@@ -221,7 +227,7 @@ class _RequestsBody extends ConsumerWidget {
               AppSpacing.lg,
               0,
             ),
-            child: _Slab(
+            child: RequestsSlab(
               children: [
                 for (final (index, row) in rest.indexed)
                   RequesterRequestRow.page(
@@ -238,6 +244,7 @@ class _RequestsBody extends ConsumerWidget {
               ],
             ),
           ),
+        const YourReportsSection(),
         const SizedBox(height: AppSpacing.lg),
       ],
     );
@@ -338,35 +345,6 @@ class _Count extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// The slab her other requests sit on.
-class _Slab extends StatelessWidget {
-  const _Slab({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: room.slab,
-        borderRadius: BorderRadius.circular(AppRadius.slab),
-        border: Border.all(color: room.hair),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.xs,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: children,
-        ),
-      ),
     );
   }
 }

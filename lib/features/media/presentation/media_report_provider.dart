@@ -46,10 +46,15 @@ void readReportsAgain(
   required MediaKey key,
   required String connectionId,
 }) {
-  container
-    ..invalidate(
-      mediaSeerrRecordProvider((key: key, connectionId: connectionId)),
-    )
-    ..invalidate(mediaReportIssueProvider)
-    ..invalidate(seerrIssuesProvider);
+  container.invalidate(
+    mediaSeerrRecordProvider((key: key, connectionId: connectionId)),
+  );
+  readIssuesAgain(container);
+}
+
+/// After a write on an issue whose title is not known: the issue's page and
+/// every list that speaks of issues are read again.
+void readIssuesAgain(ProviderContainer container) {
+  container.invalidate(mediaReportIssueProvider);
+  invalidateSeerrIssues(container);
 }

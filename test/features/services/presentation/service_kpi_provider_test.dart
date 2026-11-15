@@ -1,12 +1,17 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/core/api/base_arr_service.dart';
 import 'package:cupola/core/models/service_kpi.dart';
+import 'package:cupola/features/services/domain/kpi_aggregate.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
+import 'package:cupola/features/discover/domain/seerr_permission.dart';
+import 'package:cupola/features/discover/domain/seerr_sign_in.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/jellyfin/data/jellyfin_client.dart';
 import 'package:cupola/features/jellyfin/presentation/jellyfin_provider.dart';
@@ -30,6 +35,7 @@ import 'package:cupola/features/settings/domain/settings_model.dart';
 
 import '../../../test_helpers/fake_api_client.dart';
 import '../../../test_helpers/capturing_http_adapter.dart';
+import '../../../test_helpers/settings_scope.dart';
 
 SeerrRequest _request({
   required int id,
@@ -43,15 +49,48 @@ SeerrRequest _request({
   type: 'movie',
 );
 
-Future<Map<String, String>> _seerrKpis(List<SeerrRequest> requests) async {
+/// The rail of a Seerr read with the operator's key and [open] issues: a
+/// null [open] is a count that does not answer. [permissions] makes the
+/// connection an account of those rights instead of the key.
+Future<List<ServiceKpi>> _seerrRail(
+  List<SeerrRequest> requests, {
+  int? open = 0,
+  int? permissions,
+}) async {
+  final base = settingsWith(seerrUrl: 'https://seerr.test', seerrApiKey: 'key');
+  final instance = base.instancesOf(ServiceKey.seerr).first;
+  final settings = permissions == null
+      ? base
+      : base.copyWithInstance(
+          instance.copyWith(
+            credential: '',
+            account: SeerrAccountSignIn(
+              kind: SeerrAccountKind.local,
+              login: 'luca',
+              userId: 7,
+              displayName: 'Luca',
+              session: 'session',
+              permissions: permissions,
+            ),
+          ),
+        );
   final container = ProviderContainer(
-    overrides: [requestRowsProvider.overrideWith((ref) async => requests)],
+    overrides: [
+      currentSettingsProvider.overrideWithValue(settings),
+      requestRowsProvider.overrideWith((ref) async => requests),
+      issueCountProvider.overrideWith(
+        (ref, id) async => open == null
+            ? throw Exception('no count')
+            : SeerrIssueCount(open: open),
+      ),
+    ],
   );
   addTearDown(container.dispose);
+  return container.read(serviceKpiProvider(ServiceKey.seerr).future);
+}
 
-  final kpis = await container.read(
-    serviceKpiProvider(ServiceKey.seerr).future,
-  );
+Future<Map<String, String>> _seerrKpis(List<SeerrRequest> requests) async {
+  final kpis = await _seerrRail(requests);
   return {for (final ServiceKpi kpi in kpis) kpi.label: kpi.value};
 }
 
@@ -150,6 +189,87 @@ void main() {
       expect(kpis['Available'], '1');
       expect(kpis['Requests'], '3');
     });
+  });
+
+  group('Seerr Open problems', () {
+    final requests = [_request(id: 1)];
+
+    test(
+      'reads Seerr\'s own count, amber above zero, before Available',
+      () async {
+        final kpis = await _seerrRail(requests, open: 3);
+
+        expect(
+          [for (final kpi in kpis) kpi.label],
+          [
+            'Requests',
+            'Waiting for approval',
+            'Processing',
+            'Open problems',
+            'Available',
+          ],
+        );
+        final problems = _byLabel(kpis)['Open problems']!;
+        expect(problems.value, '3');
+        expect(problems.tone, StatusTone.warning);
+        // Amber in Seerr's Overview, and no card or band reads it.
+        expect(problems.overviewOnly, isTrue);
+      },
+    );
+
+    test('nothing open reads 0 and carries no tone', () async {
+      final problems = _byLabel(await _seerrRail(requests))['Open problems']!;
+
+      expect(problems.value, '0');
+      expect(problems.tone, isNull);
+    });
+
+    test('a count that did not answer reads a dash, never 0', () async {
+      final problems = _byLabel(
+        await _seerrRail(requests, open: null),
+      )['Open problems']!;
+
+      expect(problems.isUnavailable, isTrue);
+      expect(problems.overviewOnly, isTrue);
+      expect(problems.value, ServiceKpi.unavailableValue);
+    });
+
+    test('an account that may not view issues has no readout', () async {
+      // REQUEST alone: Seerr would refuse the count, so nothing is asked.
+      final kpis = await _seerrRail(requests, open: 4, permissions: 32);
+
+      expect(_byLabel(kpis), isNot(contains('Open problems')));
+    });
+
+    test('an account that may view them reads the count', () async {
+      final kpis = await _seerrRail(
+        requests,
+        open: 2,
+        permissions: SeerrPermission.viewIssues.value,
+      );
+
+      expect(_byLabel(kpis)['Open problems']!.value, '2');
+    });
+  });
+
+  test('two Seerr fold only the readouts both have: the fleet card keeps its '
+      'figures when one account may not view issues', () {
+    List<ServiceKpi> rail({required bool problems}) => [
+      const ServiceKpi(label: 'Processing', value: '1', icon: Icons.sync),
+      if (problems)
+        const ServiceKpi(label: 'Open problems', value: '2', icon: Icons.flag),
+    ];
+
+    final folded = aggregateServiceKpis(
+      withCommonOpenProblems([rail(problems: true), rail(problems: false)]),
+    );
+    expect([for (final kpi in folded!) kpi.label], ['Processing']);
+
+    final both = withCommonOpenProblems([
+      rail(problems: true),
+      rail(problems: true),
+    ]);
+    expect(aggregateServiceKpis(both)!.last.value, '4');
   });
 
   group('a *arr that did not answer states nothing', () {

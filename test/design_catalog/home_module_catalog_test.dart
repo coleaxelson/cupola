@@ -528,6 +528,28 @@ void main() {
         width: 390,
       ),
       CatalogScene(
+        'Needs you · the problems people reported lead as one fault, the '
+        'flag in amber, a stuck download and a blocked import after it',
+        (_) => ScaffoldMessenger(
+          child: NeedsYouLine(
+            needs: _needs(
+              decisions: [
+                _fault(DecisionKind.stalledDownload, 'Big Buck Bunny'),
+                _fault(
+                  DecisionKind.reportedProblems,
+                  '3 reported problems',
+                  count: 3,
+                  service: ServiceKey.seerr,
+                ),
+                _fault(DecisionKind.failingIndexer, 'media'),
+              ],
+            ),
+            onTap: () {},
+          ),
+        ),
+        width: 390,
+      ),
+      CatalogScene(
         'Needs you · one fault: no count',
         (_) => NeedsYouLine(
           needs: _needs(
@@ -1077,6 +1099,20 @@ void main() {
                 decisions: [
                   _fault(DecisionKind.importBlocked, 'x', count: 18),
                   _fault(DecisionKind.failingIndexer, 'media'),
+                ],
+              ),
+              onTap: () {},
+            ),
+            NeedsYouLine(
+              needs: _needs(
+                decisions: [
+                  _fault(
+                    DecisionKind.reportedProblems,
+                    '3 reported problems',
+                    count: 3,
+                    service: ServiceKey.seerr,
+                  ),
+                  _fault(DecisionKind.stalledDownload, 'Big Buck Bunny'),
                 ],
               ),
               onTap: () {},

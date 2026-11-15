@@ -14,6 +14,9 @@ import 'package:cupola/core/last_known/last_known_store.dart';
 import 'package:cupola/core/models/media_preview.dart';
 import 'package:cupola/core/network/connection_failure.dart';
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
+import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/seerr_permission.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/seerr_grant.dart';
 import 'package:cupola/features/discover/domain/seerr_server_facts.dart';
@@ -30,6 +33,7 @@ import 'package:cupola/features/home/presentation/home_screen.dart';
 import 'package:cupola/features/home/presentation/widgets/home_as_of_line.dart';
 import 'package:cupola/features/home/presentation/widgets/ready_to_watch_module.dart';
 import 'package:cupola/features/home/presentation/widgets/your_requests_module.dart';
+import 'package:cupola/features/media/presentation/media_report_provider.dart';
 import 'package:cupola/features/requests/domain/my_requests.dart';
 import 'package:cupola/features/requests/presentation/requests_screen.dart';
 import 'package:cupola/features/requests/presentation/widgets/requester_request_row.dart';
@@ -176,6 +180,96 @@ LastKnownStore _drawnBefore<T>(HomeLastKnownSlot<T> slot, T drawn) =>
       takenAt: _now.subtract(const Duration(minutes: 47)),
     );
 
+/// One of her reports, as her Seerr lists it: no replier named, which her
+/// conversation, read once, supplies.
+SeerrIssue _report(
+  int id,
+  String title, {
+  required SeerrIssueType type,
+  SeerrIssueStatus status = SeerrIssueStatus.open,
+  int season = 0,
+  int episode = 0,
+  String updatedAt = '2026-10-01T12:00:00.000Z',
+  int replies = 0,
+}) => SeerrIssue(
+  id: id,
+  type: type,
+  status: status,
+  problemSeason: season,
+  problemEpisode: episode,
+  media: SeerrIssueMedia(
+    title: title,
+    mediaType: 'tv',
+    posterPath: CatalogArt.tmdbPoster,
+  ),
+  createdBy: const SeerrUser(id: 7),
+  createdAt: '2026-09-26T12:00:00.000Z',
+  updatedAt: updatedAt,
+  comments: [
+    const SeerrIssueComment(id: 1, message: 'The audio is in Russian'),
+    for (var i = 0; i < replies; i++)
+      SeerrIssueComment(id: 2 + i, message: 'Looking into it'),
+  ],
+);
+
+final _herReports = [
+  _report(
+    12,
+    'Cosmos Laundromat',
+    type: SeerrIssueType.audio,
+    season: 2,
+    episode: 3,
+    replies: 1,
+  ),
+  _report(
+    9,
+    'Big Buck Bunny',
+    type: SeerrIssueType.subtitles,
+    status: SeerrIssueStatus.resolved,
+    updatedAt: '2026-09-28T12:00:00.000Z',
+  ),
+];
+
+/// Her Requests tab with [reports] under her requests: her account may
+/// report (REQUEST and CREATE_ISSUES), so the server lists her own.
+List<Override> _herWithReports(List<SeerrIssue> reports) => [
+  requestsProvider.overrideWith((ref) async => _anna),
+  calendarClockProvider.overrideWithValue(() => _now),
+  roleGateProvider('').overrideWithValue(
+    RoleGate(
+      audience: Audience.requester,
+      grant: SeerrGrant.account(
+        permissions:
+            SeerrPermission.request.value | SeerrPermission.createIssues.value,
+      ),
+    ),
+  ),
+  ownIssuesProvider.overrideWith(
+    (ref, id) async => SeerrAdminResult(items: reports, total: reports.length),
+  ),
+  mediaReportIssueProvider.overrideWith(
+    (ref, source) async => SeerrIssue(
+      id: source.issueId,
+      type: SeerrIssueType.audio,
+      status: SeerrIssueStatus.open,
+      comments: const [
+        SeerrIssueComment(
+          id: 1,
+          message: 'The audio is in Russian',
+          authorId: 7,
+          authorName: 'Anna',
+        ),
+        SeerrIssueComment(
+          id: 2,
+          message: 'Looking into it',
+          authorId: 2,
+          authorName: 'Matt',
+        ),
+      ],
+    ),
+  ),
+];
+
 List<MediaPreview> _posters(Map<String, String?> titles) => [
   for (final (index, MapEntry(key: title, value: day))
       in titles.entries.indexed)
@@ -308,6 +402,22 @@ void main() {
         width: 390,
         height: 1500,
         overrides: [..._her(_anna)],
+      ),
+      CatalogScene(
+        'RequestsScreen · Your reports: how many are open, a row each with '
+        'its state and what happened since, the newest change first',
+        (_) => ScaffoldMessenger(child: const RequestsScreen()),
+        width: 390,
+        height: 1200,
+        overrides: _herWithReports(_herReports),
+      ),
+      CatalogScene(
+        'RequestsScreen · Your reports at 200%: nothing cut',
+        (_) => ScaffoldMessenger(child: const RequestsScreen()),
+        width: 390,
+        height: 2150,
+        textScale: catalogTextScale,
+        overrides: _herWithReports(_herReports),
       ),
       CatalogScene(
         'RequestsScreen · nothing asked yet',

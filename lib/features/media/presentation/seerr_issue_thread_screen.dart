@@ -31,7 +31,6 @@ import 'package:cupola/features/discover/data/seerr_session.dart';
 import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_issue_words.dart';
 import 'package:cupola/features/discover/domain/seerr_refusal.dart';
-import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/discover/presentation/widgets/seerr_not_set_up.dart';
 import 'package:cupola/features/media/domain/media_key.dart';
 import 'package:cupola/features/media/domain/media_report.dart';
@@ -621,9 +620,7 @@ class _SeerrIssueThreadScreenState
     if (key != null) {
       readReportsAgain(ref.container, key: key, connectionId: _id);
     } else {
-      ref.container
-        ..invalidate(mediaReportIssueProvider)
-        ..invalidate(seerrIssuesProvider);
+      readIssuesAgain(ref.container);
     }
   }
 
@@ -777,9 +774,7 @@ class _SeerrIssueThreadScreenState
     if (key != null) {
       readReportsAgain(container, key: key, connectionId: id);
     } else {
-      container
-        ..invalidate(mediaReportIssueProvider)
-        ..invalidate(seerrIssuesProvider);
+      readIssuesAgain(container);
     }
     messenger.showSnackBar(
       SnackBar(content: Text(operator ? 'Issue deleted' : 'Report deleted')),

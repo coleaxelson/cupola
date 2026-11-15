@@ -124,6 +124,7 @@ answering` already answers) or before anything answered (no space is held for it
 - Otherwise the largest group of equal faults leads, the glyph amber: `18 downloads need a manual import`; a single
   fault is a sentence about it (`Big Buck Bunny is stuck`, `The media indexer is failing`, `The certificate for
   nas.home.arpa expires in 6 days`). The line is Review, which opens the place that fault is fixed today.
+- Problems people reported on a Seerr are one group by Seerr's own count: `3 reported problems` (`1 reported problem`), with the flag in amber in place of the warning glyph.
 - Connections that failed alike are one group, weighed as many as they are and said in one sentence, the way a module
   says them: `Seerr, Radarr and 11 others were reached but did not reply in time`, never the first of them and `+12`.
   Keyed on the reason, and on the credential only where it is named (two refused keys are one sentence, a key and a
@@ -276,6 +277,8 @@ button whose label is the whole sentence, the way in at its end (`18 downloads n
 need you. Review`), announced when it appears. Each Set up next row is one button, its line as the value.
 
 ## States in the catalog
+
+Needs you leading with the problems people reported (the flag), and again at 200% beside the blocked imports.
 
 Each sheet is drawn in the dark and the light room: the frame ready, loading, silent and needing a service; Needs
 you led by a group, by one fault and by a silent service; Set up next over Radarr, Sonarr and Seerr, and with what Seerr and Prowlarr know first; Downloads moving

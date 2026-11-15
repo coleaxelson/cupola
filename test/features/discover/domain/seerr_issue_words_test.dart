@@ -92,4 +92,73 @@ void main() {
     expect(repliesLabel(1), '1 reply');
     expect(repliesLabel(2), '2 replies');
   });
+
+  group('what the others said to the reporter', () {
+    SeerrIssue conversation(List<(int, String)> authors) =>
+        SeerrIssue.fromJson({
+          'id': 1,
+          'issueType': 1,
+          'status': 1,
+          'comments': [
+            {
+              'id': 1,
+              'message': 'It is wrong',
+              'user': {'id': 7, 'displayName': 'Anna'},
+            },
+            for (final (index, (id, name)) in authors.indexed)
+              {
+                'id': 2 + index,
+                'message': 'Reply',
+                'user': {'id': id, 'displayName': name},
+              },
+          ],
+        });
+
+    test('nobody else replied: nothing to say', () {
+      expect(replyLineFrom(conversation([]), me: 7), isNull);
+      // Her own reply is not said back to her.
+      expect(replyLineFrom(conversation([(7, 'Anna')]), me: 7), isNull);
+    });
+
+    test('one name, two, and the first and the others', () {
+      expect(
+        replyLineFrom(conversation([(1, 'Matt')]), me: 7),
+        '1 reply from Matt',
+      );
+      expect(
+        replyLineFrom(
+          conversation([(1, 'Matt'), (2, 'Luca'), (1, 'Matt')]),
+          me: 7,
+        ),
+        '3 replies from Matt and Luca',
+      );
+      expect(
+        replyLineFrom(
+          conversation([(1, 'Matt'), (2, 'Luca'), (3, 'Sara'), (4, 'Marco')]),
+          me: 7,
+        ),
+        '4 replies from Matt and 3 others',
+      );
+    });
+
+    test('her own replies are not counted among the others', () {
+      expect(
+        replyLineFrom(conversation([(7, 'Anna'), (1, 'Matt')]), me: 7),
+        '1 reply from Matt',
+      );
+    });
+  });
+
+  test('who said what about where, without when', () {
+    final issue = SeerrIssue.fromJson({
+      'id': 1,
+      'issueType': 2,
+      'status': 1,
+      'problemSeason': 2,
+      'problemEpisode': 3,
+      'createdBy': {'id': 7, 'displayName': 'Anna'},
+    });
+    expect(issueWho(issue), 'S2\u00A0E3\u00A0· Audio\u00A0· Anna');
+    expect(issueWho(_issue()), 'Video');
+  });
 }

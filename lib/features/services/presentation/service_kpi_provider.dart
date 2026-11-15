@@ -22,6 +22,7 @@ import 'package:cupola/features/dockge/domain/models/dockge_stack.dart';
 import 'package:cupola/features/dockge/presentation/dockge_provider.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
+import 'package:cupola/core/capability/role_gate_provider.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
@@ -196,7 +197,7 @@ List<ProviderOrFamily> serviceKpiSources(ServiceKey service) =>
         readarrQueueProvider,
       ],
       ServiceKey.qbittorrent => [allTorrentsProvider],
-      ServiceKey.seerr => [requestRowsProvider],
+      ServiceKey.seerr => [requestRowsProvider, issueCountProvider],
       // Both halves of [_bazarrKpis]: the provider statuses live as long as
       // the app, so a failure left in them outlasts every pull that skips them.
       ServiceKey.bazarr => [
@@ -406,10 +407,39 @@ final foldedServiceKpisProvider = FutureProvider.autoDispose
           await _withLidarrAlbums(ref, ordered, perConnection),
         );
       }
-      return aggregateServiceKpis(perConnection);
+      return aggregateServiceKpis(
+        service == ServiceKey.seerr
+            ? withCommonOpenProblems(perConnection)
+            : perConnection,
+      );
       // Derived from [serviceKpiForProvider], so it carries the flag for the
       // reason that one does.
     }, retry: noProviderRetry);
+
+/// The `Open problems` readout of Seerr is there only for an account that may
+/// view issues, so two Seerr connections can disagree about holding it. A fleet
+/// figure needs every connection's term (the fold refuses lists that differ),
+/// so it is kept only where every connection reports it.
+@visibleForTesting
+List<List<ServiceKpi>?> withCommonOpenProblems(
+  List<List<ServiceKpi>?> perConnection,
+) {
+  const label = 'Open problems';
+  bool has(List<ServiceKpi>? kpis) =>
+      kpis != null && kpis.any((kpi) => kpi.label == label);
+  if (perConnection.every(has) || !perConnection.any(has)) {
+    return perConnection;
+  }
+  return [
+    for (final kpis in perConnection)
+      kpis == null
+          ? null
+          : [
+              for (final kpi in kpis)
+                if (kpi.label != label) kpi,
+            ],
+  ];
+}
 
 /// The albums one Lidarr connection holds, by MusicBrainz release group id
 /// (`foreignAlbumId`): what lets a fold across two Lidarr count an album
@@ -1102,15 +1132,43 @@ List<ServiceKpi> _qbittorrentKpisFrom(
   ];
 }
 
-Future<List<ServiceKpi>> _seerrKpis(Ref ref) async =>
-    _seerrKpisFrom(await ref.watch(requestRowsProvider.future));
+Future<List<ServiceKpi>> _seerrKpis(Ref ref) async => _seerrKpisFrom(
+  await ref.watch(requestRowsProvider.future),
+  problems: await _seerrOpenProblems(ref, ''),
+);
 
 /// See [_radarrKpisFor]. Seerr already owned its per-connection read, because a
 /// request id is per instance and a merged list cannot be acted on by id alone.
 Future<List<ServiceKpi>> _seerrKpisFor(Ref ref, String instanceId) async =>
-    _seerrKpisFrom(await ref.watch(requestRowsForProvider(instanceId).future));
+    _seerrKpisFrom(
+      await ref.watch(requestRowsForProvider(instanceId).future),
+      problems: await _seerrOpenProblems(ref, instanceId),
+    );
 
-List<ServiceKpi> _seerrKpisFrom(List<SeerrRequest> requests) {
+/// What Seerr says about its open issues, as the readout needs it: not
+/// [shown] for an account that may not view issues (nothing is asked and the
+/// readout is absent, the Issues tab already says why), and a null [open] for
+/// a count that did not answer, which reads `—`.
+typedef OpenProblems = ({bool shown, int? open});
+
+/// The open issues of connection [instanceId] (empty: the lens).
+Future<OpenProblems> _seerrOpenProblems(Ref ref, String instanceId) async {
+  final mayList = ref.watch(roleGateOfProvider(instanceId)).mayListIssues;
+  if (!mayList) return (shown: false, open: null);
+  try {
+    return (
+      shown: true,
+      open: (await ref.watch(issueCountProvider(instanceId).future)).open,
+    );
+  } catch (_) {
+    return (shown: true, open: null);
+  }
+}
+
+List<ServiceKpi> _seerrKpisFrom(
+  List<SeerrRequest> requests, {
+  OpenProblems problems = (shown: false, open: null),
+}) {
   var pending = 0;
   var processing = 0;
   var available = 0;
@@ -1161,6 +1219,25 @@ List<ServiceKpi> _seerrKpisFrom(List<SeerrRequest> requests) {
       value: '$processing',
       icon: Icons.sync_rounded,
     ),
+    if (problems.shown)
+      switch (problems.open) {
+        // A count Seerr did not give is a dash, never nothing open.
+        null => const ServiceKpi.unavailable(
+          label: 'Open problems',
+          icon: Icons.flag_outlined,
+          overviewOnly: true,
+        ),
+        final open => ServiceKpi(
+          label: 'Open problems',
+          value: '$open',
+          icon: Icons.flag_outlined,
+          // A reported problem is a fault: something somebody relies on is
+          // not working.
+          tone: _faultIf(open > 0),
+          // Seerr's Overview alone: it answering keeps its light green.
+          overviewOnly: true,
+        ),
+      },
     ServiceKpi(
       label: 'Available',
       value: '$available',

@@ -142,9 +142,7 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
       if (mediaKeyOfIssue(issue) case final key?) {
         readReportsAgain(container, key: key, connectionId: connection);
       } else {
-        container
-          ..invalidate(mediaReportIssueProvider)
-          ..invalidate(seerrIssuesProvider);
+        readIssuesAgain(container);
       }
       if (!mounted) return;
       SnackBarHelper.success(context, 'Issue resolved');

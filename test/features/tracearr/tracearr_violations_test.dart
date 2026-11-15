@@ -1337,8 +1337,9 @@ void main() {
       await _answer(tester);
 
       expect(find.byType(ActivityNeedsYouPage), findsOneWidget);
-      // The faults and the requests of the household are as they were.
-      expect(find.text('3 faults'), findsOneWidget);
+      // The household's three faults and the problems reported on Seerr, and its
+      // requests, as they were.
+      expect(find.text('4 faults'), findsOneWidget);
       expect(find.text('3 requests'), findsOneWidget);
       expect(find.byType(FaultCard), findsNWidgets(3));
       expect(find.text('2 violations'), findsOneWidget);
@@ -1596,7 +1597,7 @@ void main() {
       await _answer(tester);
 
       expect(find.byType(ViolationDecisionRow), findsNothing);
-      expect(find.text('3 faults'), findsOneWidget);
+      expect(find.text('4 faults'), findsOneWidget);
       final decisions = container.read(dashboardDecisionsProvider);
       expect(
         decisions.decisions.where((d) => d.kind == DecisionKind.violation),
