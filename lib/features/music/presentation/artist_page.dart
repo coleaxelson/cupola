@@ -9,6 +9,7 @@ import 'package:cupola/core/api/quality_profile_mixin.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/generated/design_tokens.g.dart';
+import 'package:cupola/core/lifecycle/gated_poll.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
 import 'package:cupola/core/status/lexicon.dart';
 import 'package:cupola/core/theme.dart';
@@ -52,9 +53,16 @@ class ArtistPage extends ConsumerStatefulWidget {
     this.instanceId,
     this.initialArtist,
     this.heroTag,
+    this.justAdded = false,
   });
 
   final int artistId;
+
+  /// Whether Lidarr took this artist a moment ago (the route's `?added=1`):
+  /// its albums are not read yet, and the page says so and reads them again
+  /// every [artistReadEvery] until some arrive, for at most [artistReadFor],
+  /// instead of calling the artist empty.
+  final bool justAdded;
 
   /// The connection this page belongs to, from the route's `?i=`; null
   /// falls through to the lens. Every read and every write on the page goes
@@ -70,6 +78,13 @@ class ArtistPage extends ConsumerStatefulWidget {
   @override
   ConsumerState<ArtistPage> createState() => _ArtistPageState();
 }
+
+/// How often a page opened right after the add reads the albums again, while
+/// Lidarr is still reading them.
+const artistReadEvery = Duration(seconds: 3);
+
+/// How long it keeps asking before it says what an artist with no albums says.
+const artistReadFor = Duration(seconds: 60);
 
 class _ArtistPageState extends ConsumerState<ArtistPage>
     with QualityProfileMixin<ArtistPage>, ArrDetailActionsMixin<ArtistPage> {
@@ -97,6 +112,28 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
   /// a write after an await goes to the connection the page showed even if
   /// the lens moved meanwhile.
   String _instanceId = '';
+
+  /// How many times the albums were read again while Lidarr was reading them,
+  /// and whether the wait is over: the albums arrived, or [artistReadFor]
+  /// passed.
+  var _readerTicks = 0;
+  var _waitOver = false;
+
+  /// One round of the wait: stops when albums are there or the time is up,
+  /// reads them again otherwise. Ticks only while the page is on screen
+  /// ([VisibilityPoller]), so a page left under another one asks no server.
+  void _readAlbums() {
+    _readerTicks++;
+    final albums = ref.read(lidarrArtistAlbumsProvider(_record)).value;
+    final arrived = albums != null && albums.isNotEmpty;
+    final gaveUp = artistReadEvery * _readerTicks >= artistReadFor;
+    if (arrived || gaveUp) {
+      // The page draws what it holds: the albums, or the empty copy.
+      if (mounted) setState(() => _waitOver = true);
+      return;
+    }
+    ref.invalidate(lidarrArtistAlbumsProvider(_record));
+  }
 
   LidarrService get _lidarr => _instanceId.isEmpty
       ? ref.read(lidarrServiceProvider)
@@ -183,6 +220,9 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
     final albumsAsync = ref.watch(lidarrArtistAlbumsProvider(_record));
     final albums = albumsAsync.value;
     final shelf = albums == null ? null : ArtistShelf.of(albums, now: now);
+    // Lidarr took the artist a moment ago and has no albums to show yet.
+    final waiting = widget.justAdded && !_waitOver;
+    final reading = waiting && albums != null && albums.isEmpty;
     // The page's own connection's queue: the ids in it are that server's.
     final queues = lidarrQueueSnapshotsOf(
       ref.watch(lidarrQueueSnapshotsForProvider(_instanceId)),
@@ -242,9 +282,9 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
       itemBuilder: (context, index) => row(albums[index]),
     );
 
-    return ShelfPage(
+    final page = ShelfPage(
       name: artist.artistName,
-      summary: shelf?.summary ?? '',
+      summary: reading ? 'Added just now' : shelf?.summary ?? '',
       photo: photo,
       light: light,
       heroTag: widget.heroTag,
@@ -306,6 +346,20 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
             SliverToBoxAdapter(
               child: ShimmerList(itemCount: 3, itemHeight: 64),
             ),
+          ],
+          _ when reading => [
+            section('Albums'),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Text(
+                  '$name is reading ${artist.artistName}\u2019s albums. '
+                  'They appear here in a moment.',
+                  style: AppType.meta.copyWith(color: room.inkSecondary),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: _ReadingAlbums()),
           ],
           _ when albums!.isEmpty => [
             section('Albums'),
@@ -406,6 +460,16 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
             ),
           ),
       ],
+    );
+    if (!widget.justAdded) return page;
+    return VisibilityPoller(
+      id: 'music.artist.albums.$_instanceId.${widget.artistId}',
+      interval: artistReadEvery,
+      // Albums that arrived end the wait on the next round: the page has
+      // nothing left to ask for.
+      enabled: waiting && !(albums?.isNotEmpty ?? false),
+      onTick: _readAlbums,
+      child: page,
     );
   }
 
@@ -739,6 +803,54 @@ class _Actions extends StatelessWidget {
         const SizedBox(width: AppSpacing.row),
         Expanded(child: buttons[1]),
       ],
+    );
+  }
+}
+
+/// Three album rows that are not there yet: the cover and two lines, as the
+/// rows will be drawn.
+class _ReadingAlbums extends StatelessWidget {
+  const _ReadingAlbums();
+
+  static const double _cover = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: MediaGroup(
+        children: [
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.row),
+              child: Row(
+                children: [
+                  ShimmerPlaceholder(
+                    width: _cover,
+                    height: _cover,
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FractionallySizedBox(
+                          widthFactor: 0.55,
+                          child: ShimmerPlaceholder.text(),
+                        ),
+                        const SizedBox(height: AppSpacing.s),
+                        FractionallySizedBox(
+                          widthFactor: 0.35,
+                          child: ShimmerPlaceholder.text(height: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

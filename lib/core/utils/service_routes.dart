@@ -673,10 +673,23 @@ class ServiceRoutes {
     });
   }
 
-  static String lidarrArtist(int id, {String? heroTag, String? instanceId}) {
+  /// The query that says a detail was opened right after its title was added
+  /// (`?added=1`): the page says the service is still reading it. A query, so a
+  /// link and a restored route carry it as `extra` could not.
+  static const justAddedParam = 'added';
+
+  /// An artist's page. [justAdded]: Lidarr took the artist a moment ago and
+  /// has not read its albums yet.
+  static String lidarrArtist(
+    int id, {
+    String? heroTag,
+    String? instanceId,
+    bool justAdded = false,
+  }) {
     return _withQuery('$lidarrArtistBase/$id', {
       'heroTag': heroTag,
       'i': instanceId,
+      justAddedParam: justAdded ? '1' : null,
     });
   }
 

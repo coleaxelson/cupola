@@ -5,12 +5,15 @@ import 'dart:async';
 import 'dart:io' as io;
 import 'dart:ui' as ui;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/core/models/media_preview.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
+import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/title_light.dart';
+import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/discover/domain/models/collection_detail.dart';
 import 'package:cupola/features/discover/domain/models/person_credits.dart';
 import 'package:cupola/features/discover/domain/models/person_detail.dart';
@@ -23,11 +26,15 @@ import 'package:cupola/features/media/presentation/media_parts.dart';
 import 'package:cupola/features/media/presentation/media_split.dart';
 import 'package:cupola/features/media/presentation/shelf_page.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
+import 'package:cupola/features/music/domain/lidarr_add_options.dart';
 import 'package:cupola/features/music/domain/lidarr_queue_snapshots.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/music/presentation/artist_page.dart';
+import 'package:cupola/features/music/presentation/lidarr_add_artist_sheet.dart';
+import 'package:cupola/features/music/presentation/lidarr_add_options_provider.dart';
 import 'package:cupola/features/music/presentation/artist_page_providers.dart';
 import 'package:cupola/features/readarr/data/readarr_service.dart';
 import 'package:cupola/features/readarr/domain/models/readarr_models.dart';
@@ -170,10 +177,11 @@ CatalogScene _artistScene(
   double textScale = 1,
   bool art = true,
   bool wanted = false,
+  bool justAdded = false,
   Future<LidarrArtist>? artist,
 }) => CatalogScene(
   caption,
-  (_) => const ArtistPage(artistId: 1),
+  (_) => ArtistPage(artistId: 1, justAdded: justAdded),
   width: width,
   height: height,
   textScale: textScale,
@@ -181,7 +189,9 @@ CatalogScene _artistScene(
     lidarrServiceProvider.overrideWithValue(_Lidarr()),
     lidarrArtistProvider.overrideWith((ref, item) => artist ?? _artist()),
     lidarrArtistAlbumsProvider.overrideWith(
-      (ref, item) async => _albums(art: art, wanted: wanted),
+      // Lidarr has taken the artist and not read its albums yet.
+      (ref, item) async =>
+          justAdded ? const <LidarrAlbum>[] : _albums(art: art, wanted: wanted),
     ),
     lidarrAlbumTracksProvider.overrideWith((ref, album) async => _tracks),
     lidarrQueueSnapshotsForProvider.overrideWith(
@@ -189,6 +199,111 @@ CatalogScene _artistScene(
     ),
     titleLightProvider.overrideWith((ref, url) async => _lights[url]),
   ],
+);
+
+/// An artist the lookup found and no Lidarr holds: no id, no artwork.
+LidarrArtist _lookupElbow() => LidarrArtist.fromJson({
+  'artistName': 'Elbow',
+  'foreignArtistId': 'mbid-elbow',
+  'status': 'continuing',
+  'artistType': 'Group',
+  'disambiguation': 'Bury, England',
+  'overview':
+      'English rock band formed in Bury in 1997, led by Guy Garvey. Their '
+      'albums have been shortlisted for the Mercury Prize five times.',
+  'images': const <Object?>[],
+});
+
+const _addOptions = LidarrAddOptions(
+  folders: [
+    LidarrRootFolder(
+      path: '/music',
+      freeSpace: 2308974418944,
+      defaultQualityProfileId: 1,
+      defaultMetadataProfileId: 1,
+      defaultMonitor: null,
+      defaultNewItemMonitor: 'all',
+    ),
+  ],
+  qualityProfiles: [(id: 1, name: 'Lossless'), (id: 2, name: 'Standard')],
+  metadataProfiles: [
+    LidarrMetadataProfile(
+      id: 1,
+      name: 'Standard',
+      allowedPrimaryTypes: ['Album', 'EP'],
+    ),
+  ],
+);
+
+/// A Lidarr that refuses the add, as it refuses an artist it already holds.
+class _RefusingLidarr extends LidarrService {
+  _RefusingLidarr() : super(FakeApiClient()) {
+    (client as FakeApiClient).postException = DioException.badResponse(
+      statusCode: 400,
+      requestOptions: RequestOptions(path: '/api/v1/artist'),
+      response: Response(
+        requestOptions: RequestOptions(path: '/api/v1/artist'),
+        statusCode: 400,
+        data: [
+          {'errorMessage': 'This artist has already been added'},
+        ],
+      ),
+    );
+  }
+}
+
+/// The sheet as it stands open: the room under the modal barrier, and the
+/// panel risen from the bottom edge.
+Widget _sheetOpen(Widget body) => Builder(
+  builder: (context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      ColoredBox(color: Theme.of(context).colorScheme.surface),
+      ColoredBox(color: CupolaRoom.of(context).scrim),
+      Align(
+        alignment: Alignment.bottomCenter,
+        child: AppBottomSheet(child: body),
+      ),
+    ],
+  ),
+);
+
+String _lidarrName(ServiceInstance connection) =>
+    connection.label.isEmpty ? 'Lidarr' : 'Lidarr \u00B7 ${connection.label}';
+
+CatalogScene _addArtistScene(
+  String caption, {
+  List<ServiceInstance>? connections,
+  Future<LidarrAddOptions> Function()? options,
+  bool refused = false,
+  double height = 844,
+  double textScale = 1,
+}) => CatalogScene(
+  caption,
+  (_) => _sheetOpen(
+    LidarrAddArtistSheet(
+      artist: _lookupElbow(),
+      connections: connections ?? [_connection(ServiceKey.lidarr)],
+      name: _lidarrName,
+    ),
+  ),
+  width: 390,
+  height: height,
+  textScale: textScale,
+  overrides: [
+    lidarrAddOptionsProvider.overrideWith(
+      (ref, id) => (options ?? () async => _addOptions)(),
+    ),
+    if (refused)
+      lidarrServiceForProvider.overrideWith((ref, id) => _RefusingLidarr()),
+  ],
+  act: refused
+      ? (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.byType(FilledButton)),
+          );
+        }
+      : null,
 );
 
 ReadarrAuthor _author() => ReadarrAuthor.fromJson({
@@ -460,6 +575,75 @@ void main() {
         'AuthorPage at twice the reading size · two books to a row',
         height: 3000,
         textScale: catalogTextScale,
+      ),
+      _addArtistScene(
+        'LidarrAddArtistSheet · the folder\u2019s defaults loaded: the folder '
+        'with its room, the profiles, Monitor and its meaning, the two '
+        'switches, the button that says it searches',
+      ),
+      _addArtistScene(
+        'LidarrAddArtistSheet · two connections: the pills over the rows',
+        connections: [
+          _connection(ServiceKey.lidarr),
+          const ServiceInstance(
+            id: 'lidarr-away',
+            service: ServiceKey.lidarr,
+            label: 'Away',
+            url: 'https://lidarr.example.net',
+            credential: 'catalog',
+          ),
+        ],
+        height: 900,
+      ),
+      _addArtistScene(
+        'LidarrAddArtistSheet · the options could not be read: who did not '
+        'answer, Retry, and nothing to add yet',
+        options: () => Future<LidarrAddOptions>.error(
+          DioException.connectionError(
+            requestOptions: RequestOptions(path: '/api/v1/rootfolder'),
+            reason: 'down',
+          ),
+        ),
+        height: 520,
+      ),
+      _addArtistScene(
+        'LidarrAddArtistSheet · a Lidarr with no root folder: what is true, '
+        'what to do, the way to Lidarr, and no button',
+        options: () async => const LidarrAddOptions(
+          folders: [],
+          qualityProfiles: [(id: 1, name: 'Lossless')],
+          metadataProfiles: [],
+        ),
+        height: 520,
+      ),
+      _addArtistScene(
+        'LidarrAddArtistSheet · Lidarr refused the add: it stays, in '
+        'Lidarr\u2019s own words, over the button',
+        refused: true,
+      ),
+      _addArtistScene(
+        'LidarrAddArtistSheet at twice the reading size',
+        height: 1900,
+        textScale: catalogTextScale,
+      ),
+      _artistScene(
+        'ArtistPage right after the add · Added just now, Lidarr reading '
+        'the albums over three rows that are not there yet',
+        height: 760,
+        justAdded: true,
+        artist: Future.value(
+          LidarrArtist.fromJson({
+            'id': 12,
+            'artistName': 'Elbow',
+            'foreignArtistId': 'mbid-elbow',
+            'status': 'continuing',
+            'monitored': true,
+            'monitorNewItems': 'all',
+            'path': '/music/Elbow',
+            'qualityProfileId': 1,
+            'images': const <Object?>[],
+          }),
+        ),
       ),
       _artistScene(
         'Reading the artist · nothing to show yet',

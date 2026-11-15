@@ -278,7 +278,7 @@ class _MediaAddSheetState extends ConsumerState<MediaAddSheet> {
             // Which episodes, in Sonarr's words, with what each means.
             MediaValueRow(
               label: 'Monitor',
-              value: _Choice(
+              value: MediaChoiceValue(
                 label: state.sonarrMonitor.label,
                 meaning: state.sonarrMonitor.meaning,
               ),
@@ -292,7 +292,10 @@ class _MediaAddSheetState extends ConsumerState<MediaAddSheet> {
                     SonarrSeriesType.standard;
                 return MediaValueRow(
                   label: 'Series type',
-                  value: _Choice(label: type.label, meaning: type.description),
+                  value: MediaChoiceValue(
+                    label: type.label,
+                    meaning: type.description,
+                  ),
                   onTap: () => _pickType(type),
                 );
               }(),
@@ -389,35 +392,6 @@ class _MediaAddSheetState extends ConsumerState<MediaAddSheet> {
             ),
           ),
         ],
-      ],
-    );
-  }
-}
-
-/// A choice and what it means, right-aligned in its row: `Future episodes`,
-/// `Only the ones that air from now` under it.
-class _Choice extends StatelessWidget {
-  const _Choice({required this.label, required this.meaning});
-
-  final String label;
-  final String meaning;
-
-  @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          label,
-          textAlign: TextAlign.end,
-          style: AppType.meta.copyWith(color: room.inkSecondary),
-        ),
-        Text(
-          meaning,
-          textAlign: TextAlign.end,
-          style: AppType.caption.copyWith(color: room.inkTertiary),
-        ),
       ],
     );
   }

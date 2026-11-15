@@ -238,6 +238,13 @@ const _monoUses = <({String file, int uses, String prints})>[
         'exactly as the service returns it',
   ),
   (
+    file: 'lib/features/music/presentation/lidarr_add_artist_sheet.dart',
+    uses: 1,
+    prints:
+        'the root folder an artist is added under: a path, exactly as '
+        'Lidarr returns it',
+  ),
+  (
     file: 'lib/features/media/presentation/media_add_sheet.dart',
     uses: 1,
     prints:

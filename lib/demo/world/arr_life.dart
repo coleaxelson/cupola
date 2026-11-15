@@ -61,6 +61,24 @@ class LiveSeries {
   DateTime? arrived;
 }
 
+/// One artist added to a Lidarr in the demo. The world's own artist is
+/// `LidarrFake`'s; only what the demo adds is kept here.
+class LiveArtist {
+  LiveArtist({
+    required this.id,
+    required this.name,
+    required this.foreignArtistId,
+    required this.added,
+    this.monitored = true,
+  });
+
+  final int id;
+  final String name;
+  final String foreignArtistId;
+  final DateTime added;
+  bool monitored;
+}
+
 /// The arrs' libraries once the world lives: a film added, monitored or let
 /// go, a search that grabs, a download that arrives.
 ///
@@ -76,6 +94,7 @@ class ArrLife {
 
   final Map<String, List<LiveMovie>> _movies = {};
   final Map<String, List<LiveSeries>> _series = {};
+  final Map<String, List<LiveArtist>> _artists = {};
   int _grabs = 0;
 
   /// How long a grab takes to come down, so a title asked for arrives in
@@ -156,6 +175,41 @@ class ArrLife {
       usenet: is4k,
       size: is4k ? 8800000000 : 2200000000,
     );
+  }
+
+  // === Lidarr ==============================================================
+
+  /// The artists added to Lidarr [serverId] in the demo, after the world's
+  /// own (id 1).
+  List<LiveArtist> artists(String serverId) =>
+      _artists.putIfAbsent(serverId, () => []);
+
+  LiveArtist? artist(String serverId, int id) =>
+      artists(serverId).where((a) => a.id == id).firstOrNull;
+
+  /// Adds the artist [name] to Lidarr [serverId], or finds it there.
+  LiveArtist addArtist(
+    String serverId,
+    String name, {
+    required String foreignArtistId,
+    bool monitored = true,
+  }) {
+    final held = artists(
+      serverId,
+    ).where((a) => a.foreignArtistId == foreignArtistId).firstOrNull;
+    if (held != null) return held;
+    final top = artists(
+      serverId,
+    ).fold<int>(1, (top, a) => a.id > top ? a.id : top);
+    final artist = LiveArtist(
+      id: top + 1,
+      name: name,
+      foreignArtistId: foreignArtistId,
+      added: _now,
+      monitored: monitored,
+    );
+    artists(serverId).add(artist);
+    return artist;
   }
 
   // === Sonarr ==============================================================

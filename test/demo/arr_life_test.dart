@@ -234,4 +234,78 @@ void main() {
       expect(third['monitored'], isFalse);
     });
   });
+
+  group('Lidarr', () {
+    const lidarr = '${WorldHosts.lidarr}/api/v1';
+
+    test('answers a name it does not hold with a row that has no id, and the '
+        'world\'s own artist with its id', () async {
+      final rows = await list('$lidarr/artist/lookup?term=elbow');
+      expect(rows.single['artistName'], 'Elbow');
+      expect(rows.single.containsKey('id'), isFalse);
+      expect(rows.single['foreignArtistId'], startsWith('lookup-'));
+
+      final own = await list('$lidarr/artist/lookup?term=jan');
+      expect(own.single['id'], 1);
+    });
+
+    test('offers its folder with the defaults a new artist is given, and its '
+        'metadata profile with the types it keeps', () async {
+      final folder = (await list('$lidarr/rootfolder')).single;
+      expect(folder['defaultQualityProfileId'], 1);
+      expect(folder['defaultMetadataProfileId'], 1);
+      expect(folder['defaultMonitorOption'], 'all');
+      expect(folder['defaultNewItemMonitorOption'], 'all');
+
+      final profile = (await list('$lidarr/metadataprofile')).single;
+      expect(profile['name'], 'Standard');
+      final allowed = [
+        for (final type in (profile['primaryAlbumTypes'] as List).cast<Map>())
+          if (type['allowed'] == true) (type['albumType'] as Map)['name'],
+      ];
+      expect(allowed, ['Album', 'EP']);
+    });
+
+    test('an artist added is in the library, and reads its albums a moment '
+        'later', () async {
+      final added =
+          await send(
+                'POST',
+                '$lidarr/artist',
+                json: {
+                  'artistName': 'Elbow',
+                  'foreignArtistId': 'lookup-elbow',
+                  'monitored': true,
+                  'addOptions': {
+                    'monitor': 'all',
+                    'searchForMissingAlbums': true,
+                  },
+                },
+              )
+              as Map;
+      expect(added['id'], 2);
+      expect(added['artistName'], 'Elbow');
+      expect((await list('$lidarr/artist')).map((a) => a['artistName']), [
+        'Jan Morgenstern',
+        'Elbow',
+      ]);
+      expect(((await send('GET', '$lidarr/artist/2')) as Map)['id'], 2);
+
+      // Lidarr has not read the albums yet.
+      expect(await list('$lidarr/album?artistId=2'), isEmpty);
+      network.elapse(const Duration(seconds: 10));
+      final albums = await list('$lidarr/album?artistId=2');
+      expect(albums.single['title'], 'Debut');
+      expect(albums.single['artistId'], 2);
+
+      // Adding it again finds it, as Lidarr's 400 would refuse it: the world
+      // does not hold it twice.
+      await send(
+        'POST',
+        '$lidarr/artist',
+        json: {'artistName': 'Elbow', 'foreignArtistId': 'lookup-elbow'},
+      );
+      expect(await list('$lidarr/artist'), hasLength(2));
+    });
+  });
 }

@@ -2,10 +2,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cupola/core/api/api_client.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
+import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
 
+import '../../../test_helpers/capturing_http_adapter.dart';
 import '../../../test_helpers/fake_api_client.dart';
 
 import '../../../test_helpers/settings_scope.dart';
@@ -336,6 +339,75 @@ void main() {
       expect(client.lastPutData['artistName'], 'Artist');
     });
 
+    test('getQualityProfilesOrThrow lets a failed read reach the caller', () {
+      client.getException = Exception('boom');
+
+      expect(service.getQualityProfilesOrThrow(), throwsException);
+      // The degrading read keeps answering `[]`: the add sheet is the one
+      // reader that must tell a dark Lidarr from one with no profile.
+      expect(service.getQualityProfiles(), completion(isEmpty));
+    });
+
+    test('getMetadataProfiles reads the types each profile allows', () async {
+      client.getResponseData = [
+        {
+          'id': 1,
+          'name': 'Standard',
+          'primaryAlbumTypes': [
+            {
+              'albumType': {'id': 2, 'name': 'Album'},
+              'allowed': true,
+            },
+            {
+              'albumType': {'id': 4, 'name': 'EP'},
+              'allowed': true,
+            },
+            {
+              'albumType': {'id': 1, 'name': 'Single'},
+              'allowed': false,
+            },
+          ],
+        },
+        {'id': 2, 'name': 'None'},
+        {'name': 'No id'},
+      ];
+
+      final profiles = await service.getMetadataProfiles();
+
+      expect(client.lastGetPath, '/api/v1/metadataprofile');
+      // An entry without an id cannot be chosen, so it is not offered.
+      expect(profiles.map((p) => p.name), ['Standard', 'None']);
+      expect(profiles.first.allowedPrimaryTypes, ['Album', 'EP']);
+      expect(profiles.first.typesLine, 'Albums and EPs');
+      expect(profiles.last.typesLine, isNull);
+    });
+
+    test('getMetadataProfiles throws when Lidarr does not answer', () {
+      client.getException = Exception('boom');
+
+      expect(service.getMetadataProfiles(), throwsException);
+    });
+
+    test('getRootFolders carries the defaults a new artist is given', () async {
+      client.getResponseData = [
+        {
+          'id': 1,
+          'path': '/music',
+          'freeSpace': 2100000000000,
+          'defaultQualityProfileId': 2,
+          'defaultMetadataProfileId': 1,
+          'defaultMonitorOption': 'future',
+          'defaultNewItemMonitorOption': 'none',
+        },
+      ];
+
+      final folders = await service.getRootFolders();
+
+      expect(client.lastGetPath, '/api/v1/rootfolder');
+      expect(folders.single['defaultMonitorOption'], 'future');
+      expect(folders.single['defaultNewItemMonitorOption'], 'none');
+    });
+
     test('deleteArtist sends default delete params', () async {
       await service.deleteArtist(1);
 
@@ -357,6 +429,168 @@ void main() {
         'deleteFiles': true,
         'addImportListExclusion': true,
       });
+    });
+  });
+
+  group('LidarrService.addArtist', () {
+    late CapturingHttpAdapter adapter;
+    late LidarrService service;
+
+    setUp(() {
+      adapter = CapturingHttpAdapter(
+        response: {
+          'id': 12,
+          'artistName': 'Elbow',
+          'foreignArtistId': 'mbid-elbow',
+          'status': 'continuing',
+          'monitored': true,
+          'images': const [],
+        },
+      );
+      final client = ApiClient(baseUrl: 'https://lidarr.test', apiKey: 'k');
+      client.dio.httpClientAdapter = adapter;
+      service = LidarrService(client);
+    });
+
+    LidarrArtist lookupRow() => LidarrArtist.fromJson({
+      'artistName': 'Elbow',
+      'foreignArtistId': 'mbid-elbow',
+      'status': 'continuing',
+      'artistType': 'Group',
+      'disambiguation': 'Bury, England',
+      'overview': 'English rock band.',
+      'images': [
+        {'coverType': 'poster', 'remoteUrl': 'https://img.example/elbow.jpg'},
+      ],
+      'links': [
+        {'name': 'allmusic', 'url': 'https://allmusic.example/elbow'},
+      ],
+    });
+
+    test('posts the lookup row\'s identity with what was chosen', () async {
+      final added = await service.addArtist(
+        lookupRow(),
+        qualityProfileId: 2,
+        metadataProfileId: 3,
+        rootFolderPath: '/music',
+        monitor: 'future',
+        monitorNewItems: 'all',
+        searchForMissingAlbums: true,
+      );
+
+      expect(adapter.lastRequest!.method, 'POST');
+      expect(adapter.lastUri!.path, '/api/v1/artist');
+      expect(adapter.lastBody, {
+        'artistName': 'Elbow',
+        'foreignArtistId': 'mbid-elbow',
+        'images': [
+          {'coverType': 'poster', 'remoteUrl': 'https://img.example/elbow.jpg'},
+        ],
+        'overview': 'English rock band.',
+        'artistType': 'Group',
+        'disambiguation': 'Bury, England',
+        'links': [
+          {'name': 'allmusic', 'url': 'https://allmusic.example/elbow'},
+        ],
+        'qualityProfileId': 2,
+        'metadataProfileId': 3,
+        'rootFolderPath': '/music',
+        'monitored': true,
+        'monitorNewItems': 'all',
+        'addOptions': {'monitor': 'future', 'searchForMissingAlbums': true},
+      });
+      // Lidarr's answer is the artist as it now holds it.
+      expect(added.id, 12);
+      expect(added.artistName, 'Elbow');
+    });
+
+    test(
+      'Monitor None adds the artist unmonitored and asks for no search',
+      () async {
+        await service.addArtist(
+          lookupRow(),
+          qualityProfileId: 1,
+          metadataProfileId: 1,
+          rootFolderPath: '/music',
+          monitor: 'none',
+          monitorNewItems: 'none',
+          searchForMissingAlbums: false,
+        );
+
+        final body = adapter.lastBody as Map;
+        expect(body['monitored'], isFalse);
+        expect(body['monitorNewItems'], 'none');
+        expect(body['addOptions'], {
+          'monitor': 'none',
+          'searchForMissingAlbums': false,
+        });
+      },
+    );
+
+    test('leaves out what the lookup did not carry', () async {
+      await service.addArtist(
+        LidarrArtist.fromJson({
+          'artistName': 'Bare',
+          'foreignArtistId': 'mbid-bare',
+        }),
+        qualityProfileId: 1,
+        metadataProfileId: 1,
+        rootFolderPath: '/music',
+        monitor: 'all',
+        monitorNewItems: 'all',
+        searchForMissingAlbums: true,
+      );
+
+      final body = adapter.lastBody as Map;
+      expect(
+        body.keys,
+        isNot(
+          anyOf(
+            contains('overview'),
+            contains('artistType'),
+            contains('disambiguation'),
+            contains('links'),
+          ),
+        ),
+      );
+    });
+
+    test('throws when Lidarr refuses, rather than reporting an add', () async {
+      adapter
+        ..statusCode = 400
+        ..response = [
+          {'errorMessage': 'This artist has already been added'},
+        ];
+
+      await expectLater(
+        service.addArtist(
+          lookupRow(),
+          qualityProfileId: 1,
+          metadataProfileId: 1,
+          rootFolderPath: '/music',
+          monitor: 'all',
+          monitorNewItems: 'all',
+          searchForMissingAlbums: true,
+        ),
+        throwsA(isA<DioException>()),
+      );
+    });
+
+    test('throws when the answer is not an artist', () async {
+      adapter.response = const <Object?>[];
+
+      await expectLater(
+        service.addArtist(
+          lookupRow(),
+          qualityProfileId: 1,
+          metadataProfileId: 1,
+          rootFolderPath: '/music',
+          monitor: 'all',
+          monitorNewItems: 'all',
+          searchForMissingAlbums: true,
+        ),
+        throwsA(isA<FormatException>()),
+      );
     });
   });
 }

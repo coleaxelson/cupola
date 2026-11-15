@@ -374,16 +374,18 @@ Page<void> _libraryDetailPage<T>(
   GoRouterState state, {
   required String heroPrefix,
   required String fallbackLocation,
+  bool positiveIdsOnly = false,
   required Widget Function(
     int id,
     String heroTag,
     T? initialItem,
     String? instanceId,
+    bool justAdded,
   )
   buildChild,
 }) {
   final id = RouteUtils.safeIntParam(state, 'id');
-  if (id == null) {
+  if (id == null || (positiveIdsOnly && id <= 0)) {
     return RouteUtils.redirectPage(
       key: state.pageKey,
       location: fallbackLocation,
@@ -396,7 +398,13 @@ Page<void> _libraryDetailPage<T>(
   // the query rather than in a path segment or in `extra`.
   return RouteUtils.cupertinoPage(
     key: state.pageKey,
-    child: buildChild(id, heroTag, item, state.uri.queryParameters['i']),
+    child: buildChild(
+      id,
+      heroTag,
+      item,
+      state.uri.queryParameters['i'],
+      state.uri.queryParameters[ServiceRoutes.justAddedParam] == '1',
+    ),
   );
 }
 
@@ -534,25 +542,39 @@ GoRoute _tail(String path, String Function(GoRouterState state) to) => GoRoute(
 /// another app tab and coming back returns to the title rather than to the top
 /// of the list, and the poster's Hero still flies, because the list it left and
 /// the page it lands on share one Navigator.
+///
+/// [positiveIdsOnly] is for a detail whose list can hold a row the service
+/// does not hold yet: a lookup row has id 0, which is no record, and its page
+/// would read and write `/…/0`. Such an id goes back to [fallbackLocation]
+/// like any other bad parameter.
+///
+/// `buildChild`'s last argument is whether the link says the title was added a
+/// moment ago (`?added=1`, [ServiceRoutes.justAddedParam]): a page that has
+/// something to say about that reads it; the others ignore it.
 GoRoute _libraryDetail<T>(
   String path, {
   required String heroPrefix,
   required String fallbackLocation,
+  bool positiveIdsOnly = false,
   required Widget Function(
     int id,
     String heroTag,
     T? initialItem,
     String? instanceId,
+    bool justAdded,
   )
   buildChild,
 }) => GoRoute(
   path: path,
-  redirect: (context, state) =>
-      RouteUtils.safeIntParam(state, 'id') == null ? fallbackLocation : null,
+  redirect: (context, state) {
+    final id = RouteUtils.safeIntParam(state, 'id');
+    return id == null || (positiveIdsOnly && id <= 0) ? fallbackLocation : null;
+  },
   pageBuilder: (context, state) => _libraryDetailPage<T>(
     state,
     heroPrefix: heroPrefix,
     fallbackLocation: fallbackLocation,
+    positiveIdsOnly: positiveIdsOnly,
     buildChild: buildChild,
   ),
 );
@@ -750,11 +772,12 @@ RouteBase _radarrRoutes() => _serviceRoutes(
         'movie/:id',
         heroPrefix: 'movie',
         fallbackLocation: ServiceRoutes.radarrLibrary,
-        buildChild: (id, heroTag, movie, instanceId) => ArrTitleOpener.radarr(
-          movieId: id,
-          heroTag: heroTag,
-          instanceId: instanceId,
-        ),
+        buildChild: (id, heroTag, movie, instanceId, _) =>
+            ArrTitleOpener.radarr(
+              movieId: id,
+              heroTag: heroTag,
+              instanceId: instanceId,
+            ),
       ),
     ],
   },
@@ -803,11 +826,12 @@ RouteBase _sonarrRoutes() => _serviceRoutes(
         'series/:id',
         heroPrefix: 'series',
         fallbackLocation: ServiceRoutes.sonarrLibrary,
-        buildChild: (id, heroTag, series, instanceId) => ArrTitleOpener.sonarr(
-          seriesId: id,
-          heroTag: heroTag,
-          instanceId: instanceId,
-        ),
+        buildChild: (id, heroTag, series, instanceId, _) =>
+            ArrTitleOpener.sonarr(
+              seriesId: id,
+              heroTag: heroTag,
+              instanceId: instanceId,
+            ),
       ),
     ],
   },
@@ -854,11 +878,14 @@ RouteBase _lidarrRoutes() => _serviceRoutes(
         'artist/:id',
         heroPrefix: 'artist',
         fallbackLocation: ServiceRoutes.lidarrLibrary,
-        buildChild: (id, heroTag, artist, instanceId) => ArtistPage(
+        // A lookup row the library does not hold has id 0: never a page.
+        positiveIdsOnly: true,
+        buildChild: (id, heroTag, artist, instanceId, justAdded) => ArtistPage(
           artistId: id,
           heroTag: heroTag,
           initialArtist: artist,
           instanceId: instanceId,
+          justAdded: justAdded,
         ),
       ),
     ],
@@ -909,7 +936,7 @@ RouteBase _readarrRoutes() => _serviceRoutes(
         'author/:id',
         heroPrefix: 'author',
         fallbackLocation: ServiceRoutes.readarrLibrary,
-        buildChild: (id, heroTag, author, instanceId) => AuthorPage(
+        buildChild: (id, heroTag, author, instanceId, _) => AuthorPage(
           authorId: id,
           heroTag: heroTag,
           initialAuthor: author,

@@ -1579,18 +1579,160 @@ class LidarrFake extends ArrFake {
       ? _sintelTracks[n - 1].$2
       : 'Track ${n.toString().padLeft(2, '0')}';
 
+  /// How long Lidarr takes to read the albums of an artist the demo adds.
+  static const _readingAlbums = Duration(seconds: 6);
+
+  /// An artist the demo added, as `GET /api/v1/artist` sends it: the lookup
+  /// row's identity under the library's id.
+  JsonMap _added(ServerContext c, LiveArtist artist) => {
+    'id': artist.id,
+    'artistName': artist.name,
+    'sortName': artist.name.toLowerCase(),
+    'foreignArtistId': artist.foreignArtistId,
+    'status': 'continuing',
+    'monitored': artist.monitored,
+    'monitorNewItems': 'all',
+    'path': '${rootFolder(c)}/${artist.name}',
+    'qualityProfileId': 1,
+    'metadataProfileId': 1,
+    'added': artist.added.toUtc().toIso8601String(),
+    'images': const <Object?>[],
+  };
+
+  /// The one album Lidarr reads for an artist the demo added, once it has.
+  List<JsonMap> _addedAlbums(ServerContext c, LiveArtist artist) => [
+    if (c.now.difference(artist.added) >= _readingAlbums)
+      {
+        'id': 100 + artist.id,
+        'artistId': artist.id,
+        'title': 'Debut',
+        'foreignAlbumId': 'album-${artist.foreignArtistId}',
+        'albumType': 'Album',
+        'monitored': artist.monitored,
+        'releaseDate': '2012-01-01T00:00:00Z',
+        'images': const <Object?>[],
+        'statistics': const {
+          'trackFileCount': 0,
+          'trackCount': 5,
+          'totalTrackCount': 5,
+        },
+      },
+  ];
+
+  /// What the lookup answers for [term]: the world's artist for its own name,
+  /// and for any other name one artist the library does not hold (no id), as
+  /// Lidarr's catalog answers a name this library has never held.
+  List<JsonMap> _lookup(ServerContext c, String term) {
+    final wanted = term.trim().toLowerCase();
+    if (wanted.isEmpty ||
+        wanted.contains('morgenstern') ||
+        'jan morgenstern'.contains(wanted)) {
+      return [_artist(c)];
+    }
+    final name = [
+      for (final word in term.trim().split(RegExp(r'\s+')))
+        word[0].toUpperCase() + word.substring(1),
+    ].join(' ');
+    return [
+      {
+        'artistName': name,
+        'sortName': wanted,
+        'foreignArtistId': 'lookup-${wanted.replaceAll(RegExp(r'\W+'), '-')}',
+        'status': 'continuing',
+        'artistType': 'Group',
+        'monitored': false,
+        'images': const <Object?>[],
+      },
+    ];
+  }
+
+  /// Lidarr's root folder as it sends its defaults: the profiles a new artist
+  /// is given, what it monitors, and whether it monitors the albums to come.
+  @override
+  NetworkReply? answer(NetworkRequest r, ServerContext c) {
+    if (r.method == 'GET' && r.path == '/api/v1/rootfolder') {
+      return NetworkReply.json([
+        {
+          'id': 1,
+          'path': rootFolder(c),
+          'accessible': true,
+          'freeSpace': 12400000000000,
+          'defaultQualityProfileId': 1,
+          'defaultMetadataProfileId': 1,
+          'defaultMonitorOption': 'all',
+          'defaultNewItemMonitorOption': 'all',
+        },
+      ]);
+    }
+    return super.answer(r, c);
+  }
+
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    final arrs = c.life?.arrs;
+    // An add: Lidarr answers with the new artist, whose albums it reads a
+    // moment later. A living world keeps it.
+    if (r.method == 'POST' && r.path == '/api/v1/artist') {
+      final body = r.json;
+      final foreignId = body is Map ? body['foreignArtistId'] : null;
+      if (arrs != null &&
+          body is Map &&
+          foreignId is String &&
+          foreignId.isNotEmpty) {
+        final artist = arrs.addArtist(
+          c.server.id,
+          '${body['artistName']}',
+          foreignArtistId: foreignId,
+          monitored: body['monitored'] != false,
+        );
+        return NetworkReply.json(_added(c, artist), status: 201);
+      }
+      return NetworkReply.json({
+        if (body is Map) ...body.cast<String, Object?>(),
+        'id': 100,
+      }, status: 201);
+    }
     if (r.method != 'GET') return null;
+    final one = RegExp(r'^/api/v1/artist/(\d+)$').firstMatch(r.path);
+    final addedOne = one == null
+        ? null
+        : arrs?.artist(c.server.id, int.parse(one.group(1)!));
+    if (addedOne != null) return NetworkReply.json(_added(c, addedOne));
+    if (r.path == '/api/v1/album') {
+      final asked = int.tryParse(r.query['artistId'] ?? '');
+      final added = asked == null ? null : arrs?.artist(c.server.id, asked);
+      if (added != null) return NetworkReply.json(_addedAlbums(c, added));
+    }
     return switch (r.path) {
-      '/api/v1/artist' => NetworkReply.json([_artist(c)]),
+      '/api/v1/artist' => NetworkReply.json([
+        _artist(c),
+        for (final artist in arrs?.artists(c.server.id) ?? const <LiveArtist>[])
+          _added(c, artist),
+      ]),
       '/api/v1/artist/1' => NetworkReply.json(_artist(c)),
-      // The search route, as Radarr's and Sonarr's fakes answer theirs: the
-      // world's artist, with its library id, whatever the term.
-      '/api/v1/artist/lookup' => NetworkReply.json([_artist(c)]),
+      // The search route, as Radarr's and Sonarr's fakes answer theirs.
+      '/api/v1/artist/lookup' => NetworkReply.json(
+        _lookup(c, r.query['term'] ?? ''),
+      ),
       '/api/v1/album' => NetworkReply.json(_albums(c)),
       '/api/v1/metadataprofile' => NetworkReply.json([
-        {'id': 1, 'name': 'Standard'},
+        {
+          'id': 1,
+          'name': 'Standard',
+          'primaryAlbumTypes': [
+            for (final (id, name, allowed) in const [
+              (1, 'Album', true),
+              (2, 'EP', true),
+              (3, 'Single', false),
+              (4, 'Broadcast', false),
+              (5, 'Other', false),
+            ])
+              {
+                'albumType': {'id': id, 'name': name},
+                'allowed': allowed,
+              },
+          ],
+        },
       ]),
       '/api/v1/track' => NetworkReply.json(_tracks(r)),
       '/api/v1/trackfile' => NetworkReply.json(const <Object?>[]),

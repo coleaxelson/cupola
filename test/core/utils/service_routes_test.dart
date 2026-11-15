@@ -101,6 +101,11 @@ void main() {
         ServiceRoutes.lidarrArtist(9, heroTag: 'artist_9'),
         '/stack/lidarr/library/artist/9?heroTag=artist_9',
       );
+      // Opened right after the add: the link says so, beside the connection.
+      expect(
+        ServiceRoutes.lidarrArtist(9, instanceId: 'lidarr-2', justAdded: true),
+        '/stack/lidarr/library/artist/9?i=lidarr-2&added=1',
+      );
     });
 
     test('the Sonarr tab roots are spelled by the tabs they mount', () {

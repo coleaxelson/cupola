@@ -579,6 +579,59 @@ void main() {
       expect(find.byType(ArrTitleOpener), findsNothing);
     });
 
+    testWidgets('an artist Lidarr does not hold has no page: ids of zero and '
+        'below go back to the library, and what that draws is the library', (
+      tester,
+    ) async {
+      // A lookup row has id 0. Its page would read and write `/artist/0` and
+      // say things about an artist nobody added: the add sheet is the way to
+      // such a row, never this route.
+      final container = await _pumpRouter(tester);
+      final router = container.read(routerProvider);
+
+      for (final id in [0, -4]) {
+        router.go(ServiceRoutes.lidarrArtist(id, heroTag: 'artist_$id'));
+        await tester.pumpAndSettle();
+
+        expect(
+          router.state.uri.toString(),
+          ServiceRoutes.lidarrLibrary,
+          reason: 'id $id',
+        );
+        expect(find.byType(MusicScreen), findsOneWidget, reason: 'id $id');
+        expect(find.byType(ArtistPage), findsNothing, reason: 'id $id');
+      }
+
+      // A real id still opens its page.
+      router.go(ServiceRoutes.lidarrArtist(9));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ArtistPage>(find.byType(ArtistPage)).artistId, 9);
+    });
+
+    testWidgets('an artist opened right after the add says so in the link, '
+        'which a deep link carries without an extra', (tester) async {
+      final container = await _pumpRouter(tester);
+      final router = container.read(routerProvider);
+
+      router.go(ServiceRoutes.lidarrArtist(9, justAdded: true));
+      await tester.pumpAndSettle();
+      expect(
+        router.state.uri.toString(),
+        '${ServiceRoutes.lidarrArtistBase}/9?added=1',
+      );
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).justAdded,
+        isTrue,
+      );
+
+      router.go(ServiceRoutes.lidarrArtist(9));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).justAdded,
+        isFalse,
+      );
+    });
+
     testWidgets(
       'library detail routes ignore wrong-type and mismatched extras instead of redirecting',
       (tester) async {

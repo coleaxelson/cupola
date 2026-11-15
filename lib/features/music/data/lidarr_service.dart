@@ -4,6 +4,7 @@ import 'package:cupola/core/api/api_client.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/settings/data/connection_providers.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -268,9 +269,100 @@ class LidarrService with ArrActivityMixin {
     );
   }
 
+  /// Adds [lookupRow] (an `artist/lookup` row) to this Lidarr's library.
+  ///
+  /// The row is posted back as the identity Lidarr builds the artist from: its
+  /// MusicBrainz id ([LidarrArtist.foreignArtistId]) is what Lidarr keys the
+  /// new entry on, the name and the artwork let it show the artist before its
+  /// first metadata refresh, and what the lookup carried about who they are
+  /// (type, disambiguation, overview, links) rides along. What the person
+  /// chose goes beside it: where the artist is filed ([rootFolderPath]), the
+  /// two profiles, and what Lidarr looks for.
+  ///
+  /// [monitor] is Lidarr's `MonitorTypes` (`all`, `future`, `missing`,
+  /// `existing`, `first`, `latest`, `none`; see `LidarrMonitor`). The artist is
+  /// monitored unless it is `none`, and [monitorNewItems] (`all` or `none`)
+  /// says whether the albums Lidarr learns of later are monitored too.
+  /// `addOptions.searchForMissingAlbums` is the half that makes this an add
+  /// rather than a bookmark: without it nothing is looked for until a search
+  /// is asked.
+  ///
+  /// Lidarr answers with the new artist, whose albums it has not read yet:
+  /// they arrive a moment later.
+  ///
+  /// Throws on failure rather than degrading. Lidarr answers 400 for an artist
+  /// it already holds, and a caller that cannot tell that from a success would
+  /// report an add that never happened.
+  Future<LidarrArtist> addArtist(
+    LidarrArtist lookupRow, {
+    required int qualityProfileId,
+    required int metadataProfileId,
+    required String rootFolderPath,
+    required String monitor,
+    required String monitorNewItems,
+    required bool searchForMissingAlbums,
+  }) async {
+    final response = await client.post(
+      '/api/v1/artist',
+      data: {
+        'artistName': lookupRow.artistName,
+        // Lidarr keys the new entry on this, not on the name.
+        'foreignArtistId': lookupRow.foreignArtistId,
+        // Posted back so the artist has artwork before the first refresh.
+        'images': lookupRow.images,
+        'overview': ?lookupRow.overview,
+        'artistType': ?lookupRow.artistType,
+        'disambiguation': ?lookupRow.disambiguation,
+        'links': ?lookupRow.links,
+        'qualityProfileId': qualityProfileId,
+        'metadataProfileId': metadataProfileId,
+        'rootFolderPath': rootFolderPath,
+        'monitored': monitor != 'none',
+        'monitorNewItems': monitorNewItems,
+        'addOptions': {
+          'monitor': monitor,
+          'searchForMissingAlbums': searchForMissingAlbums,
+        },
+      },
+    );
+    final data = response.data;
+    if (data is! Map) {
+      throw const FormatException('Lidarr answered without an artist');
+    }
+    return LidarrArtist.fromJson(data.cast<String, dynamic>());
+  }
+
   /// Fetches all quality profiles.
   Future<List<Map<String, dynamic>>> getQualityProfiles() async {
     return fetchQualityProfiles();
+  }
+
+  /// The quality profiles, with a failed read allowed to reach the caller.
+  ///
+  /// [getQualityProfiles] answers `[]` when it cannot read, which on the add
+  /// sheet would say "no quality profile configured" of a Lidarr that did not
+  /// answer. Read beside [getRootFolders], which already travels.
+  Future<List<Map<String, dynamic>>> getQualityProfilesOrThrow() async {
+    final response = await client.get('/api/v1/qualityprofile');
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Lidarr answered without its profiles');
+    }
+    return data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+  }
+
+  /// This Lidarr's metadata profiles: which kinds of release it keeps of an
+  /// artist. A failure travels, as [getRootFolders]'s does.
+  Future<List<LidarrMetadataProfile>> getMetadataProfiles() async {
+    final response = await client.get('/api/v1/metadataprofile');
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Lidarr answered without its profiles');
+    }
+    return [
+      for (final entry in data.whereType<Map>())
+        ?LidarrMetadataProfile.tryParse(entry.cast<String, dynamic>()),
+    ];
   }
 
   /// Fetches the root folders configured on this Lidarr.

@@ -19,7 +19,15 @@ class MediaDetailValueOption<T> {
   /// Radarr's own UI and renaming it here breaks the only join the user has.
   final String label;
 
-  const MediaDetailValueOption({required this.value, required this.label});
+  /// What choosing it means, under the label (`Lists the artist and looks for
+  /// nothing`). Null for a choice that explains itself.
+  final String? detail;
+
+  const MediaDetailValueOption({
+    required this.value,
+    required this.label,
+    this.detail,
+  });
 }
 
 /// Opens the sheet that edits one field of a detail page where it is read.
@@ -64,6 +72,7 @@ Future<MediaDetailValueOption<T>?> showMediaValueSheet<T>(
     builder: (sheetContext) {
       Widget row(MediaDetailValueOption<T> option) => MediaValueOptionRow(
         label: option.label,
+        detail: option.detail,
         isSelected: option.value == value,
         accent: accent,
         onTap: () =>
@@ -201,6 +210,9 @@ List<MediaDetailValueOption<int>> qualityProfileOptions(
 /// the wrong signal on a row where one sibling genuinely *is* selected.
 class MediaValueOptionRow extends StatelessWidget {
   final String label;
+
+  /// What the choice means, under the label; see [MediaDetailValueOption.detail].
+  final String? detail;
   final bool isSelected;
   final Color? accent;
   final VoidCallback onTap;
@@ -208,6 +220,7 @@ class MediaValueOptionRow extends StatelessWidget {
   const MediaValueOptionRow({
     super.key,
     required this.label,
+    this.detail,
     required this.isSelected,
     required this.accent,
     required this.onTap,
@@ -230,7 +243,7 @@ class MediaValueOptionRow extends StatelessWidget {
 
     return PressableScale(
       onTap: onTap,
-      semanticLabel: label,
+      semanticLabel: detail == null ? label : '$label, $detail',
       semanticValue: isSelected ? 'Selected' : null,
       excludeChildSemantics: true,
       child: ConstrainedBox(
@@ -244,13 +257,26 @@ class MediaValueOptionRow extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: Text(
-                label,
-                style: isSelected
-                    ? theme.textTheme.bodyLarge!
-                          .weight(FontWeight.w600)
-                          .copyWith(color: selectedInk)
-                    : theme.textTheme.bodyLarge!.weight(FontWeight.w500),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: isSelected
+                        ? theme.textTheme.bodyLarge!
+                              .weight(FontWeight.w600)
+                              .copyWith(color: selectedInk)
+                        : theme.textTheme.bodyLarge!.weight(FontWeight.w500),
+                  ),
+                  if (detail case final detail?)
+                    Text(
+                      detail,
+                      style: theme.textTheme.bodySmall!.copyWith(
+                        color: CupolaThemeColors.of(context).dimText,
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
