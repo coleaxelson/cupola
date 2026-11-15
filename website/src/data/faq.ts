@@ -33,6 +33,10 @@ export const faq = {
     q: 'Does it work with Overseerr and Jellyseerr?',
     a: 'Yes. Seerr, Overseerr and Jellyseerr all work the same way in Cupola: Discover, requests, approvals and issues.',
   },
+  music: {
+    q: 'Can I request music with Seerr?',
+    a: 'Not through Seerr: it covers movies and series only. In Cupola, a search in Discover also offers to search Lidarr for the same words, and you add the artist there. That takes Lidarr itself, so family members who only sign in to Seerr cannot add music.',
+  },
   household: {
     q: 'Can my family request movies without access to Radarr?',
     a: 'Yes. They sign in to Seerr with their own account (email, Jellyfin, Emby or Plex) and get a simpler Cupola: what is ready to watch, Discover and their requests. Invite them from Seerr with a link or a QR code. See <a href="/seerr-requests/">requests with Seerr</a>.',
