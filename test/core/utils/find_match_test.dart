@@ -71,4 +71,41 @@ void main() {
       expect(matchesFindQuery('/', 'Ella Fitzgerald'), isFalse);
     });
   });
+
+  group('findMarks', () {
+    String marked(String query, String text) => [
+      for (final range in findMarks(query, text))
+        text.substring(range.start, range.end),
+    ].join('|');
+
+    test('marks the start of the word each typed word opened', () {
+      expect(marked('the drag', 'The Dragon'), 'The Drag');
+      expect(marked('fitz', 'Ella Fitzgerald'), 'Fitz');
+      expect(marked('fitz ella', 'Ella Fitzgerald'), 'Ella Fitz');
+      expect(marked('ella gerald', 'Ella Fitzgerald'), 'Ella');
+    });
+
+    test('marks words apart when another word lies between them', () {
+      expect(marked('the drag', 'The Long Dragon'), 'The|Drag');
+    });
+
+    test('marks as many characters as were typed', () {
+      expect(marked('dragon', 'Dragonfly'), 'Dragon');
+    });
+
+    test('marks the letters the text was written in, accents and all', () {
+      expect(marked('cafe', 'Café au lait'), 'Café');
+      expect(marked('bjo', 'Björk'), 'Bjö');
+      expect(marked('strasse', 'Straße'), 'Straße');
+    });
+
+    test('marks nothing for a query that opens no word', () {
+      expect(findMarks('phants', 'Elephants Dream'), isEmpty);
+      expect(findMarks('', 'Elephants Dream'), isEmpty);
+    });
+
+    test('marks a word once when two typed words open the same one', () {
+      expect(marked('dr dra', 'Dragon'), 'Dr');
+    });
+  });
 }

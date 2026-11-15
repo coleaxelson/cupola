@@ -37,6 +37,17 @@ final lidarrAlbumTracksProvider = FutureProvider.autoDispose
       });
     }, retry: noProviderRetry);
 
+/// Every track of the artist's albums, read once when the page's track finder
+/// first opens (`GET /api/v1/track?artistId=`) and held by the page while it
+/// lives. A failure reaches the finder, which says why; Retry reads it again,
+/// nothing retries on its own.
+final lidarrArtistTracksProvider = FutureProvider.autoDispose
+    .family<List<LidarrTrack>, LidarrRecordRef>(
+      (ref, item) =>
+          _lidarr(ref, item.instanceId).getArtistTracksOrThrow(item.id),
+      retry: noProviderRetry,
+    );
+
 LidarrService _lidarr(Ref ref, String instanceId) => instanceId.isEmpty
     ? ref.watch(lidarrServiceProvider)
     : ref.watch(lidarrServiceForProvider(instanceId));

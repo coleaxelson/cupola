@@ -15,7 +15,7 @@ Rendered from `lib/core/widgets/search_bar_header.dart` (a Material 3 `SearchBar
 
 ## The consumer provides
 
-`onQueryChanged`, `hintText`, an optional `initialQuery`, `autofocus`, `debounceDuration`, a `focusNode` when the screen needs to know where the keyboard is (the Discover tab shows its recent searches while the field is focused and empty), and `onCancel`. No colour: the field is the same field whichever service it searches.
+`onQueryChanged`, `hintText`, an optional `initialQuery`, `autofocus`, `debounceDuration`, a `focusNode` when the screen needs to know where the keyboard is (the Discover tab shows its recent searches while the field is focused and empty), `onCancel` with `cancelLabel` (`Cancel`, or `Done` for a field opened to find one thing: the artist page's track finder), `label` (what a screen reader names the field before its hint, `Search` or `Find a track by Jan Morgenstern`) and `padding` (the gutter at both sides by default; a field inside a page's own column takes none at the sides). No colour: the field is the same field whichever service it searches.
 
 ## Semantics
 

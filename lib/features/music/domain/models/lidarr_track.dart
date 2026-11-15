@@ -1,5 +1,9 @@
 class LidarrTrack {
   final int id;
+
+  /// The album the track is on: Lidarr sends it with every track, which is
+  /// what lets the tracks of a whole artist be read at once.
+  final int albumId;
   final int? mediumNumber;
   final dynamic trackNumber;
   final String title;
@@ -8,6 +12,7 @@ class LidarrTrack {
 
   const LidarrTrack({
     required this.id,
+    this.albumId = 0,
     this.mediumNumber,
     this.trackNumber,
     required this.title,
@@ -54,6 +59,7 @@ class LidarrTrack {
 
     return LidarrTrack(
       id: (json['id'] as num?)?.toInt() ?? 0,
+      albumId: (json['albumId'] as num?)?.toInt() ?? 0,
       mediumNumber: (json['mediumNumber'] as num?)?.toInt(),
       trackNumber: trackNumber,
       title: (json['title'] as String?)?.trim().isNotEmpty == true

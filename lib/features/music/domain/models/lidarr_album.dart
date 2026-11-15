@@ -15,6 +15,11 @@ class LidarrAlbum {
   /// `Single`. Null when Lidarr did not say.
   final String? albumType;
 
+  /// MusicBrainz's secondary types, as Lidarr names them (`AlbumResource.
+  /// SecondaryTypes`, a list of strings): `Live`, `Compilation`, `Soundtrack`,
+  /// `Studio`... Empty for a plain release.
+  final List<String> secondaryTypes;
+
   final String? releaseDate;
   final bool monitored;
   final List<dynamic> images;
@@ -30,6 +35,7 @@ class LidarrAlbum {
     required this.title,
     this.artistId = 0,
     this.albumType,
+    this.secondaryTypes = const [],
     this.releaseDate,
     required this.monitored,
     required this.images,
@@ -66,6 +72,7 @@ class LidarrAlbum {
       albumType: (json['albumType'] as String?)?.trim().isNotEmpty == true
           ? (json['albumType'] as String).trim()
           : null,
+      secondaryTypes: _namesOf(json['secondaryTypes']),
       releaseDate: json['releaseDate'] as String?,
       monitored: json['monitored'] as bool? ?? false,
       images: json['images'] as List<dynamic>? ?? const [],
@@ -74,3 +81,14 @@ class LidarrAlbum {
     );
   }
 }
+
+/// The names in a list Lidarr sends as strings; a record with a `name` is read
+/// the same, and anything else is left out.
+List<String> _namesOf(Object? raw) => [
+  if (raw is List)
+    for (final item in raw)
+      if (item is String && item.trim().isNotEmpty)
+        item.trim()
+      else if (item is Map && item['name'] is String)
+        (item['name'] as String).trim(),
+];

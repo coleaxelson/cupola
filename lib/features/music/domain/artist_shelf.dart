@@ -5,6 +5,7 @@ import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/utils/duration_format.dart';
 import 'package:cupola/core/utils/unit_space.dart';
 import 'package:cupola/core/widgets/media_child_list.dart';
+import 'package:cupola/features/music/domain/album_kind.dart';
 import 'package:cupola/features/music/domain/lidarr_status.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 
@@ -108,6 +109,26 @@ DateTime _releaseOf(LidarrAlbum album) =>
 String _albums(int count) =>
     '$count$unitSpace${count == 1 ? 'album' : 'albums'}';
 
+/// The count a place's heading carries: `3 albums` over every kind, or
+/// `2 singles` while one kind is chosen.
+String albumCountWords(int count, {AlbumKind? kind}) =>
+    kind == null ? _albums(count) : kind.count(count);
+
+/// The line that stands for the albums Lidarr leaves alone while they are
+/// folded away: `3 unmonitored albums`, `1 unmonitored single`.
+String unmonitoredWords(int count, {AlbumKind? kind}) => kind == null
+    ? '$count${unitSpace}unmonitored ${count == 1 ? 'album' : 'albums'}'
+    : kind.countUnmonitored(count);
+
+/// [albums] of the one [kind] only, in their order; all of them without one.
+List<LidarrAlbum> albumsOfKind(List<LidarrAlbum> albums, AlbumKind? kind) =>
+    kind == null
+    ? albums
+    : [
+        for (final album in albums)
+          if (AlbumKind.of(album) == kind) album,
+      ];
+
 /// `5 tracks`, or null when Lidarr does not say.
 String? albumTrackCount(LidarrAlbum album) => album.trackCount <= 0
     ? null
@@ -115,9 +136,11 @@ String? albumTrackCount(LidarrAlbum album) => album.trackCount <= 0
           '${album.trackCount == 1 ? 'track' : 'tracks'}';
 
 /// What a row says about [album] under its title: `2010 · 5 tracks ·
-/// 21 min`.
-List<String> albumFacts(LidarrAlbum album) => [
+/// 21 min`; with [withKind], the kind after the year (`2010 · Single · 1 track`),
+/// for an artist whose albums are of more than one kind.
+List<String> albumFacts(LidarrAlbum album, {bool withKind = false}) => [
   if (album.year.isNotEmpty) album.year,
+  if (withKind) AlbumKind.of(album).fact,
   ?albumTrackCount(album),
   if (album.duration > 0)
     formatTimeSpan(Duration(milliseconds: album.duration)),
@@ -125,8 +148,9 @@ List<String> albumFacts(LidarrAlbum album) => [
 
 /// The same facts as a screen reader hears them: `2010, 5 tracks,
 /// 21 minutes`.
-List<String> albumSpokenFacts(LidarrAlbum album) => [
+List<String> albumSpokenFacts(LidarrAlbum album, {bool withKind = false}) => [
   if (album.year.isNotEmpty) album.year,
+  if (withKind) AlbumKind.of(album).fact,
   ?albumTrackCount(album),
   if (album.duration > 0) _spokenSpan(Duration(milliseconds: album.duration)),
 ];

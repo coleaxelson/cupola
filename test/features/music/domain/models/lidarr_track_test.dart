@@ -8,6 +8,7 @@ void main() {
       test('parses complete JSON correctly', () {
         final track = LidarrTrack.fromJson({
           'id': 21,
+          'albumId': 8,
           'mediumNumber': 2,
           'trackNumber': '4',
           'title': 'Track Title',
@@ -16,6 +17,7 @@ void main() {
         });
 
         expect(track.id, 21);
+        expect(track.albumId, 8);
         expect(track.mediumNumber, 2);
         expect(track.trackNumber, '4');
         expect(track.title, 'Track Title');
@@ -30,6 +32,7 @@ void main() {
         final track = LidarrTrack.fromJson(<String, dynamic>{});
 
         expect(track.id, 0);
+        expect(track.albumId, 0);
         expect(track.mediumNumber, isNull);
         expect(track.trackNumber, isNull);
         expect(track.title, 'Track ?');

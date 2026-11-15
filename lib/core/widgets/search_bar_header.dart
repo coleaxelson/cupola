@@ -44,6 +44,19 @@ class SearchBarHeader extends StatefulWidget {
   /// for no `Cancel`, as on a library, where the field is part of the page.
   final VoidCallback? onCancel;
 
+  /// What the button that calls [onCancel] says: `Cancel` for a search that
+  /// is abandoned, `Done` for a field that was opened to find one thing and
+  /// closes.
+  final String cancelLabel;
+
+  /// The field's name to a screen reader, before its hint: `Search`, or what
+  /// it finds when that is narrower (`Find a track by Jan Morgenstern`).
+  final String label;
+
+  /// The room around the field. The default is a screen's: the gutter at
+  /// both sides. A field inside a page's own column takes none at the sides.
+  final EdgeInsetsGeometry padding;
+
   const SearchBarHeader({
     super.key,
     required this.onQueryChanged,
@@ -54,6 +67,14 @@ class SearchBarHeader extends StatefulWidget {
     this.autofocus = false,
     this.focusNode,
     this.onCancel,
+    this.cancelLabel = 'Cancel',
+    this.label = 'Search',
+    this.padding = const EdgeInsets.fromLTRB(
+      AppSpacing.lg,
+      AppSpacing.sm,
+      AppSpacing.lg,
+      AppSpacing.lg,
+    ),
   });
 
   @override
@@ -156,15 +177,10 @@ class _SearchBarHeaderState extends State<SearchBarHeader> {
     final glyph = colorScheme.onSurfaceVariant;
 
     final field = Semantics(
-      label: 'Search',
+      label: widget.label,
       hint: 'Type ${widget.hintText}',
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.lg,
-        ),
+        padding: widget.padding,
         child: _withCancel(
           SearchBar(
             controller: _controller,
@@ -250,7 +266,7 @@ class _SearchBarHeaderState extends State<SearchBarHeader> {
               foregroundColor: Theme.of(context).colorScheme.onSurface,
               textStyle: AppType.button,
             ),
-            child: const Text('Cancel'),
+            child: Text(widget.cancelLabel),
           ),
         ],
       ],

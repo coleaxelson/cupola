@@ -130,6 +130,34 @@ void main() {
       expect(tracks.single.duration, 180000);
     });
 
+    test('getArtistTracksOrThrow reads every track of the artist in one '
+        'request, each with its album', () async {
+      client.getResponseData = [
+        {
+          ..._trackJson(id: 20, title: 'The Dragon', duration: 336000),
+          'albumId': 3,
+        },
+        {..._trackJson(id: 21, title: 'Snow', duration: 234000), 'albumId': 9},
+      ];
+
+      final tracks = await service.getArtistTracksOrThrow(1);
+
+      expect(client.getCallCount, 1);
+      expect(client.lastGetPath, '/api/v1/track');
+      expect(client.lastGetQueryParameters, {'artistId': 1});
+      expect(tracks.map((t) => (t.title, t.albumId)), [
+        ('The Dragon', 3),
+        ('Snow', 9),
+      ]);
+    });
+
+    test('getArtistTracksOrThrow lets a failure reach the caller: no tracks '
+        'is not an unreachable Lidarr', () async {
+      client.getException = Exception('boom');
+
+      await expectLater(service.getArtistTracksOrThrow(1), throwsException);
+    });
+
     test('searchArtist posts the ArtistSearch command', () async {
       await service.searchArtist(1);
 

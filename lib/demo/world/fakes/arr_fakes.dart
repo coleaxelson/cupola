@@ -1518,7 +1518,8 @@ class LidarrFake extends ArrFake {
           'artistId': _shelfFirstId + index,
           'title': 'Record ${n + 1}',
           'foreignAlbumId': 'album-shelf-${_shelfFirstId + index}-$n',
-          'albumType': 'Album',
+          'albumType': _shelfAlbumType(n),
+          'secondaryTypes': _shelfSecondaryTypes(n),
           'monitored': true,
           'releaseDate': '${1996 + (index + n * 3) % 28}-06-01T00:00:00Z',
           'images': const <Object?>[],
@@ -1535,6 +1536,56 @@ class LidarrFake extends ArrFake {
         },
     ];
   }
+
+  /// The kinds the shelf's albums come in, so that an artist with four albums
+  /// or more has more than one and the page offers them by kind: every fourth
+  /// is a single, every fifth an EP, and every sixth, from the second, a live
+  /// album (a secondary type, as MusicBrainz has it over the primary one).
+  static String _shelfAlbumType(int n) => switch (n % 5) {
+    3 => 'Single',
+    4 => 'EP',
+    _ => 'Album',
+  };
+
+  static List<String> _shelfSecondaryTypes(int n) => [
+    if (n % 6 == 1) 'Live',
+    if (n % 6 == 2) 'Studio',
+  ];
+
+  /// Titles the shelf's tracks are drawn from: a few shared between albums,
+  /// as songs are, and one with an accent for the finder to be blind to.
+  static const _shelfTrackTitles = [
+    'Low Tide',
+    'Paper Lantern',
+    'The Long Way Round',
+    'Static Bloom',
+    'Caf\u00E9 Lumi\u00E8re',
+    'Copper Sky',
+    'Slow Harbor',
+    'Glass Orchard',
+    'Winter Dock',
+    'The Dragon',
+  ];
+
+  /// The tracks of the shelf artist at [index], as `GET /api/v1/track` sends
+  /// them: each album's, the ones on disk first as the album's statistics say.
+  List<JsonMap> _shelfTracks(ServerContext c, int index) => [
+    for (final album in _shelfAlbums(c, index))
+      for (var t = 0; t < _shelfTracksPerAlbum; t++)
+        {
+          'id': (album['id'] as int) * 100 + t,
+          'albumId': album['id'],
+          'artistId': _shelfFirstId + index,
+          'mediumNumber': 1,
+          'trackNumber': '${t + 1}',
+          'title':
+              _shelfTrackTitles[((album['id'] as int) * 3 + t) %
+                  _shelfTrackTitles.length],
+          'duration': 150000 + t * 19000 + (album['id'] as int) % 7 * 4000,
+          'hasFile':
+              t < ((album['statistics'] as JsonMap)['trackFileCount'] as int),
+        },
+  ];
 
   /// Every album of the shelf artists, for the routes that list them all.
   List<JsonMap> _allShelfAlbums(ServerContext c) => [
@@ -1557,8 +1608,19 @@ class LidarrFake extends ArrFake {
     (5, 'Finale', 270000),
   ];
 
-  List<JsonMap> _tracks(NetworkRequest r) => [
-    if (r.uri.queryParameters['albumId'] == '3')
+  /// Asked for an artist's, the world's own has Sintel's alone and a shelf
+  /// artist every album's; asked for an album's, only Sintel lists any.
+  List<JsonMap> _tracks(ServerContext c, NetworkRequest r) {
+    final artist = int.tryParse(r.query['artistId'] ?? '');
+    final shelved = artist == null ? null : _shelfIndexOf(artist);
+    if (shelved != null) return _shelfTracks(c, shelved);
+    return _sintelTrackList(
+      withSintel: artist == 1 || r.query['albumId'] == '3',
+    );
+  }
+
+  List<JsonMap> _sintelTrackList({required bool withSintel}) => [
+    if (withSintel)
       for (final (number, title, duration) in _sintelTracks)
         {
           'id': 300 + number,
@@ -2062,7 +2124,7 @@ class LidarrFake extends ArrFake {
           ],
         },
       ]),
-      '/api/v1/track' => NetworkReply.json(_tracks(r)),
+      '/api/v1/track' => NetworkReply.json(_tracks(c, r)),
       '/api/v1/trackfile' => NetworkReply.json(const <Object?>[]),
       _ => null,
     };

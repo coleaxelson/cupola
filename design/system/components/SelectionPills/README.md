@@ -18,7 +18,7 @@ Rendered from `lib/core/widgets/selection_pills.dart` by `test/design_catalog/se
 
 ## The consumer provides
 
-`values`, the `selected` value, a `labelBuilder`, `onSelected`, and optionally `padding`. A `SelectionPill` takes its `label`, whether it is `selected`, `onTap` and an optional `trailing` glyph. No colour: the pill takes none.
+`values`, the `selected` value, a `labelBuilder`, `onSelected`, and optionally `padding`. `SelectionPills` may take a `countBuilder`: the count stands after the label in `inkTertiary` at 500 (`Singles 4`) and is spoken with it (`Singles, 4`). A `SelectionPill` takes its `label`, whether it is `selected`, `onTap`, an optional `trailing` glyph and an optional `count`. No colour: the pill takes none.
 
 ## Semantics
 

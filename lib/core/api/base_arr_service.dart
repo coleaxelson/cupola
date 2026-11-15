@@ -693,10 +693,12 @@ mixin ArrActivityMixin {
   /// two differ in exactly one thing, which is whether the failure survives.
   Future<List<T>> fetchAllItemsOrThrow<T>(
     String endpoint,
-    T Function(Map<String, dynamic>) fromJson,
-  ) async {
+    T Function(Map<String, dynamic>) fromJson, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
     final response = await client.getMappedList(
       '/api/${config.apiVersion}/$endpoint',
+      queryParameters: queryParameters,
       mapList: _listMapperOf(fromJson),
     );
     return _recordsOf(response.data, fromJson);

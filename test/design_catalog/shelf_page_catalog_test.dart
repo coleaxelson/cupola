@@ -33,6 +33,7 @@ import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/music/presentation/artist_page.dart';
+import 'package:cupola/features/music/presentation/artist_type_pills.dart';
 import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
 import 'package:cupola/features/music/presentation/lidarr_add_album_sheet.dart';
 import 'package:cupola/features/music/presentation/lidarr_add_artist_sheet.dart';
@@ -172,8 +173,176 @@ final _tracks = [
     }),
 ];
 
+/// Jan Morgenstern's nine albums by kind, as the board draws them: three
+/// soundtracks, four singles (two wanted, one on disk, one left alone), an EP
+/// and an album announced.
+List<LidarrAlbum> _kindAlbums() => [
+  for (final (id, title, type, secondary, year, files, total, url, monitored)
+      in [
+        (
+          11,
+          'Elephants Dream',
+          'Album',
+          ['Soundtrack'],
+          2006,
+          7,
+          7,
+          CatalogArt.poster,
+          true,
+        ),
+        (
+          12,
+          'Big Buck Bunny',
+          'Album',
+          ['Soundtrack'],
+          2008,
+          6,
+          6,
+          CatalogArt.backdrop,
+          true,
+        ),
+        (
+          13,
+          'Sintel',
+          'Album',
+          ['Soundtrack', 'Studio'],
+          2010,
+          5,
+          5,
+          CatalogArt.poster,
+          true,
+        ),
+        (
+          14,
+          'The Dragon',
+          'Single',
+          <String>[],
+          2010,
+          0,
+          1,
+          CatalogArt.poster,
+          true,
+        ),
+        (
+          15,
+          'Snow',
+          'Single',
+          <String>[],
+          2010,
+          0,
+          1,
+          CatalogArt.backdrop,
+          true,
+        ),
+        (
+          16,
+          'Finale',
+          'Single',
+          <String>[],
+          2010,
+          1,
+          1,
+          CatalogArt.poster,
+          true,
+        ),
+        (
+          17,
+          'Caminandes',
+          'Single',
+          <String>[],
+          2013,
+          0,
+          1,
+          CatalogArt.backdrop,
+          false,
+        ),
+        (18, 'Spring', 'EP', <String>[], 2019, 3, 3, CatalogArt.poster, true),
+        (
+          19,
+          'Tears of Steel',
+          'Album',
+          <String>[],
+          2012,
+          9,
+          9,
+          CatalogArt.backdrop,
+          true,
+        ),
+      ])
+    LidarrAlbum.fromJson({
+      'id': id,
+      'title': title,
+      'albumType': type,
+      'secondaryTypes': secondary,
+      'monitored': monitored,
+      'releaseDate': '$year-01-01T00:00:00Z',
+      'duration': id == 16 ? 270000 : 0,
+      'images': _cover(url),
+      'statistics': {'trackFileCount': files, 'totalTrackCount': total},
+    }),
+];
+
+/// The tracks Lidarr lists for those albums: the soundtrack's Dragon, and the
+/// single that shares its name.
+final _kindTracks = [
+  LidarrTrack.fromJson({
+    'id': 1301,
+    'albumId': 13,
+    'trackNumber': '3',
+    'title': 'The Dragon',
+    'duration': 336000,
+    'hasFile': true,
+  }),
+  LidarrTrack.fromJson({
+    'id': 1401,
+    'albumId': 14,
+    'trackNumber': '1',
+    'title': 'The Dragon',
+    'duration': 0,
+    'hasFile': false,
+  }),
+  LidarrTrack.fromJson({
+    'id': 1501,
+    'albumId': 15,
+    'trackNumber': '1',
+    'title': 'Snow',
+    'duration': 234000,
+    'hasFile': false,
+  }),
+  LidarrTrack.fromJson({
+    'id': 1601,
+    'albumId': 16,
+    'trackNumber': '1',
+    'title': 'Finale',
+    'duration': 270000,
+    'hasFile': true,
+  }),
+];
+
+/// Taps `Find a track` or the lens in [scene], and types [query] into the
+/// field it opens.
+Future<void> _findTrack(WidgetTester tester, Finder scene, String query) async {
+  final lens = find.descendant(
+    of: scene,
+    matching: find.byType(ArtistFindLens),
+  );
+  await tester.tap(
+    lens.evaluate().isEmpty
+        ? find.descendant(of: scene, matching: find.text('Find a track'))
+        : lens,
+  );
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.enterText(
+    find.descendant(of: scene, matching: find.byType(EditableText)),
+    query,
+  );
+}
+
 CatalogScene _artistScene(
   String caption, {
+  List<LidarrAlbum>? albums,
+  CatalogPlatform platform = CatalogPlatform.phone,
+  Future<void> Function(WidgetTester tester, Finder scene)? act,
   double width = 390,
   double height = 1700,
   double textScale = 1,
@@ -186,14 +355,20 @@ CatalogScene _artistScene(
   (_) => ArtistPage(artistId: 1, justAdded: justAdded),
   width: width,
   height: height,
+  platform: platform,
   textScale: textScale,
+  act: act,
   overrides: [
+    lidarrArtistTracksProvider.overrideWith(
+      (ref, item) async => albums == null ? const [] : _kindTracks,
+    ),
     lidarrServiceProvider.overrideWithValue(_Lidarr()),
     lidarrArtistProvider.overrideWith((ref, item) => artist ?? _artist()),
     lidarrArtistAlbumsProvider.overrideWith(
       // Lidarr has taken the artist and not read its albums yet.
-      (ref, item) async =>
-          justAdded ? const <LidarrAlbum>[] : _albums(art: art, wanted: wanted),
+      (ref, item) async => justAdded
+          ? const <LidarrAlbum>[]
+          : albums ?? _albums(art: art, wanted: wanted),
     ),
     lidarrAlbumTracksProvider.overrideWith((ref, album) async => _tracks),
     lidarrQueueSnapshotsForProvider.overrideWith(
@@ -588,6 +763,38 @@ void main() {
         art: false,
         wanted: true,
       ),
+      _artistScene(
+        'ArtistPage · albums by kind, Singles chosen: the pills with their '
+        'counts, Wanted and On disk recounted, the unmonitored line in the '
+        'kind\u2019s words, the summary still the artist\u2019s whole',
+        albums: _kindAlbums(),
+        height: 1500,
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Singles 4')),
+          );
+        },
+      ),
+      _artistScene(
+        'ArtistPage · find a track: the field with Done, the tracks the words '
+        'typed open, the prefix marked, each with its album and where it '
+        'stands; a track never contradicts its album',
+        albums: _kindAlbums(),
+        height: 760,
+        act: (tester, scene) => _findTrack(tester, scene, 'the drag'),
+      ),
+      _artistScene(
+        'ArtistPage · find a track, nothing found: what was asked and what '
+        'Lidarr knows',
+        albums: _kindAlbums(),
+        height: 620,
+        act: (tester, scene) => _findTrack(tester, scene, 'zebra'),
+      ),
+      _artistScene(
+        'ArtistPage · one kind of album: no pills, and a quiet Find a track '
+        'in their place',
+        height: 1000,
+      ),
       CatalogScene(
         'ShelfWorkRow · open on its tracks (AlbumTracks): a complete album '
         'asks for no search',
@@ -659,6 +866,13 @@ void main() {
         'ArtistPage at twice the reading size · the name under the disc, the '
         'value under its label',
         height: 2600,
+        textScale: catalogTextScale,
+      ),
+      _artistScene(
+        'ArtistPage at twice the reading size, with the pills: the rail '
+        'scrolls and fades at its end, the lens stays at the row\u2019s end',
+        albums: _kindAlbums(),
+        height: 3200,
         textScale: catalogTextScale,
       ),
       _authorScene(
@@ -768,6 +982,27 @@ void main() {
         'A wide window · the phone\'s column, centred',
         width: 1240,
         height: 1700,
+      ),
+      _artistScene(
+        'ArtistPage on the desktop shell · the pills with the lens at the '
+        'row\u2019s end, Singles chosen',
+        albums: _kindAlbums(),
+        platform: CatalogPlatform.desktop,
+        width: 1240,
+        height: 1500,
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Singles 4')),
+          );
+        },
+      ),
+      _artistScene(
+        'ArtistPage on the desktop shell · find a track',
+        albums: _kindAlbums(),
+        platform: CatalogPlatform.desktop,
+        width: 1240,
+        height: 900,
+        act: (tester, scene) => _findTrack(tester, scene, 'the drag'),
       ),
     ],
   );

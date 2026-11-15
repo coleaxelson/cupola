@@ -97,6 +97,9 @@ class SearchRow extends StatelessWidget {
     this.padding = EdgeInsets.zero,
   }) : imageUrl = poster,
        hint = null,
+       titleMarks = const [],
+       spoken = null,
+       coverName = null,
        _kind = _Kind.title;
 
   /// An album: its [cover] in a 44 square (the album's initials without one),
@@ -113,6 +116,9 @@ class SearchRow extends StatelessWidget {
     required this.onTap,
     this.action,
     this.hint,
+    this.titleMarks = const [],
+    this.spoken,
+    this.coverName,
     this.padding = EdgeInsets.zero,
   }) : imageUrl = cover,
        posterHeaders = coverHeaders,
@@ -143,6 +149,9 @@ class SearchRow extends StatelessWidget {
        posterHeaders = photoHeaders,
        heroTag = null,
        selected = false,
+       titleMarks = const [],
+       spoken = null,
+       coverName = null,
        _kind = _Kind.artist;
 
   /// A person: their [face] (empty for none, drawn as their initials) and
@@ -164,6 +173,9 @@ class SearchRow extends StatelessWidget {
        posterHeaders = null,
        heroTag = null,
        action = null,
+       titleMarks = const [],
+       spoken = null,
+       coverName = null,
        _kind = _Kind.person;
 
   final String title;
@@ -178,6 +190,19 @@ class SearchRow extends StatelessWidget {
 
   /// What a tap does, spoken after the sentence: `Adds it to Lidarr`.
   final String? hint;
+
+  /// The stretches of [title] a search matched, marked as the words typed
+  /// (underlined, in the primary ink). Ranges into [title]; none by default.
+  final List<TextRange> titleMarks;
+
+  /// The sentence a screen reader hears for the row, when the parts the
+  /// default joins (title, meta, state) do not make it: `The Dragon, track 3
+  /// on Sintel, 5:36, on disk`.
+  final String? spoken;
+
+  /// Whose initials the cover shows without a picture, when that is not the
+  /// row's [title]: a found track's row wears its album's. Null for [title].
+  final String? coverName;
 
   final String imageUrl;
   final Map<String, String>? posterHeaders;
@@ -236,12 +261,12 @@ class SearchRow extends StatelessWidget {
     final statusSaid = status == null
         ? null
         : (_roomy ? splitParts(status.label).join(', ') : status.label);
-    final spoken = [said, ?statusSaid].where((s) => s.isNotEmpty).join(', ');
+    final heard = [said, ?statusSaid].where((s) => s.isNotEmpty).join(', ');
 
     final row = PressableScale(
       onTap: onTap,
-      semanticLabel: title,
-      semanticValue: spoken,
+      semanticLabel: spoken ?? title,
+      semanticValue: spoken == null ? heard : null,
       // A row that opens nothing has nothing to say of what a tap does.
       semanticHint: onTap == null ? null : hint,
       semanticSelected: selected ? true : null,
@@ -263,12 +288,7 @@ class SearchRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      maxLines: _roomy ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.row.copyWith(color: room.ink),
-                    ),
+                    _titleOf(room),
                     if (meta.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.xxs),
                       Text(
@@ -402,6 +422,42 @@ class SearchRow extends StatelessWidget {
     );
   }
 
+  /// The title, with what a search matched marked: underlined, in the primary
+  /// ink (the row's own ink, so the mark is the line, not a colour).
+  Widget _titleOf(CupolaRoom room) {
+    final style = AppType.row.copyWith(color: room.ink);
+    if (titleMarks.isEmpty) {
+      return Text(
+        title,
+        maxLines: _roomy ? 2 : 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    final marked = TextStyle(
+      decoration: TextDecoration.underline,
+      decorationColor: room.ink,
+    );
+    var from = 0;
+    final spans = <TextSpan>[];
+    for (final mark in titleMarks) {
+      if (mark.start > from) {
+        spans.add(TextSpan(text: title.substring(from, mark.start)));
+      }
+      spans.add(
+        TextSpan(text: title.substring(mark.start, mark.end), style: marked),
+      );
+      from = mark.end;
+    }
+    if (from < title.length) spans.add(TextSpan(text: title.substring(from)));
+    return Text.rich(
+      TextSpan(children: spans),
+      maxLines: _roomy ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
+  }
+
   Widget _posterOf(CupolaRoom room) {
     final plate = Container(
       width: _poster.width,
@@ -499,7 +555,7 @@ class SearchRow extends StatelessWidget {
   /// fill a 44pt plate edge to edge.
   Widget _initials(CupolaRoom room) => Builder(
     builder: (context) => Text(
-      initialsOf(title),
+      initialsOf(coverName ?? title),
       textScaler: TextScaleMetrics.clampedScalerOf(context),
       style: AppType.label.copyWith(color: room.ink),
     ),

@@ -139,7 +139,7 @@ void main() {
       );
       expect(find.text("Lidarr looks for it once it's out"), findsOneWidget);
       expect(find.text('On disk'), findsOneWidget);
-      expect(find.text('3 albums'), findsOneWidget);
+      expect(find.text('3\u00A0albums'), findsOneWidget);
       expect(
         find.text('2010\u00A0· 5\u00A0tracks\u00A0· 21\u00A0min'),
         findsOneWidget,
@@ -214,7 +214,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Wanted'), findsNWidgets(2));
-      expect(find.text('1 album'), findsOneWidget);
+      expect(find.text('1\u00A0album'), findsOneWidget);
 
       await tester.tap(find.text('Elephants Dream'));
       await harness.settle(tester);
@@ -325,7 +325,9 @@ void main() {
             _answerAlbums(harness, _albums(unmonitored: true)),
       );
 
-      expect(find.text('Unmonitored'), findsOneWidget);
+      // Folded away, they are one line: how many, and the way to them.
+      expect(find.text('1\u00A0unmonitored album'), findsOneWidget);
+      expect(find.text('Unmonitored'), findsNothing);
       expect(find.text('Caminandes'), findsNothing);
 
       await _scrollTo(tester, find.text('Show them'));
@@ -333,6 +335,7 @@ void main() {
       await harness.settle(tester);
 
       expect(find.text('Caminandes'), findsOneWidget);
+      expect(find.text('1\u00A0album'), findsOneWidget);
 
       await harness.unmount(tester);
     });

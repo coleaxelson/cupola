@@ -221,6 +221,20 @@ class LidarrService with ArrActivityMixin {
     return fetchListItems('track', {'albumId': albumId}, LidarrTrack.fromJson);
   }
 
+  /// Every track of every album of one artist: `GET /api/v1/track?artistId=`.
+  ///
+  /// A discography runs to thousands of tracks, so the body is mapped where
+  /// it is decoded (off the main thread), and a failure reaches the caller:
+  /// a finder that is told "no such track" over a server that did not answer
+  /// says what is false.
+  Future<List<LidarrTrack>> getArtistTracksOrThrow(int artistId) {
+    return fetchAllItemsOrThrow(
+      'track',
+      LidarrTrack.fromJson,
+      queryParameters: {'artistId': artistId},
+    );
+  }
+
   /// Triggers an automatic search for an artist.
   Future<void> searchArtist(int artistId) async {
     await client.post(
