@@ -36,8 +36,11 @@ import 'package:cupola/features/discover/presentation/widgets/catalog_poster.dar
 import 'package:cupola/features/discover/presentation/widgets/collection_tally.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_carousel.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_door.dart';
+import 'package:cupola/features/discover/presentation/widgets/more_from_your_artists_shelf.dart';
 import 'package:cupola/features/discover/presentation/widgets/search_row.dart';
 import 'package:cupola/features/media/presentation/open_media.dart';
+import 'package:cupola/features/music/presentation/more_from_your_artists_provider.dart';
+import 'package:cupola/features/music/presentation/music_provider.dart';
 import 'package:cupola/features/movies/presentation/movies_provider.dart';
 import 'package:cupola/features/series/presentation/series_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
@@ -80,6 +83,11 @@ class DiscoverAtrium extends ConsumerStatefulWidget {
     ref.invalidate(becauseYouWatchedProvider);
     ref.invalidate(calendarDayProvider);
     ref.invalidate(calendarSourceProvider);
+    // The shelf is built from the Music wall's two reads: read them again.
+    ref
+      ..invalidate(musicProvider)
+      ..invalidate(musicAlbumsProvider)
+      ..invalidate(moreFromYourArtistsProvider);
   }
 
   @override
@@ -98,6 +106,8 @@ class _DiscoverAtriumState extends ConsumerState<DiscoverAtrium> {
       children = [
         const DiscoverCalendarBand(),
         _SeerrSilent(error: trending.error!),
+        // Lidarr's shelf needs nothing of Seerr.
+        const MoreFromYourArtistsShelf(),
       ];
     } else {
       children = [
@@ -113,6 +123,7 @@ class _DiscoverAtriumState extends ConsumerState<DiscoverAtrium> {
           items: ref.watch(bestMissingProvider),
           onRetry: () => ref.invalidate(bestMissingProvider),
         ),
+        const MoreFromYourArtistsShelf(),
         DiscoverCarousel(
           title: 'Trending this week',
           sectionId: 'trending',

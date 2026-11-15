@@ -69,6 +69,7 @@ cards live in [`../motion/`](../motion/).
 | Media | [CatalogPoster](CatalogPoster/README.md) | `lib/features/discover/presentation/widgets/catalog_poster.dart` |
 | Media | [CollectionTally](CollectionTally/README.md) | `lib/features/discover/presentation/widgets/collection_tally.dart` |
 | Media | [DiscoverDoor](DiscoverDoor/README.md) | `lib/features/discover/presentation/widgets/discover_door.dart` |
+| Media | [DiscoverMusic](DiscoverMusic/README.md) | `lib/features/discover/presentation/widgets/more_from_your_artists_shelf.dart`, `lib/features/discover/presentation/more_from_your_artists_page.dart`, `lib/features/discover/presentation/widgets/discover_music_section.dart`, `lib/features/music/presentation/music_hit_row.dart` |
 | Media | [SearchRow](SearchRow/README.md) | `lib/features/discover/presentation/widgets/search_row.dart` |
 | Media | [ContentCard](ContentCard/README.md) | `lib/core/widgets/content_card.dart` |
 | Media | [MediaBrowseScaffold](MediaBrowseScaffold/README.md) | `lib/core/widgets/media_browse_scaffold.dart`, `lib/core/widgets/search_bar_header.dart`, `lib/core/widgets/media_find.dart` |

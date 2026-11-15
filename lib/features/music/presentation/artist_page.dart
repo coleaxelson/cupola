@@ -62,9 +62,15 @@ class ArtistPage extends ConsumerStatefulWidget {
     this.initialArtist,
     this.heroTag,
     this.justAdded = false,
+    this.openAlbumId,
   });
 
   final int artistId;
+
+  /// The album the page opens on (the route's `?album=`): once the albums are
+  /// read it scrolls to that one and opens it on its tracks, as a found track
+  /// does. An id the artist has no album under is no landing.
+  final int? openAlbumId;
 
   /// Whether Lidarr took this artist a moment ago (the route's `?added=1`):
   /// its albums are not read yet, and the page says so and reads them again
@@ -133,6 +139,10 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
   /// under [_landingKey] so the page can scroll to it.
   int? _landingId;
   var _landingKey = GlobalKey();
+
+  /// Whether the album the route named has been landed on: once, when the
+  /// albums first arrive.
+  var _openedRouteAlbum = false;
 
   /// Where each album's row stands among the places, as the last build laid
   /// them out: the heading of its place and its place in the group. A row
@@ -378,6 +388,19 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
     final shelf = albums == null
         ? null
         : ArtistShelf.of(albumsOfKind(albums, kind), now: now);
+    // The album a link named, once the albums are here: opened the way a found
+    // track's album is, after this frame (it settles the page's own state).
+    if (!_openedRouteAlbum && widget.openAlbumId != null && albums != null) {
+      final named = albums
+          .where((album) => album.id == widget.openAlbumId)
+          .firstOrNull;
+      if (named != null) {
+        _openedRouteAlbum = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _landOn(named);
+        });
+      }
+    }
     // Lidarr took the artist a moment ago and has no albums to show yet.
     final waiting = widget.justAdded && !_waitOver;
     final reading = waiting && albums != null && albums.isEmpty;

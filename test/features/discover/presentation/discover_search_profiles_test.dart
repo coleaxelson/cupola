@@ -39,11 +39,16 @@ void main() {
     // Seerr, Radarr and Jellyfin each find Sprite Fright: one row.
     expect(find.text('Sprite Fright'), findsOneWidget);
     expect(find.text('On your server'), findsOneWidget);
-    // Bazarr and Lidarr are not asked; nothing is drawn by service.
+    // Bazarr is not asked; nothing is drawn by service.
     expect(find.text('Bazarr'), findsNothing);
     expect(find.text('All services'), findsNothing);
-    // Music is Lidarr's own search.
-    expect(find.text('Search Lidarr for “sprite”'), findsOneWidget);
+    // Music is the music source's, a section of its own: Lidarr's catalog
+    // knows an artist and an album of that name, which the library has not.
+    expect(find.text('Music'), findsOneWidget);
+    expect(find.text('Artist\u00A0· Group'), findsOneWidget);
+    expect(find.text('Album\u00A0· Sprite\u00A0· 2003'), findsOneWidget);
+    expect(find.text('Show all music for “sprite”'), findsOneWidget);
+    expect(find.textContaining('Lidarr'), findsNothing);
     // Every source answered on a household where everything is up.
     expect(find.textContaining('did not answer'), findsNothing);
 

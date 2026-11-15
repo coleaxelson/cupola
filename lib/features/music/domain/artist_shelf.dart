@@ -42,8 +42,8 @@ class ArtistShelf {
       }
     }
     int newestFirst(LidarrAlbum a, LidarrAlbum b) =>
-        _releaseOf(b).compareTo(_releaseOf(a));
-    coming.sort((a, b) => _releaseOf(a).compareTo(_releaseOf(b)));
+        albumReleasedOn(b).compareTo(albumReleasedOn(a));
+    coming.sort((a, b) => albumReleasedOn(a).compareTo(albumReleasedOn(b)));
     wanted.sort(newestFirst);
     onDisk.sort(newestFirst);
     unmonitored.sort(newestFirst);
@@ -103,7 +103,9 @@ bool albumIsComing(LidarrAlbum album, {required DateTime now}) {
   return date != null && date.isAfter(now);
 }
 
-DateTime _releaseOf(LidarrAlbum album) =>
+/// The day [album] came out or will; the earliest moment for one with no date
+/// Lidarr can read, so that it sorts last among the newest first.
+DateTime albumReleasedOn(LidarrAlbum album) =>
     DateTime.tryParse(album.releaseDate ?? '') ?? DateTime(0);
 
 String _albums(int count) =>

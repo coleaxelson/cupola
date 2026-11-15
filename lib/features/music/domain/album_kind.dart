@@ -43,6 +43,10 @@ enum AlbumKind {
   final String _one;
   final String _many;
 
+  /// The kind as a sentence says it of one release: `album`, `EP`, `single`;
+  /// `release` for a kind with no noun of its own.
+  String get noun => _one;
+
   /// `1 single`, `4 singles`; a kind with no noun of its own (spoken word,
   /// other) counts `releases`.
   String count(int n) => '$n$unitSpace${n == 1 ? _one : _many}';

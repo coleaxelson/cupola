@@ -105,7 +105,12 @@ void main() {
       expect(
         ServiceRoutes.lidarrArtist(9, instanceId: 'lidarr-2', justAdded: true),
         '/stack/lidarr/library/artist/9?i=lidarr-2&added=1',
+      ); // Opened on an album: the page scrolls to it and opens its tracks.
+      expect(
+        ServiceRoutes.lidarrArtist(9, albumId: 12),
+        '/stack/lidarr/library/artist/9?album=12',
       );
+      expect(ServiceRoutes.discoverMoreFromYourArtists, '/discover/artists');
     });
 
     test('the Sonarr tab roots are spelled by the tabs they mount', () {

@@ -299,6 +299,19 @@ void main() {
       await unmount(tester, harness, container);
     });
 
+    testWidgets('the operator\'s album shelf sends her to Discover', (
+      tester,
+    ) async {
+      final (harness, router, container) = await pumpApp(tester);
+
+      router.go(ServiceRoutes.discoverMoreFromYourArtists);
+      await harness.settle(tester);
+
+      expect(router.state.uri.path, ServiceRoutes.discover);
+
+      await unmount(tester, harness, container);
+    });
+
     testWidgets('the operator\'s account is in the connection\'s form (P1)', (
       tester,
     ) async {

@@ -785,4 +785,81 @@ void main() {
       await harness.unmount(tester);
     });
   });
+  group('opened on an album (the link\u2019s ?album=)', () {
+    testWidgets('the page opens on its tracks, as a found track does', (
+      tester,
+    ) async {
+      final (:harness, reads: _) = await _open(
+        tester,
+        page: const ArtistPage(artistId: 1, openAlbumId: 8),
+      );
+
+      expect(find.byType(AlbumTracks), findsOneWidget);
+      expect(
+        tester.widget<AlbumTracks>(find.byType(AlbumTracks)).album.title,
+        'Spring',
+      );
+      expect(find.text('Café Spring'), findsOneWidget);
+
+      await harness.unmount(tester);
+    });
+
+    testWidgets('an album left alone unfolds the albums left alone', (
+      tester,
+    ) async {
+      final (:harness, reads: _) = await _open(
+        tester,
+        tracks: [_track(701, 7, 'Caminandes Llamigos', hasFile: false)],
+        page: const ArtistPage(artistId: 1, openAlbumId: 7),
+      );
+
+      // The heading and the words of the two albums left alone.
+      expect(find.text('Unmonitored'), findsNWidgets(3));
+      expect(
+        tester.widget<AlbumTracks>(find.byType(AlbumTracks)).album.title,
+        'Caminandes',
+      );
+      expect(find.text('Caminandes Llamigos'), findsOneWidget);
+
+      await harness.unmount(tester);
+    });
+
+    testWidgets('reaches an album far down the page', (tester) async {
+      final albums = [
+        for (var i = 1; i <= 40; i++)
+          _album(i, 'Record $i', year: '${1980 + i}', files: 0),
+      ];
+      final (:harness, reads: _) = await _open(
+        tester,
+        albums: albums,
+        tracks: [_track(1, 1, 'Opening Night', hasFile: false)],
+        size: const Size(390, 700),
+        page: const ArtistPage(artistId: 1, openAlbumId: 1),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await harness.settle(tester);
+
+      expect(find.byType(AlbumTracks), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byType(AlbumTracks)).dy,
+        inInclusiveRange(0, 700),
+      );
+
+      await harness.unmount(tester);
+    });
+
+    testWidgets('an album the artist does not have opens nothing', (
+      tester,
+    ) async {
+      final (:harness, reads: _) = await _open(
+        tester,
+        page: const ArtistPage(artistId: 1, openAlbumId: 404),
+      );
+
+      expect(find.byType(AlbumTracks), findsNothing);
+      expect(find.text('Singles 4'), findsOneWidget);
+
+      await harness.unmount(tester);
+    });
+  });
 }

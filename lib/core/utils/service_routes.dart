@@ -678,18 +678,26 @@ class ServiceRoutes {
   /// link and a restored route carry it as `extra` could not.
   static const justAddedParam = 'added';
 
+  /// The query that names the album an artist's page opens on
+  /// (`?album=12`, [lidarrArtist]): the page scrolls to it and opens it on
+  /// its tracks. A query, so a link carries it as `extra` could not.
+  static const albumParam = 'album';
+
   /// An artist's page. [justAdded]: Lidarr took the artist a moment ago and
-  /// has not read its albums yet.
+  /// has not read its albums yet. [albumId]: the page opens on that album, on
+  /// its tracks.
   static String lidarrArtist(
     int id, {
     String? heroTag,
     String? instanceId,
     bool justAdded = false,
+    int? albumId,
   }) {
     return _withQuery('$lidarrArtistBase/$id', {
       'heroTag': heroTag,
       'i': instanceId,
       justAddedParam: justAdded ? '1' : null,
+      albumParam: albumId?.toString(),
     });
   }
 
@@ -754,6 +762,10 @@ class ServiceRoutes {
   /// The calendar of everything the household's arrs date in the next
   /// thirty days, which the atrium's band opens.
   static const discoverCalendar = '$discover/calendar';
+
+  /// Every album `More from your artists` knows, under the artist who made
+  /// it (`MoreFromYourArtistsPage`): the shelf's See all.
+  static const discoverMoreFromYourArtists = '$discover/artists';
 
   /// An index of the atrium, on its own page (`DiscoverIndexPage`).
   static String discoverIndex(DiscoverIndex index) =>

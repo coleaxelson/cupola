@@ -1568,7 +1568,7 @@ class LidarrFake extends ArrFake {
   }
 
   /// The albums of the artist at [index], as `GET /api/v1/album` sends them:
-  /// the wanted ones last, with no file.
+  /// the wanted ones with no file, then the ones left alone.
   List<JsonMap> _shelfAlbums(ServerContext c, int index) {
     final artist = _shelfArtist(c, index);
     final count = _shelfAlbumCount(index);
@@ -1596,8 +1596,84 @@ class LidarrFake extends ArrFake {
             'totalTrackCount': _shelfTracksPerAlbum,
           },
         },
+      ..._shelfLeftAlone(c, index, artist),
     ];
   }
+
+  /// How many albums of the artist at [index] Lidarr holds and was told to
+  /// leave alone: out already, nothing on disk. One artist in three has one or
+  /// two, which is what Discover's `More from your artists` is made of.
+  static int _shelfLeftAloneCount(int index) =>
+      index % 3 == 2 ? 1 + index % 2 : 0;
+
+  /// What those albums are called, in the order a shelf artist takes them.
+  static const _leftAloneTitles = [
+    'Demos and Rarities',
+    'Radio Sessions',
+    'B-Sides',
+    'Sketches',
+    'Winter Tapes',
+    'Remixes',
+  ];
+
+  /// An album the library holds and Lidarr leaves alone: out, nothing on
+  /// disk, not monitored. [artist] is the record it embeds.
+  JsonMap _leftAlone(
+    int id, {
+    required int artistId,
+    required JsonMap artist,
+    required String title,
+    required String type,
+    required String releaseDate,
+  }) => {
+    'id': id,
+    'artistId': artistId,
+    'title': title,
+    'foreignAlbumId': 'album-left-alone-$id',
+    'albumType': type,
+    'monitored': false,
+    'releaseDate': releaseDate,
+    'images': const <Object?>[],
+    'artist': artist,
+    'statistics': {'trackFileCount': 0, 'trackCount': 5, 'totalTrackCount': 5},
+  };
+
+  /// The shelf artist [index]'s albums left alone, as `GET /api/v1/album`
+  /// sends them. Ids after the monitored ones' (their ten at most).
+  List<JsonMap> _shelfLeftAlone(ServerContext c, int index, JsonMap artist) => [
+    for (var k = 0; k < _shelfLeftAloneCount(index); k++)
+      _leftAlone(
+        (_shelfFirstId + index) * 100 + 50 + k,
+        artistId: _shelfFirstId + index,
+        artist: artist,
+        title: _leftAloneTitles[(index + k) % _leftAloneTitles.length],
+        type: const ['EP', 'Single', 'Album'][(index + k) % 3],
+        releaseDate:
+            '${2003 + (index * 3 + k * 5) % 22}-0${1 + (index + k) % 9}-15'
+            'T00:00:00Z',
+      ),
+  ];
+
+  /// The world's own artist's albums left alone, the board's three: an EP and
+  /// two singles, out and unmonitored. The demo's alone, like the shelf: a
+  /// profile read as written holds the four albums it always held.
+  List<JsonMap> _worldLeftAlone(ServerContext c) => c.life == null
+      ? const []
+      : [
+          for (final (id, title, type, date) in const [
+            (11, 'Big Buck Bunny Suite', 'EP', '2008-05-10T00:00:00Z'),
+            (12, 'The Dragon', 'Single', '2010-09-27T00:00:00Z'),
+            (13, 'Snow', 'Single', '2010-10-01T00:00:00Z'),
+          ])
+            _leftAlone(
+              id,
+              artistId: 1,
+              artist: _artist(c),
+              title: title,
+              type: type,
+              releaseDate: date,
+            ),
+        ];
 
   /// The kinds the shelf's albums come in, so that an artist with four albums
   /// or more has more than one and the page offers them by kind: every fourth
@@ -1633,7 +1709,11 @@ class LidarrFake extends ArrFake {
   /// them: each album's, the ones on disk first as the album's statistics say.
   List<JsonMap> _shelfTracks(ServerContext c, int index) => [
     for (final album in _shelfAlbums(c, index))
-      for (var t = 0; t < _shelfTracksPerAlbum; t++)
+      for (
+        var t = 0;
+        t < ((album['statistics'] as JsonMap)['totalTrackCount'] as int);
+        t++
+      )
         {
           'id': (album['id'] as int) * 100 + t,
           'albumId': album['id'],
@@ -1677,15 +1757,47 @@ class LidarrFake extends ArrFake {
     (5, 'Finale', 270000),
   ];
 
-  /// Asked for an artist's, the world's own has Sintel's alone and a shelf
-  /// artist every album's; asked for an album's, only Sintel lists any.
+  /// The tracks of the world's own artist's albums left alone: five each, none
+  /// on disk, as the albums' statistics say. The demo's alone, with the albums.
+  List<JsonMap> _worldLeftAloneTracks(ServerContext c) => [
+    for (final album in _worldLeftAlone(c))
+      for (var t = 0; t < 5; t++)
+        {
+          'id': (album['id'] as int) * 100 + t,
+          'albumId': album['id'],
+          'artistId': 1,
+          'mediumNumber': 1,
+          'trackNumber': '${t + 1}',
+          'title':
+              _shelfTrackTitles[((album['id'] as int) * 3 + t) %
+                  _shelfTrackTitles.length],
+          'duration': 160000 + t * 21000 + (album['id'] as int) % 7 * 3000,
+          'hasFile': false,
+        },
+  ];
+
+  /// Asked for an artist's, the world's own has Sintel's (and the ones of the
+  /// albums left alone) and a shelf artist every album's; asked for an
+  /// album's, that album's: a shelf artist's, one left alone, or Sintel's.
   List<JsonMap> _tracks(ServerContext c, NetworkRequest r) {
     final artist = int.tryParse(r.query['artistId'] ?? '');
-    final shelved = artist == null ? null : _shelfIndexOf(c, artist);
-    if (shelved != null) return _shelfTracks(c, shelved);
-    return _sintelTrackList(
-      withSintel: artist == 1 || r.query['albumId'] == '3',
-    );
+    final album = int.tryParse(r.query['albumId'] ?? '');
+    final shelved = artist != null
+        ? _shelfIndexOf(c, artist)
+        : album == null
+        ? null
+        : _shelfIndexOf(c, album ~/ 100);
+    if (shelved != null) {
+      return [
+        for (final track in _shelfTracks(c, shelved))
+          if (album == null || track['albumId'] == album) track,
+      ];
+    }
+    return [
+      ..._sintelTrackList(withSintel: artist == 1 || album == 3),
+      for (final track in _worldLeftAloneTracks(c))
+        if (artist == 1 || track['albumId'] == album) track,
+    ];
   }
 
   List<JsonMap> _sintelTrackList({required bool withSintel}) => [
@@ -1739,11 +1851,14 @@ class LidarrFake extends ArrFake {
   ];
 
   /// The wishlist: the albums Lidarr monitors and holds no file of: the
-  /// anniversary edition, and the ones the shelf's artists are short of.
+  /// anniversary edition, and the ones the shelf's artists are short of. Not
+  /// the ones it was told to leave alone.
   @override
   List<JsonMap> missing(ServerContext c) => [
     for (final album in [..._albums(c), ..._allShelfAlbums(c)])
-      if ((album['statistics'] as JsonMap)['trackFileCount'] == 0) album,
+      if ((album['statistics'] as JsonMap)['trackFileCount'] == 0 &&
+          album['monitored'] == true)
+        album,
   ];
 
   /// What Lidarr's history holds, newest first: Sintel's tags rewritten
@@ -1943,7 +2058,11 @@ class LidarrFake extends ArrFake {
     final held = <JsonMap>[
       if (names('${world['artistName']}'))
         {'id': 1, 'foreignId': world['foreignArtistId'], 'artist': world},
-      for (final album in [..._albums(c), ..._liveAlbums(c, artistId: 1)])
+      for (final album in [
+        ..._albums(c),
+        ..._worldLeftAlone(c),
+        ..._liveAlbums(c, artistId: 1),
+      ])
         if (names('${album['title']}'))
           {'foreignId': album['foreignAlbumId'], 'album': album},
     ];
@@ -2188,6 +2307,7 @@ class LidarrFake extends ArrFake {
       // the artists the demo added are answered above.
       '/api/v1/album' => NetworkReply.json([
         ..._albums(c),
+        ..._worldLeftAlone(c),
         // Asked for one artist's albums it is the world's, as above.
         if (!r.query.containsKey('artistId')) ..._allShelfAlbums(c),
         ..._liveAlbums(c, artistId: r.query.containsKey('artistId') ? 1 : null),

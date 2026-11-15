@@ -5,15 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/network/connection_failure.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
-import 'package:cupola/core/status/lexicon.dart';
 import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/arr_activity_display.dart';
-import 'package:cupola/core/utils/image_utils.dart';
 import 'package:cupola/core/utils/service_routes.dart';
-import 'package:cupola/core/utils/snack_bar_helper.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/discover/presentation/widgets/search_row.dart';
-import 'package:cupola/features/music/data/lidarr_service.dart';
 import 'package:cupola/features/music/domain/artist_shelf.dart';
 import 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
@@ -21,36 +17,14 @@ import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
 import 'package:cupola/features/music/domain/music_find_index.dart';
-import 'package:cupola/features/music/presentation/music_add_flow.dart';
+import 'package:cupola/features/music/domain/music_held.dart';
+import 'package:cupola/features/music/presentation/music_hit_row.dart';
 import 'package:cupola/features/music/presentation/music_provider.dart';
+import 'package:cupola/features/music/presentation/music_reach.dart';
 import 'package:cupola/features/music/presentation/music_search_provider.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
-import 'package:cupola/features/settings/data/connection_reach_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
-
-const _artistTypes = ['poster', 'fanart', 'banner'];
-
-typedef _Reach = ({String baseUrl, String apiKey});
-
-/// Where the wall's artwork is read from and with what key: the lens's
-/// connection at the address it is reached at now.
-_Reach _watchReach(WidgetRef ref) {
-  final lens = ref.watch(activeInstanceProvider(ServiceKey.lidarr))?.id ?? '';
-  final route = ref.watch(connectionRouteProvider(lens));
-  final (baseUrl, apiKey, _) = ref.watch(
-    currentSettingsProvider.select((s) => s.artworkKeyOf(lens, route)),
-  );
-  return (baseUrl: baseUrl, apiKey: apiKey);
-}
-
-ImageSource _artOf(List<dynamic> images, List<String> types, _Reach reach) =>
-    ImageUtils.extractPosterUrl(
-      images,
-      baseUrl: reach.baseUrl,
-      apiKey: reach.apiKey,
-      coverTypes: types,
-    );
 
 /// The padding under a list of results: the room the floating nav bar takes.
 EdgeInsets _listPadding(BuildContext context) => EdgeInsets.fromLTRB(
@@ -59,17 +33,6 @@ EdgeInsets _listPadding(BuildContext context) => EdgeInsets.fromLTRB(
   AppSpacing.lg,
   AppSpacing.lg + FloatingNavBarMetrics.getScrollViewBottomPadding(context),
 );
-
-/// What the Music wall's name for the connection reads inside a sentence.
-String _watchName(WidgetRef ref) {
-  final lens = ref.watch(activeInstanceProvider(ServiceKey.lidarr));
-  final settings = ref.watch(currentSettingsProvider);
-  return settings.connectionTitle(
-    lens?.id ?? '',
-    ServiceKey.lidarr,
-    joiner: ' ',
-  );
-}
 
 /// The state of a row, in the words the rows share.
 ({String label, StatusTone tone}) _status(AlbumState state) =>
@@ -146,8 +109,8 @@ class _MusicFindLibraryState extends ConsumerState<MusicFindLibrary> {
       return NotConfiguredPlaceholder.forService(ServiceKey.lidarr);
     }
     final lens = ref.watch(activeInstanceProvider(ServiceKey.lidarr))?.id;
-    final name = _watchName(ref);
-    final reach = _watchReach(ref);
+    final name = watchMusicName(ref);
+    final reach = watchMusicReach(ref);
     final artistsAsync = ref.watch(musicProvider);
     final albumsAsync = ref.watch(musicAlbumsProvider);
     final queue = lidarrQueueSnapshotsOf(
@@ -240,8 +203,8 @@ class _MusicFindLibraryState extends ConsumerState<MusicFindLibrary> {
     );
   }
 
-  Widget _artistRow(LidarrArtist artist, _Reach reach) {
-    final art = _artOf(artist.images, _artistTypes, reach);
+  Widget _artistRow(LidarrArtist artist, MusicReach reach) {
+    final art = musicArtOf(artist.images, musicArtistArt, reach);
     return SearchRow.disc(
       key: ValueKey(('artist', artist.id)),
       name: artist.artistName,
@@ -254,13 +217,13 @@ class _MusicFindLibraryState extends ConsumerState<MusicFindLibrary> {
 
   Widget _albumRow(
     LidarrAlbum album,
-    _Reach reach,
+    MusicReach reach,
     ArrQueueSnapshot queue,
     DateTime now,
   ) {
     final artist = _artistsById[album.artistId];
     final state = albumState(album, queue: queue, now: now);
-    final art = _artOf(album.images, const ['cover'], reach);
+    final art = musicArtOf(album.images, musicAlbumArt, reach);
     return SearchRow.album(
       key: ValueKey(('album', album.id)),
       title: album.title,
@@ -337,54 +300,21 @@ class MusicFindLidarr extends ConsumerStatefulWidget {
 }
 
 class _MusicFindLidarrState extends ConsumerState<MusicFindLidarr> {
-  /// The albums being monitored: their discs are busy, and inert.
-  final _monitoring = <int>{};
-
-  /// What the library holds, by MusicBrainz id, built once per library.
+  /// What the library holds, built once per library: a keystroke asks it, and
+  /// only a library read again builds another.
+  MusicHeld? _held;
   List<LidarrArtist>? _heldFrom;
   List<LidarrAlbum>? _heldAlbumsFrom;
-  Map<String, LidarrArtist> _artists = const {};
-  Map<int, LidarrArtist> _artistsById = const {};
-  Map<String, LidarrAlbum> _albums = const {};
 
-  void _hold(List<LidarrArtist> artists, List<LidarrAlbum> albums) {
-    if (identical(artists, _heldFrom) && identical(albums, _heldAlbumsFrom)) {
-      return;
+  MusicHeld _heldBy(List<LidarrArtist> artists, List<LidarrAlbum> albums) {
+    if (_held == null ||
+        !identical(artists, _heldFrom) ||
+        !identical(albums, _heldAlbumsFrom)) {
+      _heldFrom = artists;
+      _heldAlbumsFrom = albums;
+      _held = MusicHeld(artists: artists, albums: albums);
     }
-    _heldFrom = artists;
-    _heldAlbumsFrom = albums;
-    _artists = {
-      for (final artist in artists)
-        if (artist.foreignArtistId.isNotEmpty) artist.foreignArtistId: artist,
-    };
-    _artistsById = {for (final artist in artists) artist.id: artist};
-    _albums = {
-      for (final album in albums)
-        if (album.foreignAlbumId.isNotEmpty) album.foreignAlbumId: album,
-    };
-  }
-
-  void _openArtist(LidarrArtist artist) {
-    context.push(ServiceRoutes.lidarrArtist(artist.id), extra: artist);
-  }
-
-  Future<void> _monitor(LidarrAlbum album, String name) async {
-    setState(() => _monitoring.add(album.id));
-    try {
-      await ref.read(lidarrServiceProvider).monitorAndSearchAlbum(album.id);
-      if (!mounted) return;
-      SnackBarHelper.success(context, '$name is looking for ${album.title}');
-      ref.invalidate(musicAlbumsProvider);
-    } catch (error) {
-      if (!mounted) return;
-      SnackBarHelper.error(
-        context,
-        'Could not monitor ${album.title} in $name.',
-        detail: error,
-      );
-    } finally {
-      if (mounted) setState(() => _monitoring.remove(album.id));
-    }
+    return _held!;
   }
 
   @override
@@ -398,7 +328,7 @@ class _MusicFindLidarrState extends ConsumerState<MusicFindLidarr> {
       return NotConfiguredPlaceholder.forService(ServiceKey.lidarr);
     }
     final lens = ref.watch(activeInstanceProvider(ServiceKey.lidarr))?.id;
-    final name = _watchName(ref);
+    final name = watchMusicName(ref);
     final results = ref.watch(musicSearchResultsProvider);
     final artistsAsync = ref.watch(musicProvider);
     final albumsAsync = ref.watch(musicAlbumsProvider);
@@ -491,120 +421,24 @@ class _MusicFindLidarrState extends ConsumerState<MusicFindLidarr> {
       );
     }
 
-    _hold(artistsAsync.requireValue, albumsAsync.requireValue);
-    final reach = _watchReach(ref);
-    final queue = lidarrQueueSnapshotsOf(
-      ref.watch(lidarrQueueSnapshotsProvider),
-    ).byAlbum;
-    final now = DateTime.now();
+    final held = _heldBy(artistsAsync.requireValue, albumsAsync.requireValue);
     return ListView(
       padding: _listPadding(context),
       children: [
         if (artistHits.isNotEmpty) ...[
           const SearchHeading('Artists', top: AppSpacing.lg),
-          for (final hit in artistHits) _artistRow(hit, name, reach),
+          for (final hit in artistHits)
+            MusicHitRow.sectioned(hit: hit, held: held),
         ],
         if (albumHits.isNotEmpty) ...[
           SearchHeading(
             'Albums',
             top: artistHits.isEmpty ? AppSpacing.lg : AppSpacing.xl,
           ),
-          for (final hit in albumHits) _albumRow(hit, name, reach, queue, now),
+          for (final hit in albumHits)
+            MusicHitRow.sectioned(hit: hit, held: held),
         ],
       ],
     );
   }
-
-  Widget _artistRow(LidarrArtistHit hit, String name, _Reach reach) {
-    final artist = hit.artist;
-    final held = _artists[artist.foreignArtistId];
-    final art = _artOf((held ?? artist).images, _artistTypes, reach);
-    final add = held == null
-        ? () => addLidarrArtist(context, ref, artist)
-        : null;
-    return SearchRow.disc(
-      key: ValueKey((
-        'found-artist',
-        artist.foreignArtistId,
-        artist.artistName,
-      )),
-      name: artist.artistName,
-      line: joinDisplayParts([artist.artistType, artist.disambiguation]),
-      status: held == null ? null : _inLibrary,
-      photo: art.url,
-      photoHeaders: art.headers,
-      hint: held == null
-          ? 'Not in your library. Adds it to $name'
-          : 'Opens their page',
-      onTap: held == null ? add! : () => _openArtist(held),
-      action: held == null
-          ? SearchRowAdd(
-              label: 'Add ${artist.artistName} to $name',
-              onTap: add!,
-            )
-          : null,
-    );
-  }
-
-  Widget _albumRow(
-    LidarrAlbumHit hit,
-    String name,
-    _Reach reach,
-    ArrQueueSnapshot queue,
-    DateTime now,
-  ) {
-    final album = hit.album;
-    final heldAlbum = _albums[album.foreignAlbumId];
-    final heldArtist = _artists[hit.artist.foreignArtistId];
-    // A held album opens the artist the library keeps it under.
-    final albumsArtist = heldAlbum == null
-        ? null
-        : _artistsById[heldAlbum.artistId];
-    final state = heldAlbum == null
-        ? null
-        : albumState(heldAlbum, queue: queue, now: now);
-    final leftAlone = state?.word == albumUnmonitoredWord;
-    final art = _artOf((heldAlbum ?? album).images, const ['cover'], reach);
-    void add() => addLidarrAlbum(context, ref, hit, libraryArtist: heldArtist);
-    final busy = heldAlbum != null && _monitoring.contains(heldAlbum.id);
-    final SearchRowAction? action = heldAlbum == null
-        ? SearchRowAdd(
-            label: 'Add ${album.title} by ${hit.artist.artistName} to $name',
-            onTap: add,
-          )
-        : leftAlone
-        ? SearchRowAdd(
-            label: 'Monitor ${album.title} and search for it',
-            busy: busy,
-            onTap: () => _monitor(heldAlbum, name),
-          )
-        : null;
-    return SearchRow.album(
-      key: ValueKey(('found-album', album.foreignAlbumId)),
-      title: album.title,
-      meta: joinDisplayParts([
-        hit.artist.artistName,
-        album.year,
-        album.albumType,
-      ]),
-      status: state == null ? null : _status(state),
-      statusHollow: state?.hollow ?? false,
-      cover: art.url,
-      coverHeaders: art.headers,
-      hint: heldAlbum == null
-          ? 'Not in your library. Adds it to $name'
-          : albumsArtist == null
-          ? null
-          : 'Opens ${albumsArtist.artistName}',
-      onTap: heldAlbum != null
-          ? (albumsArtist == null ? () {} : () => _openArtist(albumsArtist))
-          : add,
-      action: action,
-    );
-  }
-
-  static final ({String label, StatusTone tone}) _inLibrary = (
-    label: StateWord.inYourLibrary.label,
-    tone: StateWord.inYourLibrary.tone!,
-  );
 }

@@ -1,6 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import 'package:cupola/core/app_breakpoints.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/capability/role_gate.dart';
@@ -130,7 +133,8 @@ class SearchRow extends StatelessWidget {
   /// an author): their [photo] in a 44 disc (their initials without one), what
   /// they are under the name, where they stand, and a control at the end when
   /// there is one. Unlike [SearchRow.person], the atrium's, it has no chevron:
-  /// what it opens, or does, is its own.
+  /// what it opens, or does, is its own. [spoken], where the parts the default
+  /// joins do not make the sentence: `Elbow, group, not in your library`.
   const SearchRow.disc({
     super.key,
     required String name,
@@ -142,6 +146,7 @@ class SearchRow extends StatelessWidget {
     required this.onTap,
     this.action,
     this.hint,
+    this.spoken,
     this.padding = EdgeInsets.zero,
   }) : title = name,
        meta = line,
@@ -150,7 +155,6 @@ class SearchRow extends StatelessWidget {
        heroTag = null,
        selected = false,
        titleMarks = const [],
-       spoken = null,
        coverName = null,
        _kind = _Kind.artist;
 
@@ -301,28 +305,61 @@ class SearchRow extends StatelessWidget {
                     if (status != null) ...[
                       const SizedBox(height: AppSpacing.xxs),
                       Row(
+                        // The dot stays level with the first line of a word
+                        // that wraps.
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: _dot,
-                            height: _dot,
-                            decoration: BoxDecoration(
-                              color: statusHollow
-                                  ? null
-                                  : statusToneColor(colorScheme, status.tone),
-                              border: statusHollow
-                                  ? Border.all(
-                                      color: room.inkSecondary,
-                                      width: 1.5,
-                                    )
-                                  : null,
-                              shape: BoxShape.circle,
+                          // One line of the word's own style under the dot:
+                          // the cell is as tall as the first line, whatever
+                          // the reading size, and the dot sits in its middle.
+                          ExcludeSemantics(
+                            child: SizedBox(
+                              width: _dot,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Opacity(
+                                    opacity: 0,
+                                    child: Text(
+                                      ' ',
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      style: AppType.caption.weight(
+                                        FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: _dot,
+                                    height: _dot,
+                                    decoration: BoxDecoration(
+                                      color: statusHollow
+                                          ? null
+                                          : statusToneColor(
+                                              colorScheme,
+                                              status.tone,
+                                            ),
+                                      border: statusHollow
+                                          ? Border.all(
+                                              color: room.inkSecondary,
+                                              width: 1.5,
+                                            )
+                                          : null,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           const SizedBox(width: AppSpacing.s),
                           Flexible(
+                            // Two lines: a state word never loses words to an
+                            // ellipsis at a large reading size.
                             child: Text(
                               status.label,
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: AppType.caption
                                   .weight(FontWeight.w600)
@@ -561,6 +598,23 @@ class SearchRow extends StatelessWidget {
     ),
   );
 }
+
+/// A list of rows at the head of the tab, never wider than a page of one
+/// column ([AppBreakpoints.readingWell]): a title's row and its add, a
+/// recent search and its remove, are read across, and stretched over a
+/// tablet on its side the control stops belonging to its row. The list still
+/// scrolls the whole width, and on a phone this is the gutter alone.
+EdgeInsets searchRowsPadding(double width, {required double bottom}) =>
+    EdgeInsets.fromLTRB(
+      AppSpacing.lg,
+      0,
+      AppSpacing.lg + searchRowsInset(width),
+      bottom,
+    );
+
+/// How much of [width] lies right of the rows' column, past its gutter.
+double searchRowsInset(double width) =>
+    math.max(0, width - 2 * AppSpacing.lg - AppBreakpoints.readingWell);
 
 /// What a row is a picture of, which is its shape.
 enum _Kind { title, person, album, artist }
