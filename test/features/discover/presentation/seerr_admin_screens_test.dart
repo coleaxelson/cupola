@@ -43,12 +43,16 @@ void main() {
     );
     expect(find.text('Dune: Part Two'), findsOneWidget);
     expect(find.text('Audio\u00A0· Matt'), findsOneWidget);
-    // Asks first, naming the issue and who reported it; Cancel sends nothing.
+    // Asks first, naming the issue and who it closes it for; Cancel sends
+    // nothing.
     await tester.tap(find.byTooltip('Resolve issue'));
     await tester.pumpAndSettle();
     expect(find.text('Resolve this issue?'), findsOneWidget);
+    expect(find.textContaining('Dune: Part Two\u00A0· Audio.'), findsOneWidget);
     expect(
-      find.textContaining('Dune: Part Two\u00A0· Audio, reported by Matt'),
+      find.textContaining(
+        'Seerr marks it resolved for Matt. It can be reopened.',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.text('Cancel'));

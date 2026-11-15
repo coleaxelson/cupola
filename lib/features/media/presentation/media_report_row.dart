@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
@@ -10,6 +11,7 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/date_format.dart';
 import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/utils/episode_code.dart';
+import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/utils/string_utils.dart';
 import 'package:cupola/core/widgets/cross_service_action.dart';
 import 'package:cupola/core/widgets/pressable_scale.dart';
@@ -38,8 +40,8 @@ String mediaReportFiledLine({String? serverTitle, String? accountName}) {
 /// stands.
 ///
 /// A row of a [MediaGroup], tapped whole when it leads somewhere ([onTap]) and
-/// speaking one sentence. A report row whose page does not exist yet draws no
-/// chevron and no target: it states, it does not promise.
+/// speaking one sentence. A report row with no page to open draws no chevron
+/// and no target: it states, it does not promise.
 class MediaReportRow extends StatelessWidget {
   /// The way to report a problem: a glyph tile in the ink, the title and what
   /// reporting does under it.
@@ -251,7 +253,7 @@ class MediaReportSection extends ConsumerWidget {
     final gate = ref.watch(roleGateProvider(source.seerr.id));
     final verdict = gate.reportIssueAction();
     if (verdict is Absent) return const SizedBox.shrink();
-    final userId = ref.watch(seerrAccountUserIdProvider(source.seerr.id));
+    final userId = ref.watch(seerrActingUserIdProvider(source.seerr.id));
 
     final report = _reportRow(
       context,
@@ -337,9 +339,8 @@ String? reportAccountName(MediaReportSource source) {
 }
 
 /// The row of the requester's own latest report: blue and open while it
-/// waits on someone else, green and quiet once it is resolved.
-///
-/// Its page comes with the issue's screen: the row leads nowhere yet.
+/// waits on someone else, green and quiet once it is resolved. Tapped, it
+/// opens the report.
 class _OwnReportRow extends ConsumerWidget {
   const _OwnReportRow({required this.connectionId, required this.issue});
 
@@ -366,6 +367,9 @@ class _OwnReportRow extends ConsumerWidget {
         sub: resolvedAt == null
             ? ''
             : capitalizeFirst(formatDayWords(resolvedAt, now: now)),
+        onTap: () => context.push(
+          ServiceRoutes.requestsIssue(issue.id, instanceId: connectionId),
+        ),
       );
     }
     // The replies are in the issue itself, and only that one is read.
@@ -380,6 +384,9 @@ class _OwnReportRow extends ConsumerWidget {
       tone: StatusTone.info,
       word: 'Reported',
       sub: [?when, ?replies].join(dotSeparator),
+      onTap: () => context.push(
+        ServiceRoutes.requestsIssue(issue.id, instanceId: connectionId),
+      ),
     );
   }
 }
@@ -391,7 +398,7 @@ String? _repliesLine(
   String connectionId,
 ) {
   if (replies.isEmpty) return null;
-  final me = ref.watch(seerrAccountUserIdProvider(connectionId));
+  final me = ref.watch(seerrActingUserIdProvider(connectionId));
   final names = {
     for (final reply in replies)
       if (!reply.isBy(me)) reply.authorName ?? '',
@@ -408,9 +415,8 @@ String? _repliesLine(
 String _replies(int count) => count == 1 ? '1 reply' : '$count replies';
 
 /// One open issue of the title, for the operator: its words, who reported it
-/// and when, how many replied. Amber: a fault waiting to be fixed.
-///
-/// Its page comes with the issue's screen: the row leads nowhere yet.
+/// and when, how many replied. Amber: a fault waiting to be fixed. Tapped, it
+/// opens the issue.
 class _OperatorIssueRow extends ConsumerWidget {
   const _OperatorIssueRow({required this.connectionId, required this.issue});
 
@@ -450,6 +456,9 @@ class _OperatorIssueRow extends ConsumerWidget {
         if (at != null) formatDayWords(at, now: DateTime.now()),
         ?replies,
       ].join(dotSeparator),
+      onTap: () => context.push(
+        ServiceRoutes.seerrIssue(issue.id, instanceId: connectionId),
+      ),
     );
   }
 }

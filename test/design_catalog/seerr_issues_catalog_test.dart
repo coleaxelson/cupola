@@ -2,10 +2,12 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/features/discover/data/seerr_service.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_numbering.dart';
 import 'package:cupola/features/discover/presentation/seerr_admin_screens.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -31,7 +33,7 @@ class _Seerr extends FakeApiClient {
     Duration? receiveTimeout,
   }) async {
     final body = path == '/api/v1/issue'
-        ? jsonFixtureMap('seerr/issues.json')
+        ? _issues(queryParameters?['filter'] as String?)
         : titles[path];
     if (body == null) {
       throw DioException(
@@ -44,6 +46,23 @@ class _Seerr extends FakeApiClient {
       data: body,
     );
   }
+}
+
+/// The fixture, the way each filter would have it: every issue open, the
+/// resolved ones, or all of them with the first resolved.
+Map<String, dynamic> _issues(String? filter) {
+  final page = jsonFixtureMap('seerr/issues.json');
+  final results = [
+    for (final (i, issue) in (page['results'] as List).indexed)
+      {
+        ...issue as Map<String, dynamic>,
+        if ((filter == 'resolved' || filter == 'all') && i == 0) 'status': 2,
+      },
+  ];
+  return {
+    ...page,
+    'results': filter == 'resolved' ? results.take(1).toList() : results,
+  };
 }
 
 const _allNamed = {
@@ -76,6 +95,53 @@ void main() {
         'SeerrIssuesScreen() · the Issues tab: each row named from its '
         "title's own page, since Seerr's list carries no title",
         (_) => const SeerrIssuesScreen(),
+        width: 390,
+        height: 640,
+        overrides: _seerr(_allNamed),
+      ),
+      CatalogScene(
+        'SeerrIssuesScreen() · All: a resolved row is green and has nothing '
+        'to resolve',
+        (_) => const SeerrIssuesScreen(),
+        width: 390,
+        height: 640,
+        overrides: _seerr(_allNamed),
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('All')),
+          );
+          await tester.pumpAndSettle();
+        },
+      ),
+      CatalogScene(
+        'SeerrIssuesScreen() · Resolve asks first, and says who it closes the '
+        'issue for',
+        (_) => ScaffoldMessenger(
+          child: ClipRect(
+            child: Navigator(
+              onGenerateRoute: (_) => PageRouteBuilder<void>(
+                pageBuilder: (_, _, _) => Builder(
+                  builder: (context) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      showResolveIssueConfirm(
+                        context,
+                        SeerrIssue.fromJson({
+                          'id': 22,
+                          'issueType': 2,
+                          'status': 1,
+                          'media': {'title': 'Game of Thrones'},
+                          'createdBy': {'id': 5, 'displayName': 'Anna'},
+                        }),
+                        useRootNavigator: false,
+                      );
+                    });
+                    return const SeerrIssuesScreen();
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
         width: 390,
         height: 640,
         overrides: _seerr(_allNamed),

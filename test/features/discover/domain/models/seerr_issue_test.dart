@@ -23,6 +23,41 @@ void main() {
       expect(issue.tone, StatusTone.warning);
     });
 
+    test("the media row's availability tells whether it is on the server", () {
+      // Status 4 on a series: partly there.
+      expect(issue.media?.status, 4);
+      expect(issue.media?.isOnServer, isTrue);
+      SeerrIssueMedia media(String type, {int? status, int? status4k}) =>
+          SeerrIssueMedia.fromJson({
+            'mediaType': type,
+            'status': status,
+            'status4k': status4k,
+          });
+      expect(media('movie', status: 5).isOnServer, isTrue);
+      expect(media('movie', status: 1, status4k: 5).isOnServer, isTrue);
+      // Partly available is a series' word, never a movie's.
+      expect(media('movie', status: 4).isOnServer, isFalse);
+      expect(media('tv', status: 4).isOnServer, isTrue);
+      // Requested, in the works, or not said: not a claim either way.
+      for (final code in [null, 1, 2, 3]) {
+        expect(media('movie', status: code).isOnServer, isFalse);
+      }
+    });
+
+    test('naming a title from its page keeps the rest of the row', () {
+      final named = issue.media!.copyWith(
+        title: 'Game of Thrones',
+        posterPath: '/got.jpg',
+        year: '2011',
+      );
+      expect(named.title, 'Game of Thrones');
+      expect(named.year, '2011');
+      expect(named.id, 82);
+      expect(named.tmdbId, 1399);
+      expect(named.status, 4);
+      expect(named.isOnServer, isTrue);
+    });
+
     test('the first comment is the report, the rest are replies', () {
       expect(issue.message, 'Subtitles are missing');
       expect(issue.comments, hasLength(3));

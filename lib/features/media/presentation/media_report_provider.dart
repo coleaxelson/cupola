@@ -25,10 +25,14 @@ final mediaReportSourceProvider = Provider.autoDispose
       ),
     );
 
-/// One issue with its conversation, read for the row that speaks of it:
-/// Seerr's list on a title carries neither the words nor the replies.
+/// Which issue of which Seerr connection: an issue number is per instance.
+typedef MediaReportIssueSource = ({String connectionId, int issueId});
+
+/// One issue with its conversation, read for the row that speaks of it and
+/// for the issue's own page: Seerr's list on a title carries neither the
+/// words nor the replies.
 final mediaReportIssueProvider = FutureProvider.autoDispose
-    .family<SeerrIssue, ({String connectionId, int issueId})>(
+    .family<SeerrIssue, MediaReportIssueSource>(
       (ref, source) => ref
           .watch(seerrServiceForProvider(source.connectionId))
           .getIssue(source.issueId),

@@ -71,6 +71,9 @@ class SeerrIssueMedia {
     this.title,
     this.mediaType,
     this.posterPath,
+    this.year,
+    this.status,
+    this.status4k,
   });
 
   /// Seerr's own media id (`mediaInfo.id`), which a report names. Not TMDB's.
@@ -79,6 +82,15 @@ class SeerrIssueMedia {
   final String? title;
   final String? mediaType;
   final String? posterPath;
+
+  /// The year of the title's first release, read from its own page (the
+  /// issue's `media` does not carry one); null until then.
+  final String? year;
+
+  /// The media row's availability codes (`status`, `status4k`), as Seerr
+  /// sent them. The codes up to 5 read the same in every numbering.
+  final int? status;
+  final int? status4k;
 
   factory SeerrIssueMedia.fromJson(Object? value) {
     final json = value is Map
@@ -92,17 +104,31 @@ class SeerrIssueMedia {
         json['mediaType'] ?? json['media_type'] ?? json['type'],
       ),
       posterPath: stringOrNull(json['posterPath'] ?? json['poster_path']),
+      status: intOrNull(json['status']),
+      status4k: intOrNull(json['status4k']),
     );
   }
 
-  SeerrIssueMedia copyWith({String? title, String? posterPath}) =>
+  SeerrIssueMedia copyWith({String? title, String? posterPath, String? year}) =>
       SeerrIssueMedia(
         id: id,
         tmdbId: tmdbId,
         title: title ?? this.title,
         mediaType: mediaType,
         posterPath: posterPath ?? this.posterPath,
+        year: year ?? this.year,
+        status: status,
+        status4k: status4k,
       );
+
+  /// Whether Seerr's record says the title is on the server: available in
+  /// either quality, or for a series partly available. False when it does
+  /// not say, which is not a claim that it is absent.
+  bool get isOnServer {
+    final series = mediaType == 'tv';
+    bool held(int? code) => code == 5 || (series && code == 4);
+    return held(status) || held(status4k);
+  }
 }
 
 /// One message of an issue's conversation.

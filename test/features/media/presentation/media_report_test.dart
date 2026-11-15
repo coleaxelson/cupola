@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/capability/audience.dart';
 import 'package:cupola/core/capability/role_gate.dart';
@@ -201,6 +202,7 @@ Future<void> _pump(
   Audience audience = Audience.requester,
   bool hangRead = false,
   bool failRead = false,
+  List<String>? opened,
 }) async {
   tester.view.physicalSize = const Size(390, 1400);
   tester.view.devicePixelRatio = 1;
@@ -260,14 +262,49 @@ Future<void> _pump(
           ],
         ),
       ],
-      child: MaterialApp(
-        theme: AppTheme.darkTheme(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: Padding(padding: const EdgeInsets.all(16), child: child),
-          ),
-        ),
-      ),
+      child: opened == null
+          ? MaterialApp(
+              theme: AppTheme.darkTheme(),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: child,
+                  ),
+                ),
+              ),
+            )
+          // A router that records where a tap leads and draws a stand-in
+          // there: the issue's own page is the thread's test.
+          : MaterialApp.router(
+              theme: AppTheme.darkTheme(),
+              routerConfig: GoRouter(
+                routes: [
+                  GoRoute(
+                    path: '/',
+                    builder: (context, state) => Scaffold(
+                      body: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (final path in [
+                    '/requests/issues/:issueId',
+                    '/stack/seerr/issues/:issueId',
+                  ])
+                    GoRoute(
+                      path: path,
+                      builder: (context, state) {
+                        opened.add(state.uri.toString());
+                        return const Scaffold(body: Text('The issue'));
+                      },
+                    ),
+                ],
+              ),
+            ),
     ),
   );
   await tester.pump();
@@ -496,8 +533,59 @@ void main() {
       );
       expect(find.text('Report another problem'), findsOneWidget);
       expect(find.text('Report a problem'), findsNothing);
-      // Its page comes with the issue's screen: no target yet.
-      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+      // The report and the way to report another both lead somewhere.
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(2));
+    });
+
+    testWidgets('her report opens, under her Requests tab, on its connection', (
+      tester,
+    ) async {
+      final opened = <String>[];
+      await _pump(
+        tester,
+        const MediaReportSection.requester(scope: (key: _movie, focus: null)),
+        rows: _rows(_anna, mediaInfo: _info(issues: [_issue(12)])),
+        gate: _gate(),
+        userId: 2,
+        opened: opened,
+      );
+      await tester.tap(find.text('Your video report is open'));
+      await tester.pumpAndSettle();
+      expect(opened, ['/requests/issues/12?i=seerr']);
+      expect(find.text('The issue'), findsOneWidget);
+    });
+
+    testWidgets('her resolved report opens too', (tester) async {
+      final opened = <String>[];
+      await _pump(
+        tester,
+        const MediaReportSection.requester(scope: (key: _movie, focus: null)),
+        rows: _rows(_anna, mediaInfo: _info(issues: [_issue(12, status: 2)])),
+        gate: _gate(),
+        userId: 2,
+        opened: opened,
+      );
+      await tester.tap(find.text('Your video report was resolved'));
+      await tester.pumpAndSettle();
+      expect(opened, ['/requests/issues/12?i=seerr']);
+    });
+
+    testWidgets('an open issue opens, inside Seerr\'s Issues tab', (
+      tester,
+    ) async {
+      final opened = <String>[];
+      await _pump(
+        tester,
+        const MediaReportSection.operator(scope: (key: _movie, focus: null)),
+        rows: _rows(_key, mediaInfo: _info(issues: [_issue(12, by: 3)])),
+        gate: _gate(audience: Audience.operator),
+        audience: Audience.operator,
+        opened: opened,
+      );
+      await tester.tap(find.text('It freezes'));
+      await tester.pumpAndSettle();
+      expect(opened, ['/stack/seerr/issues/12?i=seerr']);
+      expect(find.text('The issue'), findsOneWidget);
     });
 
     testWidgets('her report was resolved: green, then Report a problem', (

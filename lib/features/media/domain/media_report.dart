@@ -4,9 +4,22 @@ import 'package:cupola/core/utils/dynamic_map_utils.dart';
 import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/media/domain/media_copies.dart';
+import 'package:cupola/features/media/domain/media_key.dart';
 import 'package:cupola/features/media/domain/media_reading.dart';
 import 'package:cupola/features/media/domain/media_rows.dart';
 import 'package:cupola/features/settings/domain/service_instance.dart';
+
+/// The page of the title an issue is about, or null when Seerr named no
+/// TMDB id or a kind that is neither a movie nor a series.
+MediaKey? mediaKeyOfIssue(SeerrIssue issue) {
+  final tmdb = issue.media?.tmdbId;
+  if (tmdb == null) return null;
+  return switch (issue.media?.mediaType) {
+    'movie' => MediaKey.movie(tmdb),
+    'tv' => MediaKey.tv(tmdb),
+    _ => null,
+  };
+}
 
 /// A season of a series that is on the server, as a report may name it.
 @immutable

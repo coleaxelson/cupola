@@ -339,7 +339,11 @@ class SeerrService {
         await (_titleReads[key] ??= _readTitle(key, tmdbId, movie: movie));
     if (entry == null) return issue;
     return issue.copyWith(
-      media: media.copyWith(title: entry.title, posterPath: entry.posterPath),
+      media: media.copyWith(
+        title: entry.title,
+        posterPath: entry.posterPath,
+        year: entry.year,
+      ),
     );
   }
 

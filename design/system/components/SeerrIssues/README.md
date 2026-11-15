@@ -10,10 +10,13 @@ Seerr's issue list carries no title: `media` holds only its ids, kind and status
 
 ## Anatomy
 
-- Filter pills (`SelectionPills`): Open, Resolved, All.
-- A row (`AppCard.outlined`): a report glyph in the issue's tone (amber open, green resolved), the title in `titleMedium` 600, under it `Type · reporter · N comments` in `bodyMedium`, and Resolve as an icon button (44pt) on an open row, dimmed with its reason where the account may not resolve.
-- Resolve asks first (`Resolve this issue?`); the row speaks `Title`, then `Open, Audio, reported by Anna`.
+- Filter pills (`SelectionPills`): Open, Resolved, All, then one summary line: `3 open · the newest change first` (a list cut short reads `50+`).
+- A row (`SeerrIssueRow`, a door slab with a hairline): the title's poster at 36x54 under its own light (`MediaPosterCard`), the title, the state word in its tone (amber `Open`, green `Resolved`) beside `S2 E3 · Audio · Anna · Sat 26 Sep`, the report's words on two lines (whole at a large reading size), and `2 replies` when there are some. The whole row opens the issue (`/stack/seerr/issues/:id?i=<connection>`, see [SeerrIssueThread](../SeerrIssueThread/README.md)).
+- Resolve is a 44pt button of its own at the end of an open row, dimmed with its reason where the account may not resolve. It asks first (`Resolve this issue?`: `Seerr marks it resolved for Anna. It can be reopened.`), then every list and page that speaks of the issue is read again.
+- The row speaks one sentence (`Title. Open. S2 E3 · Audio · Anna. The words. 2 replies`); Resolve stays its own control.
+
+The board draws the rows as one group with hairlines; the page keeps `ServiceListPage`'s separated rows, which carry the pull to refresh and the failure bands.
 
 ## Scenes
 
-Every row named; a title that did not answer; twice the reading size.
+Every row named; All, with a resolved row; the Resolve confirm drawn on a scene-local navigator; a title that did not answer; twice the reading size.

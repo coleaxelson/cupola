@@ -611,6 +611,7 @@ void main() {
           titles: {
             '/api/v1/movie/550': {
               'title': 'Fight Club',
+              'releaseDate': '1999-10-15',
               'posterPath': '/fight.jpg',
             },
             '/api/v1/tv/1399': {'name': 'Game of Thrones'},
@@ -629,6 +630,8 @@ void main() {
           'Fight Club',
         ]);
         expect(issues.first.media?.posterPath, '/fight.jpg');
+        // The year comes with the name, for the title card of its own page.
+        expect(issues.first.media?.year, '1999');
         expect(issues.first.media?.tmdbId, 550);
         expect(routed.titlePaths.toSet().length, 3);
         // Three titles, read once across two refreshes.
