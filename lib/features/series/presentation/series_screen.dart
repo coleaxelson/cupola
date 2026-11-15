@@ -12,6 +12,7 @@ import 'package:cupola/features/media/presentation/open_media.dart';
 import 'package:cupola/features/series/data/sonarr_service.dart';
 import 'package:cupola/features/series/domain/models/sonarr_series.dart';
 import 'package:cupola/features/series/domain/sonarr_status.dart';
+import 'package:cupola/features/series/presentation/series_bulk.dart';
 import 'package:cupola/features/series/presentation/series_provider.dart';
 import 'package:cupola/features/series/presentation/series_find.dart';
 import 'package:cupola/features/series/presentation/series_search_provider.dart';
@@ -100,6 +101,14 @@ class SeriesScreen extends ConsumerWidget {
       );
     }
 
+    // The connection as a sentence says it: the bar's toasts and the
+    // confirmation name it.
+    final connectionName = ref.watch(
+      currentSettingsProvider.select(
+        (s) => s.connectionTitle(lens, ServiceKey.sonarr),
+      ),
+    );
+
     return MediaBrowseScaffold<SonarrSeries>(
       title: 'TV series',
       searchHint: 'Series',
@@ -114,11 +123,7 @@ class SeriesScreen extends ConsumerWidget {
       searchQueryProvider: seriesSearchQueryProvider,
       find: MediaFind(
         scopeProvider: seriesFindScopeProvider,
-        serviceLabel: ref.watch(
-          currentSettingsProvider.select(
-            (s) => s.connectionTitle(lens, ServiceKey.sonarr),
-          ),
-        ),
+        serviceLabel: connectionName,
         libraryBody: (context, query) => SeriesFindLibrary(
           query: query,
           statusOf: status,
@@ -129,6 +134,18 @@ class SeriesScreen extends ConsumerWidget {
         ),
         serviceBody: (context, query) =>
             SeriesFindSonarr(query: query, statusOf: status, onOpen: open),
+      ),
+      // Search, Monitor, Profile and Remove on the series selected.
+      bulk: sonarrBulk(
+        ref: ref,
+        instanceId: lens,
+        name: connectionName,
+        onChanged: (ref) {
+          ref.invalidate(seriesProvider);
+          ref.invalidate(seriesForProvider);
+          ref.invalidate(sonarrCutoffUnmetSeriesIdsProvider);
+          ref.invalidate(sonarrKpiLibraryProvider);
+        },
       ),
       titleExtractor: (series) => series.title,
       subtitleExtractor: (series) => series.year > 0 ? '${series.year}' : '',

@@ -512,4 +512,94 @@ void main() {
       expect(command['name'], 'AlbumSearch');
     });
   });
+
+  group('the editors of the other arrs', () {
+    const readarr = '${WorldHosts.readarr}/api/v1';
+
+    test('Radarr sets monitoring on some movies and removes others', () async {
+      final movies = await list('$radarr/movie');
+      final first = movies.first['id'];
+      final second = movies[1]['id'];
+
+      await send(
+        'PUT',
+        '$radarr/movie/editor',
+        json: {
+          'movieIds': [first],
+          'monitored': false,
+        },
+      );
+      await send(
+        'DELETE',
+        '$radarr/movie/editor',
+        json: {
+          'movieIds': [second],
+        },
+      );
+
+      final now = await list('$radarr/movie');
+      expect(now.firstWhere((m) => m['id'] == first)['monitored'], isFalse);
+      expect(now.map((m) => m['id']), isNot(contains(second)));
+    });
+
+    test('Sonarr sets monitoring on some series and removes others', () async {
+      final shows = await list('$sonarr/series');
+      final first = shows.first['id'];
+      final second = shows[1]['id'];
+
+      await send(
+        'PUT',
+        '$sonarr/series/editor',
+        json: {
+          'seriesIds': [first],
+          'monitored': false,
+        },
+      );
+      await send(
+        'DELETE',
+        '$sonarr/series/editor',
+        json: {
+          'seriesIds': [second],
+        },
+      );
+
+      final now = await list('$sonarr/series');
+      expect(now.firstWhere((m) => m['id'] == first)['monitored'], isFalse);
+      expect(now.map((m) => m['id']), isNot(contains(second)));
+    });
+
+    test('Readarr sets monitoring on its author and removes it by its own '
+        'route', () async {
+      await send(
+        'PUT',
+        '$readarr/author/editor',
+        json: {
+          'authorIds': [1],
+          'monitored': false,
+        },
+      );
+      expect((await list('$readarr/author')).single['monitored'], isFalse);
+      expect(await list('$readarr/metadataprofile'), hasLength(2));
+
+      await send('DELETE', '$readarr/author/1');
+      expect(await list('$readarr/author'), isEmpty);
+    });
+
+    test('a search for each is a command the arr takes', () async {
+      for (final (base, body) in [
+        (
+          radarr,
+          {
+            'name': 'MoviesSearch',
+            'movieIds': [1],
+          },
+        ),
+        (sonarr, {'name': 'SeriesSearch', 'seriesId': 1}),
+        (readarr, {'name': 'AuthorSearch', 'authorId': 1}),
+      ]) {
+        final command = await send('POST', '$base/command', json: body) as Map;
+        expect(command['status'], 'queued');
+      }
+    });
+  });
 }

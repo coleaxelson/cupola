@@ -10,6 +10,7 @@ import 'package:cupola/features/movies/data/radarr_service.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
 import 'package:cupola/features/movies/domain/radarr_status.dart';
 import 'package:cupola/features/movies/presentation/movies_provider.dart';
+import 'package:cupola/features/movies/presentation/movies_bulk.dart';
 import 'package:cupola/features/movies/presentation/movies_find.dart';
 import 'package:cupola/features/movies/presentation/movies_search_provider.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
@@ -97,6 +98,14 @@ class MoviesScreen extends ConsumerWidget {
       );
     }
 
+    // The connection as a sentence says it: the bar's toasts and the
+    // confirmation name it.
+    final connectionName = ref.watch(
+      currentSettingsProvider.select(
+        (s) => s.connectionTitle(lens, ServiceKey.radarr),
+      ),
+    );
+
     return MediaBrowseScaffold<RadarrMovie>(
       title: 'Movies',
       searchHint: 'Movies',
@@ -110,11 +119,7 @@ class MoviesScreen extends ConsumerWidget {
       searchQueryProvider: moviesSearchQueryProvider,
       find: MediaFind(
         scopeProvider: moviesFindScopeProvider,
-        serviceLabel: ref.watch(
-          currentSettingsProvider.select(
-            (s) => s.connectionTitle(lens, ServiceKey.radarr),
-          ),
-        ),
+        serviceLabel: connectionName,
         libraryBody: (context, query) => MoviesFindLibrary(
           query: query,
           statusOf: status,
@@ -125,6 +130,19 @@ class MoviesScreen extends ConsumerWidget {
         ),
         serviceBody: (context, query) =>
             MoviesFindRadarr(query: query, statusOf: status, onOpen: open),
+      ),
+      // Search, Monitor, Profile and Remove on the movies selected.
+      bulk: radarrBulk(
+        ref: ref,
+        instanceId: lens,
+        name: connectionName,
+        onChanged: (ref) {
+          // What an action changed: the library, and what is read from it.
+          ref.invalidate(moviesProvider);
+          ref.invalidate(moviesForProvider);
+          ref.invalidate(radarrCutoffUnmetIdsProvider);
+          ref.invalidate(radarrKpiLibraryProvider);
+        },
       ),
       titleExtractor: (movie) => movie.title,
       subtitleExtractor: (movie) => movie.year > 0 ? '${movie.year}' : '',

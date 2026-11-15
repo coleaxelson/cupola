@@ -117,7 +117,7 @@ void main() {
     expect(controller.isSelecting, isTrue);
     expect(find.text('1 selected'), findsOneWidget);
     expect(
-      (route as CupertinoRouteTransitionMixin).popGestureEnabled,
+      route.popGestureEnabled,
       isFalse,
       reason: 'the outer route’s swipe is off while a library selects',
     );
@@ -134,7 +134,7 @@ void main() {
       reason: 'still on the wall',
     );
     expect(find.text('Base'), findsNothing);
-    expect((route as CupertinoRouteTransitionMixin).popGestureEnabled, isTrue);
+    expect(route.popGestureEnabled, isTrue);
 
     // Selection over, Back pops the page as before.
     await tester.binding.handlePopRoute();

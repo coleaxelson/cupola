@@ -582,6 +582,31 @@ class RadarrFake extends ArrFake {
 
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    // The editor, as Radarr's own front end sets or removes several movies:
+    // the ones it names. A living world keeps the monitoring and the removal;
+    // a profile is accepted and not kept.
+    if (r.method == 'PUT' && r.path == '/api/v3/movie/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['movieIds'] : null;
+      if (c.life != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          final movie = c.life!.arrs.movie(c.server.id, id);
+          if (movie != null && body['monitored'] is bool) {
+            movie.monitored = body['monitored'] as bool;
+          }
+        }
+      }
+      return const NetworkReply(200, body: '[]');
+    }
+    if (r.method == 'DELETE' && r.path == '/api/v3/movie/editor') {
+      final ids = (r.json is Map) ? (r.json as Map)['movieIds'] : null;
+      if (ids is List) {
+        for (final id in ids.whereType<int>()) {
+          c.life?.arrs.deleteMovie(c.server.id, id);
+        }
+      }
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method == 'GET' && r.path == '/api/v3/collection') {
       // Every Blender film belongs to one collection; Radarr lists it once
       // it holds one of them.
@@ -1169,6 +1194,29 @@ class SonarrFake extends ArrFake {
 
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    // The editor: see Radarr's.
+    if (r.method == 'PUT' && r.path == '/api/v3/series/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['seriesIds'] : null;
+      if (c.life != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          final live = _live(c, id);
+          if (live != null && body['monitored'] is bool) {
+            live.monitored = body['monitored'] as bool;
+          }
+        }
+      }
+      return const NetworkReply(202, body: '[]');
+    }
+    if (r.method == 'DELETE' && r.path == '/api/v3/series/editor') {
+      final ids = (r.json is Map) ? (r.json as Map)['seriesIds'] : null;
+      if (ids is List) {
+        for (final id in ids.whereType<int>()) {
+          c.life?.arrs.deleteSeries(c.server.id, id);
+        }
+      }
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method == 'GET' && r.path == '/api/v3/series') {
       // `?tvdbId=` filters, as Sonarr's own route does.
       final tvdb = r.query['tvdbId'];
@@ -2224,6 +2272,14 @@ class ReadarrFake extends ArrFake {
     },
   };
 
+  /// The author with what the demo set on him by the editor.
+  JsonMap _editedAuthor(ServerContext c) {
+    final monitored = c.life?.arrs.authorMonitored(c.server.id, 1);
+    return monitored == null
+        ? _author(c)
+        : {..._author(c), 'monitored': monitored};
+  }
+
   /// His books; Five Weeks in a Balloon is wanted.
   static const _books = [
     (1, 'Five Weeks in a Balloon', 1863, false),
@@ -2373,10 +2429,40 @@ class ReadarrFake extends ArrFake {
 
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    final arrs = c.life?.arrs;
+    // The editor sets what it was sent on the authors it names; a living world
+    // keeps the monitoring. Its delete is not used (it ignores what it is
+    // asked): an author is removed by its own route.
+    if (r.method == 'PUT' && r.path == '/api/v1/author/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['authorIds'] : null;
+      if (arrs != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          if (body['monitored'] is bool) {
+            arrs.monitorAuthor(
+              c.server.id,
+              id,
+              monitored: body['monitored'] as bool,
+            );
+          }
+        }
+      }
+      return const NetworkReply(202, body: '[]');
+    }
+    if (r.method == 'DELETE' &&
+        RegExp(r'^/api/v1/author/\d+$').hasMatch(r.path)) {
+      arrs?.removedAuthors(c.server.id).add(int.parse(r.path.split('/').last));
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method != 'GET') return null;
+    final removed = arrs?.removedAuthors(c.server.id).contains(1) ?? false;
     return switch (r.path) {
-      '/api/v1/author' => NetworkReply.json([_author(c)]),
-      '/api/v1/author/1' => NetworkReply.json(_author(c)),
+      '/api/v1/metadataprofile' => NetworkReply.json(const [
+        {'id': 1, 'name': 'Standard'},
+        {'id': 2, 'name': 'Fiction only'},
+      ]),
+      '/api/v1/author' => NetworkReply.json([if (!removed) _editedAuthor(c)]),
+      '/api/v1/author/1' => NetworkReply.json(_editedAuthor(c)),
       '/api/v1/book' => NetworkReply.json([
         if (r.query['authorId'] case null || '1')
           for (final entry in _books) _book(c, entry, withAuthor: false),

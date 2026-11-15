@@ -280,21 +280,36 @@ void main() {
       expect(find.text('Cancel'), findsNothing);
     });
 
-    testWidgets('only Lidarr’s wall opts in: Movies, Series and Authors '
-        'keep their walls as they are', (tester) async {
-      // The wall of each service is built by its screen; a screen that passed
-      // `bulk:` would show Select. D21 gives the others theirs in the lot
-      // after this one.
-      final optIns = [
-        for (final path in const [
-          'lib/features/movies/presentation/movies_screen.dart',
-          'lib/features/series/presentation/series_screen.dart',
-          'lib/features/readarr/presentation/readarr_library_screen.dart',
-          'lib/features/music/presentation/music_screen.dart',
-        ])
+    testWidgets('a wall opts in only with its actions: every service wall '
+        'passes its own, and no other wall of the library does', (
+      tester,
+    ) async {
+      final walls = <String>[
+        for (final file in Directory('lib').listSync(recursive: true))
+          if (file is File &&
+              file.path.endsWith('.dart') &&
+              file.path != 'lib/core/widgets/media_browse_scaffold.dart' &&
+              _read(file.path).contains('MediaBrowseScaffold<'))
+            file.path,
+      ];
+      final optedIn = [
+        for (final path in walls)
           if (RegExp(r'\n\s+bulk:\s').hasMatch(_read(path))) path,
       ];
-      expect(optIns, ['lib/features/music/presentation/music_screen.dart']);
+      // The four service walls are the walls; each brings its own actions.
+      expect(optedIn.toSet(), {
+        'lib/features/movies/presentation/movies_screen.dart',
+        'lib/features/series/presentation/series_screen.dart',
+        'lib/features/readarr/presentation/readarr_library_screen.dart',
+        'lib/features/music/presentation/music_screen.dart',
+      });
+      expect(
+        walls.toSet().difference(optedIn.toSet()),
+        isEmpty,
+        reason:
+            'a wall with no actions shows no Select: it must not exist '
+            'unannounced',
+      );
     });
   });
 

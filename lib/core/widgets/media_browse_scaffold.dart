@@ -1194,7 +1194,7 @@ class _MediaBrowseScaffoldState<T>
           ),
       ],
     );
-    return Padding(
+    final padded = Padding(
       // The navigation bar's, to the point: the same margins over the same
       // foot. A phone's foot is the shell's bottom slot, which the page is
       // handed in its bottom padding (the home indicator and the bar, once),
@@ -1213,12 +1213,24 @@ class _MediaBrowseScaffoldState<T>
                     FloatingNavBarMetrics.barHeightFor(context),
               ),
             )
+          // The list's own side margins, so the bar lines up with the tiles.
           : const EdgeInsets.only(
-              left: AppSpacing.md,
-              right: AppSpacing.md,
+              left: AppSpacing.lg,
+              right: AppSpacing.lg,
               bottom: _railBarGap,
             ),
       child: bar,
+    );
+    // A desktop window draws the wall in a well (`DesktopContentWell`), and
+    // the bar belongs to the list it acts on: at the foot of the well, no wider
+    // than it and centred with it. A tablet's list column is as wide as the
+    // list, so the bar already is.
+    if (phone || !AppBreakpoints.isDesktopShell(context)) return padded;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: AppBreakpoints.contentWell),
+        child: padded,
+      ),
     );
   }
 

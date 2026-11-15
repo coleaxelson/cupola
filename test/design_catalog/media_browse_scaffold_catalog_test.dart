@@ -33,6 +33,10 @@ import 'package:cupola/features/series/presentation/series_find.dart';
 import 'package:cupola/features/series/presentation/series_provider.dart';
 import 'package:cupola/features/series/presentation/series_search_provider.dart';
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/features/media/presentation/arr_bulk.dart';
+import 'package:cupola/features/movies/presentation/movies_bulk.dart';
+import 'package:cupola/features/readarr/presentation/readarr_bulk.dart';
+import 'package:cupola/features/series/presentation/series_bulk.dart';
 import 'package:cupola/core/widgets/app_bottom_sheet.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/floating_nav_rail.dart';
@@ -243,6 +247,10 @@ Widget _scaffold(
   bool status = true,
   IconData emptyIcon = Icons.video_library_outlined,
   String? emptyMessage,
+  MediaBulk<_Film>? bulk,
+  bool showAppBar = true,
+  double topPadding = 0,
+  IconData posterIcon = Icons.movie_outlined,
 }) {
   return MediaBrowseScaffold<_Film>(
     title: title,
@@ -276,6 +284,10 @@ Widget _scaffold(
     emptyMessage: emptyMessage,
     tileShape: shape,
     cutoffUnmetIds: cutoff,
+    bulk: bulk,
+    posterFallbackIcon: posterIcon,
+    showAppBar: showAppBar,
+    topPadding: topPadding,
     sorts: sorts
         ? [
             MediaBrowseSort<_Film>.dateAdded((film) => film.added),
@@ -1098,9 +1110,12 @@ const _navDestinations = [
 /// while a library selects, and the service's band and tab bar over the wall,
 /// which step aside.
 class _CatalogShell extends StatefulWidget {
-  const _CatalogShell({required this.wall});
+  const _CatalogShell({required this.wall, this.service = ServiceKey.lidarr});
 
   final Widget wall;
+
+  /// Whose band and tab bar are over the wall.
+  final ServiceKey service;
 
   @override
   State<_CatalogShell> createState() => _CatalogShellState();
@@ -1122,9 +1137,9 @@ class _CatalogShellState extends State<_CatalogShell> {
       backgroundColor: Colors.transparent,
       extendBody: true,
       body: ServiceHomeScreen(
-        service: ServiceKey.lidarr,
+        service: widget.service,
         child: ServiceTabScaffold(
-          service: ServiceKey.lidarr,
+          service: widget.service,
           tab: ServiceTab.library,
           child: widget.wall,
         ),
@@ -1160,21 +1175,24 @@ Future<void> _selectThree(WidgetTester tester, Finder scene) => _selectNamed(
 Future<void> _selectNamed(
   WidgetTester tester,
   Finder scene,
-  List<String> names,
-) async {
+  List<String> names, {
+  String? chip = 'Wanted',
+}) async {
   Finder text(String value) =>
       find.descendant(of: scene, matching: find.text(value));
   // The chip: the service's tab bar has a Wanted of its own.
-  await tester.tap(
-    find.descendant(
-      of: find.descendant(
-        of: scene,
-        matching: find.byType(MediaBrowseFilterChip),
+  if (chip != null) {
+    await tester.tap(
+      find.descendant(
+        of: find.descendant(
+          of: scene,
+          matching: find.byType(MediaBrowseFilterChip),
+        ),
+        matching: find.text(chip),
       ),
-      matching: find.text('Wanted'),
-    ),
-  );
-  await _land(tester);
+    );
+    await _land(tester);
+  }
   await tester.longPress(text(names.first));
   await _land(tester);
   for (final name in names.skip(1)) {
@@ -1243,15 +1261,186 @@ MediaBulk<LidarrArtist> _partialBulk() => MediaBulk<LidarrArtist>(
   ],
 );
 
-/// The wall in the shell, the actions asking what they ask: the sheet and the
-/// confirmation are the scene's own [Navigator]'s, so the sheet draws them.
-Widget _shelled(Widget wall) => ClipRect(
-  child: Navigator(
-    onGenerateRoute: (_) => PageRouteBuilder<void>(
-      pageBuilder: (_, _, _) => _CatalogShell(wall: wall),
+// === Movies, Series and Authors: selecting =================================
+
+/// The wall of Movies as the router builds it in the service's Library tab,
+/// over the films that start with M, N and S (so a section is a row or two),
+/// with [bulk] as the actions.
+Widget _filmWall({
+  MediaBulk<_Film>? bulk,
+  String title = 'Movies',
+  FutureProvider<List<_Film>>? library,
+  IconData posterIcon = Icons.movie_outlined,
+}) => _scaffold(
+  14,
+  library: library ?? _shelfProvider,
+  posterIcon: posterIcon,
+  cutoff: null,
+  sorts: false,
+  peek: false,
+  title: title,
+  bulk: bulk,
+  showAppBar: false,
+  topPadding: kToolbarHeight + ServiceTabBar.height,
+);
+
+/// Series for Sonarr's wall: records of the same shape as the films, with
+/// series' titles and no artwork.
+final _showsProvider = FutureProvider<List<_Film>>(
+  (ref) async => [
+    for (final (id, title, year) in const [
+      (1, 'Chernobyl', 2019),
+      (2, 'Cosmos Laundromat', 2015),
+      (3, 'Cowboy Bebop', 1998),
+      (4, 'Firefly', 2002),
+      (5, 'Fringe', 2008),
+      (6, 'Hannibal', 2013),
+      (7, 'Hero', 2018),
+    ])
+      (
+        id: id,
+        title: title,
+        sortTitle: title.toLowerCase(),
+        year: year,
+        poster: null,
+        status: const MediaStatusInfo(
+          availability: MediaAvailability.available,
+        ),
+        added: '2026-09-1${id}T10:00:00Z',
+      ),
+  ],
+);
+
+/// Radarr's refusal of one movie's folder, as the editor sends it.
+final _radarrRefusal = DioException(
+  requestOptions: RequestOptions(path: '/api/v3/movie/editor'),
+  response: Response(
+    requestOptions: RequestOptions(path: '/api/v3/movie/editor'),
+    statusCode: 400,
+    data: [
+      {
+        'propertyName': 'RootFolderPath',
+        'errorMessage': 'The folder /movies/Metropolis is not reachable',
+      },
+    ],
+  ),
+  type: DioExceptionType.badResponse,
+);
+
+/// The four actions of Movies' wall, each running at once and each leaving
+/// Metropolis refused and the others taken.
+MediaBulk<_Film> _filmBulk({ArrBulkKind kind = radarrBulkKind}) =>
+    MediaBulk<_Film>(
+      singular: kind.singular,
+      plural: kind.plural,
+      noneHint: kind.noneHint,
+      service: kind.service,
+      instanceId: '',
+      actions: [
+        for (final (label, icon) in const [
+          ('Search', Icons.search_rounded),
+          ('Monitor', Icons.visibility_rounded),
+          ('Profile', Icons.tune_rounded),
+          ('Remove', Icons.delete_outline_rounded),
+        ])
+          MediaBulkAction<_Film>(
+            label: label,
+            icon: icon,
+            prepare: (context, films) async => MediaBulkJob<_Film>(
+              run: (items) async => MediaBulkOutcome(
+                done: [
+                  for (final film in items)
+                    if (film.title != 'Metropolis') film.id,
+                ],
+                failures: [
+                  MediaBulkFailure(
+                    id: 2,
+                    name: 'Metropolis',
+                    line: arrRefusalLine(
+                      'Metropolis',
+                      _radarrRefusal,
+                      ServiceKey.radarr,
+                      'Radarr',
+                    ),
+                    error: _radarrRefusal,
+                  ),
+                ],
+              ),
+              doneLine: (count) => 'Updated $count',
+              partialLine: (done, total) =>
+                  '$done of $total ${kind.plural} updated',
+            ),
+          ),
+      ],
+    );
+
+/// Three authors, with what their files take adding up to 61.4 GB.
+final _selectAuthors = [
+  for (final (id, name, gigabytes) in const [
+    (1, 'Brandon Sanderson', 23.0),
+    (2, 'Jules Renard', 18.3),
+    (3, 'Jules Verne', 20.1),
+  ])
+    ReadarrAuthor(
+      id: id,
+      authorName: name,
+      monitored: true,
+      bookCount: 7,
+      bookFileCount: 6,
+      qualityProfileId: 1,
+      metadataProfileId: 1,
+      monitorNewItems: 'all',
+      sizeOnDisk: (gigabytes * 1024 * 1024 * 1024).round(),
+    ),
+];
+
+/// Readarr's wall as the router builds it in the service's Library tab, over
+/// [_selectAuthors], with the real actions: the confirmation opens on the
+/// scene's own navigator.
+Widget _authorsWall() => Consumer(
+  builder: (context, ref, _) => MediaBrowseScaffold<ReadarrAuthor>(
+    title: 'Authors',
+    searchHint: 'Authors',
+    activityRoute: '/activity',
+    navigationSection: NavigationSection.stack,
+    serviceName: 'Readarr',
+    service: ServiceKey.readarr,
+    accentColor: ServiceKey.readarr.accent,
+    heroTagPrefix: 'author',
+    libraryProvider: readarrAuthorsProvider,
+    searchQueryProvider: readarrSearchQueryProvider,
+    find: MediaFind.libraryOnly(
+      libraryBody: (context, query) => const SizedBox.shrink(),
+    ),
+    titleExtractor: (author) => author.authorName,
+    subtitleExtractor: readarrAuthorCaption,
+    sortTitleExtractor: (author) => author.authorName,
+    imagesExtractor: (author) => author.images,
+    idExtractor: (author) => author.id,
+    settingsSelector: (_) => ('', '', const NoAccess()),
+    onItemTap: (_, _, _) {},
+    tileShape: MediaBrowseTileShape.circle,
+    showAppBar: false,
+    topPadding: kToolbarHeight + ServiceTabBar.height,
+    bulk: readarrBulk(
+      ref: ref,
+      instanceId: '',
+      name: 'Readarr',
+      dialogsOnRoot: false,
     ),
   ),
 );
+
+/// The wall in the shell, the actions asking what they ask: the sheet and the
+/// confirmation are the scene's own [Navigator]'s, so the sheet draws them.
+Widget _shelled(Widget wall, {ServiceKey service = ServiceKey.lidarr}) =>
+    ClipRect(
+      child: Navigator(
+        onGenerateRoute: (_) => PageRouteBuilder<void>(
+          pageBuilder: (_, _, _) => _CatalogShell(wall: wall, service: service),
+        ),
+      ),
+    );
 
 /// A sheet drawn in place over the selecting wall, as the sheet's card draws
 /// its panels: the panel is the real one, and the scrim stands for the route
@@ -1797,6 +1986,158 @@ void main() {
         platform: CatalogPlatform.desktop,
         overrides: _selectOverrides(),
         act: _selectThree,
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · selecting, Movies · the same bar on a poster '
+        'wall: the check disc on the poster’s corner, unselected posters '
+        'dimmed, the bar where the navigation bar was',
+        (_) => _phone(
+          _CatalogShell(
+            service: ServiceKey.radarr,
+            wall: _filmWall(bulk: _filmBulk()),
+          ),
+        ),
+        id: 'select-movies',
+        act: (tester, scene) => _selectNamed(tester, scene, const [
+          'Nanook of the North',
+          'The Navigator',
+          'Nosferatu',
+        ], chip: null),
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · Series, Monitor, over the selection · '
+        '`Monitor new seasons` is Sonarr’s own second control, started on '
+        'what the series share',
+        (_) => _phone(
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              _CatalogShell(
+                service: ServiceKey.sonarr,
+                wall: _filmWall(
+                  title: 'TV series',
+                  library: _showsProvider,
+                  posterIcon: Icons.tv_outlined,
+                  bulk: _filmBulk(kind: sonarrBulkKind),
+                ),
+              ),
+              const IgnorePointer(child: ColoredBox(color: Colors.black54)),
+              IgnorePointer(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: AppBottomSheet(
+                    title: 'Monitor 3 series',
+                    subtitle: 'Chernobyl, Cosmos Laundromat and Cowboy Bebop',
+                    child: const ArrBulkMonitorSheet(
+                      kind: sonarrBulkKind,
+                      count: 3,
+                      startMonitored: true,
+                      startNewItems: 'all',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        id: 'select-series-monitor',
+        act: (tester, scene) => _selectNamed(tester, scene, const [
+          'Chernobyl',
+          'Cosmos Laundromat',
+          'Cowboy Bebop',
+        ], chip: null),
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · Authors, Remove, over the selection · the '
+        'confirmation in Readarr’s words: what it stops, the size the files '
+        'take, the exclusion',
+        (_) => _phone(_shelled(_authorsWall(), service: ServiceKey.readarr)),
+        id: 'select-authors-remove',
+        overrides: [
+          readarrAuthorsProvider.overrideWith((ref) async => _selectAuthors),
+          readarrSearchQueryProvider.overrideWith((ref) => ''),
+        ],
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select')),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select all 3')),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.byKey(const ValueKey('library-selection-remove')),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · after an action Radarr refused for one movie '
+        '· the amber notice in the movies’ words, `Try Metropolis again`',
+        (_) => _phone(
+          _CatalogShell(
+            service: ServiceKey.radarr,
+            wall: _filmWall(bulk: _filmBulk()),
+          ),
+        ),
+        id: 'select-movies-partial',
+        act: (tester, scene) async {
+          await _selectNamed(tester, scene, const [
+            'Metropolis',
+            'Nanook of the North',
+            'The Navigator',
+          ], chip: null);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.byKey(const ValueKey('library-selection-monitor')),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
+      CatalogScene(
+        'Text at 200% · selecting on Movies: the header stacks, the poster '
+        'discs and the bar hold',
+        (_) => _phone(
+          _CatalogShell(
+            service: ServiceKey.radarr,
+            wall: _filmWall(bulk: _filmBulk()),
+          ),
+        ),
+        id: 'text-200-select-movies',
+        textScale: catalogTextScale,
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select')),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.textContaining('Select all'),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · selecting Movies on a 1280 desktop window · '
+        'the bar at the foot of the 1140 well',
+        (_) => _filmWall(bulk: _filmBulk()),
+        id: 'select-movies-desktop',
+        width: 1280,
+        height: 1000,
+        platform: CatalogPlatform.desktop,
+        act: (tester, scene) => _selectNamed(tester, scene, const [
+          'Nanook of the North',
+          'The Navigator',
+          'Nosferatu',
+        ], chip: null),
       ),
       CatalogScene(
         'Text at 200% · the library wall and a failed load with service: the '

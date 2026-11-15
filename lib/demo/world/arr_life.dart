@@ -135,6 +135,8 @@ class ArrLife {
   final Map<String, Map<int, LiveArtistEdit>> _artistEdits = {};
   final Map<String, Set<int>> _removedArtists = {};
   final Map<String, List<LiveAlbum>> _albums = {};
+  final Map<String, Set<int>> _removedAuthors = {};
+  final Map<String, Map<int, bool>> _authorMonitored = {};
   int _grabs = 0;
 
   /// How long a grab takes to come down, so a title asked for arrives in
@@ -216,6 +218,21 @@ class ArrLife {
       size: is4k ? 8800000000 : 2200000000,
     );
   }
+
+  // === Readarr =============================================================
+
+  /// The authors removed from Readarr [serverId] in the demo. The world's own
+  /// author is Readarr's, so what is kept here is what was done to it.
+  Set<int> removedAuthors(String serverId) =>
+      _removedAuthors.putIfAbsent(serverId, () => {});
+
+  /// Whether the demo set author [id] monitored or not, or null for one it has
+  /// left as it was.
+  bool? authorMonitored(String serverId, int id) =>
+      _authorMonitored[serverId]?[id];
+
+  void monitorAuthor(String serverId, int id, {required bool monitored}) =>
+      _authorMonitored.putIfAbsent(serverId, () => {})[id] = monitored;
 
   // === Lidarr ==============================================================
 

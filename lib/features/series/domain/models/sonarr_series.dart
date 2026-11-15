@@ -30,6 +30,10 @@ class SonarrSeries {
   final List<dynamic> seasons;
   final Map<String, dynamic>? statistics;
   final int? qualityProfileId;
+
+  /// What Sonarr does with seasons it learns of later: `all` or `none`. Null
+  /// on a record that does not say.
+  final String? monitorNewItems;
   final List<RatingSource> ratings;
   final String? seriesType;
   final String? certification;
@@ -74,6 +78,7 @@ class SonarrSeries {
     required this.seasons,
     this.statistics,
     this.qualityProfileId,
+    this.monitorNewItems,
     this.ratings = const [],
     this.seriesType,
     this.certification,
@@ -134,6 +139,7 @@ class SonarrSeries {
       seasons: json['seasons'] ?? [],
       statistics: json['statistics'],
       qualityProfileId: json['qualityProfileId'],
+      monitorNewItems: json['monitorNewItems'] as String?,
       ratings: ratings,
       seriesType: json['seriesType'],
       certification: json['certification'],

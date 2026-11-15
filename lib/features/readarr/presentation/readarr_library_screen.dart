@@ -7,6 +7,7 @@ import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/readarr/domain/models/readarr_models.dart';
 import 'package:cupola/features/readarr/domain/readarr_author_caption.dart';
+import 'package:cupola/features/readarr/presentation/readarr_bulk.dart';
 import 'package:cupola/features/readarr/presentation/readarr_find.dart';
 import 'package:cupola/features/readarr/presentation/readarr_provider.dart';
 import 'package:cupola/features/readarr/presentation/readarr_search_provider.dart';
@@ -92,6 +93,14 @@ class ReadarrLibraryScreen extends ConsumerWidget {
       );
     }
 
+    // The connection as a sentence says it: the bar's toasts and the
+    // confirmation name it.
+    final connectionName = ref.watch(
+      currentSettingsProvider.select(
+        (s) => s.connectionTitle(lens, ServiceKey.readarr),
+      ),
+    );
+
     return MediaBrowseScaffold<ReadarrAuthor>(
       title: 'Authors',
       searchHint: 'Authors',
@@ -110,6 +119,17 @@ class ReadarrLibraryScreen extends ConsumerWidget {
           settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
           onOpen: open,
         ),
+      ),
+      // Search, Monitor, Profile and Remove on the authors selected.
+      bulk: readarrBulk(
+        ref: ref,
+        instanceId: lens,
+        name: connectionName,
+        onChanged: (ref) {
+          ref.invalidate(readarrAuthorsProvider);
+          ref.invalidate(readarrAuthorsForProvider);
+          ref.invalidate(readarrKpiLibraryProvider);
+        },
       ),
       titleExtractor: (author) => author.authorName,
       subtitleExtractor: readarrAuthorCaption,

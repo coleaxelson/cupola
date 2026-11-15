@@ -886,6 +886,20 @@ mixin ArrActivityMixin {
     }
   }
 
+  /// The quality profiles, with a failed read allowed to reach the caller: a
+  /// sheet that offers them must not read a server that did not answer as one
+  /// with none to offer.
+  Future<List<Map<String, dynamic>>> fetchQualityProfilesOrThrow() async {
+    final response = await client.get(
+      '/api/${config.apiVersion}/qualityprofile',
+    );
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('The server answered without its profiles');
+    }
+    return data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+  }
+
   /// Fetches the root folders this server is configured to file media under.
   ///
   /// Unlike [fetchQualityProfiles], a failure here travels. The two are read

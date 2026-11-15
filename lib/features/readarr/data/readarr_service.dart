@@ -1,4 +1,5 @@
 import 'package:cupola/core/api/api_client.dart';
+import 'package:cupola/core/api/arr_bulk.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
 import 'package:cupola/features/readarr/domain/models/readarr_models.dart';
 
@@ -134,6 +135,73 @@ class ReadarrService with ArrActivityMixin {
       data: {'name': 'AuthorSearch', 'authorId': authorId},
     );
   }
+
+  /// The quality profiles, a failed read reaching the caller.
+  Future<List<Map<String, dynamic>>> getQualityProfilesOrThrow() =>
+      fetchQualityProfilesOrThrow();
+
+  /// Readarr's metadata profiles (`GET /api/v1/metadataprofile`), as `(id,
+  /// name)`: its own database, never the metadata host that no longer
+  /// answers. A failed read reaches the caller.
+  Future<List<({int id, String name})>> getMetadataProfilesOrThrow() async {
+    final response = await client.get('/api/v1/metadataprofile');
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Readarr answered without its profiles');
+    }
+    return [
+      for (final entry in data.whereType<Map>())
+        if (entry['id'] case final int id)
+          (id: id, name: entry['name'] as String? ?? 'Profile'),
+    ];
+  }
+
+  /// Sets [edit] on every author of [authorIds]: `PUT /api/v1/author/editor`.
+  ///
+  /// Readarr's `AuthorEditorController.SaveAll` has no validation step and
+  /// saves the set in one `UpdateMany`, which touches nothing outside Readarr's
+  /// own database. It is asked as the other arrs' editors are ([bulkInOne]); a
+  /// refusal of it, which Readarr has little to refuse with, is followed by one
+  /// request per author.
+  Future<ArrBulkResult> updateAuthorsInBulk(
+    List<int> authorIds,
+    ArrBulkEdit edit,
+  ) {
+    assert(!edit.isEmpty, 'an edit that sets nothing is not sent');
+    return bulkInOne(
+      authorIds,
+      (ids) => client.put(
+        '/api/v1/author/editor',
+        data: {'authorIds': ids, ...edit.fields},
+      ),
+    );
+  }
+
+  /// Removes every author of [authorIds], one `DELETE /api/v1/author/{id}` each.
+  ///
+  /// **Not the editor's delete.** `AuthorEditorController.DeleteAuthor` loops
+  /// `DeleteAuthor(id, false)`: it ignores `deleteFiles`, has no exclusion and
+  /// stops at the first id it fails on with the ones before it already gone. A
+  /// removal that cannot take the files it was asked to, or say which author it
+  /// stopped at, is not one to offer, so each author is removed by the route
+  /// that honours both choices and answers for itself.
+  Future<ArrBulkResult> removeAuthorsInBulk(
+    List<int> authorIds, {
+    bool deleteFiles = false,
+    bool addImportListExclusion = false,
+  }) => bulkEachOf(
+    authorIds,
+    (id) => deleteAuthor(
+      id,
+      deleteFiles: deleteFiles,
+      addImportListExclusion: addImportListExclusion,
+    ),
+  );
+
+  /// Starts a search for every author of [authorIds]: one `AuthorSearch`
+  /// command each, which takes one author (`AuthorSearchCommand.AuthorId`).
+  Future<ArrBulkResult> searchAuthorsInBulk(List<int> authorIds) =>
+      bulkEachOf(authorIds, searchAuthor);
 
   Future<void> deleteAuthor(
     int authorId, {
