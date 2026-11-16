@@ -35,10 +35,9 @@ class SeerrIssuesScreen extends ConsumerStatefulWidget {
 }
 
 class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
-  SeerrIssueFilter _filter = SeerrIssueFilter.open;
-
   @override
   Widget build(BuildContext context) {
+    final filter = ref.watch(seerrIssueFilterProvider);
     // The lens's Seerr, which these pages read: a signed-out one reads signed
     // out before anything is asked of it.
     if (!watchSeerrConfigured(ref)) {
@@ -58,7 +57,7 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
     // why, never a tap that fails.
     final gate = ref.watch(roleGateProvider(''));
     final accountUserId = ref.watch(seerrActingUserIdProvider(''));
-    final issues = ref.watch(seerrIssuesProvider(_filter));
+    final issues = ref.watch(seerrIssuesProvider(filter));
     final partial = issues.asData?.value;
     final lens = ref.watch(
       activeInstanceProvider(ServiceKey.seerr).select((i) => i?.id),
@@ -67,14 +66,14 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
       service: ServiceKey.seerr,
       value: issues.whenDataKept((result) => result.items),
       serviceName: 'Seerr issues',
-      onRetry: () => ref.invalidate(seerrIssuesProvider(_filter)),
+      onRetry: () => ref.invalidate(seerrIssuesProvider(filter)),
       // How many, in which state, and in what order: a list cut short reads
       // as a floor (`50+`), never as the whole.
       summary: (items) {
         final count = partial != null && partial.isPartial
             ? '${items.length}+'
             : '${items.length}';
-        final what = switch (_filter) {
+        final what = switch (filter) {
           SeerrIssueFilter.open => 'open',
           SeerrIssueFilter.resolved => 'resolved',
           SeerrIssueFilter.all => items.length == 1 ? 'issue' : 'issues',
@@ -91,9 +90,9 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
         padding: const EdgeInsets.only(top: AppSpacing.md),
         child: SelectionPills<SeerrIssueFilter>(
           values: SeerrIssueFilter.values,
-          selected: _filter,
+          selected: filter,
           labelBuilder: (filter) => filter.label,
-          onSelected: (value) => setState(() => _filter = value),
+          onSelected: ref.read(seerrIssueFilterProvider.notifier).choose,
         ),
       ),
       banner: partial != null && partial.isPartial
@@ -101,7 +100,7 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
               message:
                   'Seerr returned ${partial.items.length} of '
                   '${partial.total} issues; later pages are unavailable.',
-              onRetry: () => ref.invalidate(seerrIssuesProvider(_filter)),
+              onRetry: () => ref.invalidate(seerrIssuesProvider(filter)),
             )
           : null,
       rowBuilder: (issue) => SeerrIssueRow(

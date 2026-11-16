@@ -11,6 +11,8 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/features/activity/presentation/widgets/needs_you_cards.dart';
 import 'package:cupola/features/activity/presentation/widgets/reported_problems_card.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
+import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/home/domain/needs_you.dart';
 import 'package:cupola/features/home/presentation/widgets/needs_you_banner.dart';
 import 'package:cupola/features/services/domain/dashboard_decision.dart';
@@ -148,6 +150,30 @@ void main() {
 
     expect(seen.single, startsWith(ServiceRoutes.seerrIssues));
     expect(seen.single, isNot(contains('/issues/')));
+
+    await harness.unmount(tester);
+  });
+
+  testWidgets('Review lands on Open whichever filter the tab was left on', (
+    tester,
+  ) async {
+    final (harness, seen) = await pump(
+      tester,
+      ReportedProblemsCard(decision: _problems()),
+    );
+    // The tab's branch stays mounted: it holds Resolved from before.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ReportedProblemsCard)),
+    );
+    container
+        .read(seerrIssueFilterProvider.notifier)
+        .choose(SeerrIssueFilter.resolved);
+
+    await tester.tap(find.text('Review 3'));
+    await harness.settle(tester);
+
+    expect(seen.single, startsWith(ServiceRoutes.seerrIssues));
+    expect(container.read(seerrIssueFilterProvider), SeerrIssueFilter.open);
 
     await harness.unmount(tester);
   });

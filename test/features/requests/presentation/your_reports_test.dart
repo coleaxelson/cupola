@@ -43,6 +43,7 @@ SeerrIssue _report(
   int episode = 0,
   String updatedAt = '2026-09-28T12:00:00.000Z',
   int replies = 0,
+  int by = 7,
 }) => SeerrIssue(
   id: id,
   type: type,
@@ -50,7 +51,7 @@ SeerrIssue _report(
   problemSeason: season,
   problemEpisode: episode,
   media: SeerrIssueMedia(title: title, mediaType: 'movie'),
-  createdBy: const SeerrUser(id: 7),
+  createdBy: SeerrUser(id: by),
   createdAt: '2026-09-26T12:00:00.000Z',
   updatedAt: updatedAt,
   comments: [
@@ -134,6 +135,8 @@ void main() {
                 ),
               ),
         ),
+        // Anna, whose reports these are.
+        seerrActingUserIdProvider.overrideWith((ref, id) => 7),
         ownIssuesProvider.overrideWith((ref, id) {
           asked?.add(1);
           return (reads ??
@@ -224,6 +227,62 @@ void main() {
     // Not settled: the conversation is out.
     expect(find.text('Audio\u00A0· 1 reply'), findsNothing);
     expect(find.text('Audio\u00A0· 1 reply from Matt'), findsOneWidget);
+
+    await harness.unmount(tester);
+  });
+
+  testWidgets('an account that may view every issue reads only its own under '
+      'Your reports, and counts only those', (tester) async {
+    final viewsAll = RoleGate(
+      audience: Audience.requester,
+      grant: SeerrGrant.account(
+        permissions:
+            SeerrPermission.request.value | SeerrPermission.viewIssues.value,
+      ),
+    );
+    final (harness, _) = await pump(
+      tester,
+      gate: viewsAll,
+      reads: () async => SeerrAdminResult(
+        items: [
+          reports.first,
+          _report(
+            30,
+            'Hero',
+            type: SeerrIssueType.video,
+            by: 99,
+            updatedAt: '2026-10-05T12:00:00.000Z',
+          ),
+          _report(
+            31,
+            'Agent 327',
+            type: SeerrIssueType.video,
+            by: 99,
+            updatedAt: '2026-10-06T12:00:00.000Z',
+          ),
+        ],
+        total: 3,
+      ),
+    );
+
+    expect(find.text('Your reports'), findsOneWidget);
+    expect(find.text('1 open'), findsOneWidget);
+    expect(find.text('Cosmos Laundromat\u00A0· S2\u00A0E3'), findsOneWidget);
+    expect(find.text('Hero'), findsNothing);
+    expect(find.text('Agent 327'), findsNothing);
+
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a read cut short counts hers as a floor', (tester) async {
+    final (harness, _) = await pump(
+      tester,
+      gate: _mayReport,
+      reads: () async =>
+          SeerrAdminResult(items: [reports.first], total: 400, isPartial: true),
+    );
+
+    expect(find.text('1+ open'), findsOneWidget);
 
     await harness.unmount(tester);
   });

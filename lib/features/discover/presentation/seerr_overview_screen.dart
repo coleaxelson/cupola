@@ -233,6 +233,8 @@ class _ReportedProblemsSection extends ConsumerWidget {
           : ref.watch(titleLightProvider(leadPoster)).value?.art,
       subtitle: '$open open',
       destination: ServiceTab.issues,
+      // `$open open` is what the link promises: the tab opens on them.
+      onOpen: ref.read(seerrIssueFilterProvider.notifier).showOpen,
       child: AsyncValueWidget<List<SeerrIssue>>.section(
         value: rows,
         service: ServiceKey.seerr,

@@ -432,10 +432,11 @@ class SeerrService {
 
   /// Every issue the connection's account may see, newest activity first.
   ///
-  /// For a requester that is their own: without MANAGE_ISSUES or VIEW_ISSUES
-  /// the server limits the list to the caller (`issue.ts`, `GET /`), so the
-  /// same call is the operator's list with `all` and the requester's list. Read
-  /// and hydrated like [getIssuesResult].
+  /// **Not the account's own.** Without MANAGE_ISSUES or VIEW_ISSUES the server
+  /// limits the list to the caller (`issue.ts`, `GET /`), but with VIEW_ISSUES
+  /// it answers everyone's, so a surface that means the caller's reports keeps
+  /// those it reads here by [SeerrIssue.isReportedBy]. Read and hydrated like
+  /// [getIssuesResult].
   Future<SeerrAdminResult<SeerrIssue>> getOwnIssuesResult() =>
       getIssuesResult(filter: SeerrIssueFilter.all);
 

@@ -76,6 +76,45 @@ void main() {
     expect(find.text('3 requests'), findsOneWidget);
   });
 
+  testWidgets('the Issues tab, left on Resolved, draws the open issues once '
+      'a surface that promises them puts the filter back', (tester) async {
+    final service = FakeSeerrService()
+      ..issues = [
+        SeerrIssue(
+          id: 7,
+          type: SeerrIssueType.audio,
+          status: SeerrIssueStatus.open,
+          media: const SeerrIssueMedia(title: 'Dune: Part Two'),
+          createdBy: const SeerrUser(id: 1, username: 'Matt'),
+        ),
+        SeerrIssue(
+          id: 8,
+          type: SeerrIssueType.video,
+          status: SeerrIssueStatus.resolved,
+          media: const SeerrIssueMedia(title: 'Arrival'),
+          createdBy: const SeerrUser(id: 1, username: 'Matt'),
+        ),
+      ];
+    await _pump(
+      tester,
+      service: service,
+      screen: const SeerrIssuesScreen(topPadding: 0),
+    );
+    await tester.tap(find.text('Resolved'));
+    await tester.pumpAndSettle();
+    expect(find.text('Arrival'), findsOneWidget);
+    expect(find.text('Dune: Part Two'), findsNothing);
+
+    // The tab stays mounted while the person is on Home.
+    ProviderScope.containerOf(
+      tester.element(find.byType(SeerrIssuesScreen)),
+    ).read(seerrIssueFilterProvider.notifier).showOpen();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dune: Part Two'), findsOneWidget);
+    expect(find.text('Arrival'), findsNothing);
+  });
+
   testWidgets('the Issues tab draws the title hydrated from its page', (
     tester,
   ) async {

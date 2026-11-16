@@ -141,6 +141,7 @@ class ServiceOverviewSection extends StatelessWidget {
     required this.child,
     this.subtitle,
     this.destination,
+    this.onOpen,
     this.light,
   }) : padBody = true;
 
@@ -157,6 +158,7 @@ class ServiceOverviewSection extends StatelessWidget {
     required this.child,
     this.subtitle,
     this.destination,
+    this.onOpen,
   }) : padBody = false,
        light = null;
 
@@ -170,6 +172,11 @@ class ServiceOverviewSection extends StatelessWidget {
   /// The tab this region's "see the rest" link opens, or null for a region
   /// whose rows belong to several tabs at once.
   final ServiceTab? destination;
+
+  /// Runs just before the link switches to [destination]: for a tab that
+  /// keeps a choice of its own while it is away and is promised in a state
+  /// (the open issues).
+  final VoidCallback? onOpen;
 
   final Widget child;
 
@@ -205,7 +212,10 @@ class ServiceOverviewSection extends StatelessWidget {
         : 'opens the ${service.title} ${tab.label} tab';
     final open = tab == null
         ? null
-        : () => goToServiceTab(context, service, tab);
+        : () {
+            onOpen?.call();
+            goToServiceTab(context, service, tab);
+          };
     // Inside the slab the slab carries the inset.
     final header = SectionHeader.flush(
       title: title,

@@ -41,6 +41,31 @@ final requestsProvider = FutureProvider<List<SeerrRequest>>((ref) async {
   return ref.watch(seerrServiceProvider).hydrate(rows);
 }, retry: noProviderRetry);
 
+/// Which issues the Issues tab lists: Open until a chip says otherwise.
+///
+/// Held here and not in the tab's `State`, because the tab's branch stays
+/// mounted while the person is elsewhere: a surface that sends them to the
+/// open issues (Needs you, Home, the Overview's link) puts it back on Open
+/// ([SeerrIssueFilterChoice.showOpen]) before it goes, or the tab would land
+/// on the filter it was left on. Reached by the tab bar, it is what was left.
+/// One per lens: another Seerr starts on Open. Never persisted.
+final seerrIssueFilterProvider =
+    NotifierProvider<SeerrIssueFilterChoice, SeerrIssueFilter>(
+      SeerrIssueFilterChoice.new,
+    );
+
+class SeerrIssueFilterChoice extends Notifier<SeerrIssueFilter> {
+  @override
+  SeerrIssueFilter build() {
+    ref.watch(activeInstanceProvider(ServiceKey.seerr).select((i) => i?.id));
+    return SeerrIssueFilter.open;
+  }
+
+  void choose(SeerrIssueFilter filter) => state = filter;
+
+  void showOpen() => state = SeerrIssueFilter.open;
+}
+
 final seerrIssuesProvider = FutureProvider.autoDispose
     .family<SeerrAdminResult<SeerrIssue>, SeerrIssueFilter>((
       ref,
@@ -49,10 +74,11 @@ final seerrIssuesProvider = FutureProvider.autoDispose
       return ref.watch(seerrServiceProvider).getIssuesResult(filter: filter);
     }, retry: noProviderRetry);
 
-/// The issues of connection [connectionId] (empty: the lens) that its own
-/// account reported: Seerr lists only the caller's own to an account without
-/// MANAGE_ISSUES or VIEW_ISSUES, so this is the requester's list. The page of
-/// her reports reads it, and nobody else does.
+/// The issues of connection [connectionId] (empty: the lens) that its account
+/// may see: only the caller's own to an account without MANAGE_ISSUES or
+/// VIEW_ISSUES, everyone's with VIEW_ISSUES. The page of her reports reads it
+/// and keeps the ones she reported (`SeerrIssue.isReportedBy`), and nobody
+/// else does.
 ///
 /// Dropped through [invalidateSeerrIssues] only.
 final ownIssuesProvider =

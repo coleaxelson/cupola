@@ -26,12 +26,13 @@ import 'package:cupola/core/utils/image_utils.dart';
 /// reports` with how many are still open, one row per report, the newest
 /// change first, each opening her report.
 ///
-/// Read from her own session, which Seerr limits to her own reports, and only
-/// when her account may list issues at all: nothing is asked that the server
-/// would refuse. **Absent** with no reports, with none of the above, and
-/// while the read is out or did not answer: her requests already carry the
-/// page's one line for a silent server, and a second one here would say the
-/// same twice. Never names a service.
+/// Read from her own session and kept to what she reported (Seerr answers
+/// everyone's to an account that may view issues), and only when her account
+/// may list issues at all: nothing is asked that the server would refuse.
+/// **Absent** with no reports, with none of the above, and while the read is
+/// out or did not answer: her requests already carry the page's one line for
+/// a silent server, and a second one here would say the same twice. Never
+/// names a service.
 class YourReportsSection extends ConsumerWidget {
   const YourReportsSection({super.key});
 
@@ -39,11 +40,17 @@ class YourReportsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mayList = ref.watch(roleGateProvider('')).mayListIssues;
     if (!mayList) return const SizedBox.shrink();
-    final reports = ref.watch(ownIssuesProvider('')).asData?.value.items;
+    final read = ref.watch(ownIssuesProvider('')).asData?.value;
+    // Seerr answers everyone's issues to an account that may view them: hers
+    // are the ones she reported, and with no account to tell them by, none.
+    final me = ref.watch(seerrActingUserIdProvider(''));
+    final reports = read?.items.where((report) => report.isReportedBy(me));
     if (reports == null || reports.isEmpty) return const SizedBox.shrink();
     final newestFirst = [...reports]
       ..sort((a, b) => _changedAt(b).compareTo(_changedAt(a)));
     final open = newestFirst.where((report) => report.isOpen).length;
+    // A read cut short may hold more of hers than it shows: a floor.
+    final openCount = read!.isPartial ? '$open+' : '$open';
     final lens =
         ref.watch(
           activeInstanceProvider(ServiceKey.seerr).select((i) => i?.id),
@@ -56,7 +63,7 @@ class YourReportsSection extends ConsumerWidget {
         children: [
           MediaHeading(
             'Your reports',
-            trailing: open > 0 ? '$open open' : null,
+            trailing: open > 0 ? '$openCount open' : null,
           ),
           RequestsSlab(
             children: [
