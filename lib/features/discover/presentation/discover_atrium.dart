@@ -36,6 +36,7 @@ import 'package:cupola/features/discover/presentation/widgets/catalog_poster.dar
 import 'package:cupola/features/discover/presentation/widgets/collection_tally.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_carousel.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_door.dart';
+import 'package:cupola/features/discover/presentation/widgets/hide_owned_switch.dart';
 import 'package:cupola/features/discover/presentation/widgets/search_row.dart';
 import 'package:cupola/features/media/presentation/open_media.dart';
 import 'package:cupola/features/movies/presentation/movies_provider.dart';
@@ -104,6 +105,7 @@ class _DiscoverAtriumState extends ConsumerState<DiscoverAtrium> {
         const DiscoverCalendarBand(),
         const _Doors(),
         const _QuietLinks(),
+        const _HideOwned(),
         const SizedBox(height: AppSpacing.xl),
         const _CompleteTheCollection(),
         const _BecauseYouWatched(),
@@ -116,7 +118,7 @@ class _DiscoverAtriumState extends ConsumerState<DiscoverAtrium> {
         DiscoverCarousel(
           title: 'Trending this week',
           sectionId: 'trending',
-          items: trending,
+          items: ref.watch(atriumTrendingShelfProvider),
           onRetry: () => ref.invalidate(atriumTrendingProvider),
           onSeeAll: () =>
               context.push(ServiceRoutes.discoverIndex(DiscoverIndex.trending)),
@@ -124,7 +126,7 @@ class _DiscoverAtriumState extends ConsumerState<DiscoverAtrium> {
         DiscoverCarousel(
           title: 'Coming soon',
           sectionId: 'coming_soon',
-          items: ref.watch(comingSoonProvider),
+          items: ref.watch(atriumComingSoonShelfProvider),
           onRetry: () => ref.invalidate(comingSoonProvider),
           onSeeAll: () => context.push(
             ServiceRoutes.discoverCatalog(
@@ -182,6 +184,20 @@ class _CompleteTheCollection extends ConsumerWidget {
   }
 }
 
+/// "Hide what I have", right under the quiet links: the one switch of the
+/// catalogue pages, here for the shelves that list what the server may hold.
+/// The row is there from the start; the switch itself once the choice is
+/// known.
+class _HideOwned extends ConsumerWidget {
+  const _HideOwned();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => HideOwnedSwitch(
+    value: ref.watch(catalogHideOwnedProvider).value,
+    onChanged: ref.read(catalogHideOwnedProvider.notifier).set,
+  );
+}
+
 /// TMDB's recommendations for what the household finished last on its media
 /// server. Drawn only once there is something to recommend from.
 class _BecauseYouWatched extends ConsumerWidget {
@@ -190,7 +206,7 @@ class _BecauseYouWatched extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!ref.watch(hasWatchHistoryProvider)) return const SizedBox.shrink();
-    final shelf = ref.watch(becauseYouWatchedProvider).value;
+    final shelf = ref.watch(atriumBecauseShelfProvider).value;
     if (shelf == null) return const SizedBox.shrink();
     return DiscoverCarousel(
       title: 'Because you watched ${shelf.watched}',

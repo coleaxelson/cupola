@@ -658,7 +658,10 @@ class SeerrFake extends ServiceFake {
     'knownFor': <Object?>[],
   };
 
-  static JsonMap _discoverPage(List<WorldTitle> titles) => {
+  /// A page of TMDB titles as Seerr relays them, each with the `mediaInfo` the
+  /// server holds of it (none for a title nobody asked for), so the atrium's
+  /// `Hide what I have` and the posters' states have something to read.
+  static JsonMap _discoverPage(ServerContext c, List<WorldTitle> titles) => {
     'page': 1,
     'totalPages': 1,
     'totalResults': titles.length,
@@ -672,6 +675,7 @@ class SeerrFake extends ServiceFake {
           'voteAverage': 7.4,
           'posterPath': ?WorldArtwork.posterPath(t),
           'backdropPath': ?WorldArtwork.backdropPath(t),
+          'mediaInfo': ?_media(c, t),
         },
     ],
   };
@@ -887,7 +891,7 @@ class SeerrFake extends ServiceFake {
         case '/api/v1/discover/trending':
           // TMDB's trending, which Seerr relays, mixes people in with the
           // titles: one leads the list, as she does when she is in the news.
-          final page = _discoverPage([
+          final page = _discoverPage(c, [
             for (final t in WorldTitles.all)
               if (!t.isSeries) t,
           ]);
@@ -898,7 +902,7 @@ class SeerrFake extends ServiceFake {
         case '/api/v1/discover/movies':
         case '/api/v1/discover/movies/upcoming':
           return NetworkReply.json(
-            _discoverPage([
+            _discoverPage(c, [
               for (final t in WorldTitles.all)
                 if (!t.isSeries) t,
             ]),
@@ -906,7 +910,7 @@ class SeerrFake extends ServiceFake {
         case '/api/v1/discover/tv':
         case '/api/v1/discover/tv/upcoming':
           return NetworkReply.json(
-            _discoverPage([
+            _discoverPage(c, [
               for (final t in WorldTitles.all)
                 if (t.isSeries) t,
             ]),
@@ -914,7 +918,7 @@ class SeerrFake extends ServiceFake {
         case '/api/v1/search':
           final query = (r.query['query'] ?? '').toLowerCase();
           return NetworkReply.json(
-            _discoverPage([
+            _discoverPage(c, [
               for (final t in WorldTitles.all)
                 if (query.isNotEmpty && t.title.toLowerCase().contains(query))
                   t,
@@ -1128,6 +1132,7 @@ class SeerrFake extends ServiceFake {
       if (rail != null) {
         return NetworkReply.json(
           _discoverPage(
+            c,
             path ==
                     '/api/v1/movie/${WorldTitles.tearsOfSteel.tmdbId}/recommendations'
                 ? const [
@@ -1140,7 +1145,7 @@ class SeerrFake extends ServiceFake {
         );
       }
       if (path.startsWith('/api/v1/discover/')) {
-        return NetworkReply.json(_discoverPage(const []));
+        return NetworkReply.json(_discoverPage(c, const []));
       }
     }
     // An edit before an approval, as Seerr's route takes it: only a request

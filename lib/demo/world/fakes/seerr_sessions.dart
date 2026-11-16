@@ -257,6 +257,8 @@ class SeerrSetup {
       (s) => s.service == service && s.is4k && s.isDefault,
     );
     json['initialized'] = initialized;
+    // The server's own "hide what I have": off, as a fresh Seerr has it.
+    json.putIfAbsent('hideAvailable', () => false);
     if (sendsMediaServerType) {
       json['mediaServerType'] = switch (mediaServer) {
         SeerrMediaServer.plex => 1,

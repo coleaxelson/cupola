@@ -65,6 +65,42 @@ Widget _episodeSheet() {
   );
 }
 
+/// The state sheet of Everyone's requests: what `showMediaValueSheet` builds
+/// when its options carry a count (`meta`), the floor drawn `41+`.
+Widget _stateSheet({bool floor = false}) {
+  const states = [
+    ('On its way', 12, 'On its way'),
+    ('On the server', 295, 'On the server'),
+    ('Declined', 41, 'Declined'),
+  ];
+  return AppBottomSheet(
+    title: 'State',
+    subtitle: 'Currently Declined',
+    icon: Icons.tune_rounded,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MediaValueOptionRow(
+          label: 'Any state',
+          meta: floor ? '348+' : '348',
+          isSelected: false,
+          accent: null,
+          onTap: _noop,
+        ),
+        for (final (label, count, _) in states)
+          MediaValueOptionRow(
+            label: label,
+            meta: floor ? '$count+' : '$count',
+            isSelected: label == 'Declined',
+            accent: null,
+            onTap: _noop,
+          ),
+      ],
+    ),
+  );
+}
+
 /// Opens the [PopupMenuButton] inside [child] once it has laid out, on a
 /// navigator local to the scene so the menu lands inside the scene's box.
 class _OpenMenu extends StatelessWidget {
@@ -121,6 +157,19 @@ void main() {
         'Quality profile sheet body (showMediaValueSheet) · the selected '
         'row in the primary ink (the page accent is the lamp)',
         (_) => _profileSheet(),
+        width: 390,
+      ),
+      CatalogScene(
+        'Option with a count (MediaDetailValueOption.meta) · the state '
+        'filter of Everyone\'s requests: the count closes each row in the '
+        'secondary ink, and reads 41+ where the list is not whole',
+        (_) => Column(
+          children: [
+            _stateSheet(),
+            const SizedBox(height: 16),
+            _stateSheet(floor: true),
+          ],
+        ),
         width: 390,
       ),
       CatalogScene(

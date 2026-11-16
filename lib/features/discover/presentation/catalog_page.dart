@@ -28,6 +28,7 @@ import 'package:cupola/features/discover/domain/seerr_status.dart';
 import 'package:cupola/features/discover/presentation/catalog_providers.dart';
 import 'package:cupola/features/discover/presentation/discover_details_provider.dart';
 import 'package:cupola/features/discover/presentation/widgets/catalog_poster.dart';
+import 'package:cupola/features/discover/presentation/widgets/hide_owned_switch.dart';
 import 'package:cupola/features/discover/presentation/widgets/seerr_not_set_up.dart';
 import 'package:cupola/features/media/presentation/media_parts.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -86,7 +87,9 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
   Future<List<MediaPreview>> _fetch(int _) async {
     final generation = _generation;
     final query = _query;
-    final hide = ref.read(catalogHideOwnedProvider);
+    // The choice is settled before the first poster is asked for: a page
+    // that drew titles and then took some away would flicker.
+    final hide = await ref.read(catalogHideOwnedProvider.future);
     final service = ref.read(seerrServiceProvider);
     final numbering = hide
         ? await ref.read(seerrNumberingProvider.future).catchError((_) => null)
@@ -149,7 +152,11 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
       );
     }
     ref.listen(catalogHideOwnedProvider, (previous, next) {
-      if (previous != next) _restart();
+      // The first answer is what the first fetch waited for; only a change
+      // after it asks again.
+      final was = previous?.value;
+      final now = next.value;
+      if (was != null && now != null && was != now) _restart();
     });
     // Kept alive for the fetches, which read Seerr's numbering to know which
     // titles the server holds.
@@ -269,7 +276,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
                           onRetry: _restart,
                         ),
                         noItemsFoundIndicatorBuilder: (_) => _Nothing(
-                          hidden: ref.read(catalogHideOwnedProvider),
+                          hidden:
+                              ref.read(catalogHideOwnedProvider).value ?? false,
                         ),
                         itemBuilder: (context, item, index) => CatalogPoster(
                           item: item,
@@ -361,7 +369,7 @@ class _Controls extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hide = ref.watch(catalogHideOwnedProvider);
+    final hide = ref.watch(catalogHideOwnedProvider).value;
     final pills = <Widget>[
       if (query.filters)
         SelectionPill(
@@ -425,7 +433,7 @@ class _Controls extends ConsumerWidget {
               ],
             ),
           ),
-        _HideOwned(
+        HideOwnedSwitch(
           value: hide,
           onChanged: ref.read(catalogHideOwnedProvider.notifier).set,
         ),
@@ -466,57 +474,6 @@ class _Controls extends ConsumerWidget {
     if (start == null) return;
     final next = start == 0 ? null : start;
     if (next != query.decadeFilter) onChanged(query.withDecade(next));
-  }
-}
-
-/// "Hide what I have": one switch for the whole catalogue.
-///
-/// The row is a phone's at most ([AppBreakpoints.splitList]), at the head of
-/// a wider page: across a tablet or a desktop window the switch would sit a
-/// thousand points from the words that say what it does.
-class _HideOwned extends StatelessWidget {
-  const _HideOwned({required this.value, required this.onChanged});
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppBreakpoints.splitList),
-        child: _row(room),
-      ),
-    );
-  }
-
-  Widget _row(CupolaRoom room) {
-    return MergeSemantics(
-      child: InkWell(
-        onTap: () => onChanged(!value),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Hide what I have',
-                    style: AppType.row
-                        .weight(FontWeight.w500)
-                        .copyWith(color: room.ink),
-                  ),
-                ),
-                Switch(value: value, onChanged: onChanged),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

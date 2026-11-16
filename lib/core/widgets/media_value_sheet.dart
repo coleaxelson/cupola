@@ -19,7 +19,19 @@ class MediaDetailValueOption<T> {
   /// Radarr's own UI and renaming it here breaks the only join the user has.
   final String label;
 
-  const MediaDetailValueOption({required this.value, required this.label});
+  /// What closes the row, in the secondary ink: a count (`41`). Null for none.
+  final String? meta;
+
+  /// What a screen reader says for [meta] when it is not the text itself
+  /// (`41 or more requests` for `41+`). Null reads [meta].
+  final String? spokenMeta;
+
+  const MediaDetailValueOption({
+    required this.value,
+    required this.label,
+    this.meta,
+    this.spokenMeta,
+  });
 }
 
 /// Opens the sheet that edits one field of a detail page where it is read.
@@ -64,6 +76,8 @@ Future<MediaDetailValueOption<T>?> showMediaValueSheet<T>(
     builder: (sheetContext) {
       Widget row(MediaDetailValueOption<T> option) => MediaValueOptionRow(
         label: option.label,
+        meta: option.meta,
+        spokenMeta: option.spokenMeta,
         isSelected: option.value == value,
         accent: accent,
         onTap: () =>
@@ -201,6 +215,13 @@ List<MediaDetailValueOption<int>> qualityProfileOptions(
 /// the wrong signal on a row where one sibling genuinely *is* selected.
 class MediaValueOptionRow extends StatelessWidget {
   final String label;
+
+  /// What closes the row, in the secondary ink; see
+  /// [MediaDetailValueOption.meta].
+  final String? meta;
+
+  /// See [MediaDetailValueOption.spokenMeta].
+  final String? spokenMeta;
   final bool isSelected;
   final Color? accent;
   final VoidCallback onTap;
@@ -208,6 +229,8 @@ class MediaValueOptionRow extends StatelessWidget {
   const MediaValueOptionRow({
     super.key,
     required this.label,
+    this.meta,
+    this.spokenMeta,
     required this.isSelected,
     required this.accent,
     required this.onTap,
@@ -230,7 +253,7 @@ class MediaValueOptionRow extends StatelessWidget {
 
     return PressableScale(
       onTap: onTap,
-      semanticLabel: label,
+      semanticLabel: [label, ?(spokenMeta ?? meta)].join(', '),
       semanticValue: isSelected ? 'Selected' : null,
       excludeChildSemantics: true,
       child: ConstrainedBox(
@@ -253,6 +276,16 @@ class MediaValueOptionRow extends StatelessWidget {
                     : theme.textTheme.bodyLarge!.weight(FontWeight.w500),
               ),
             ),
+            if (meta case final meta?) ...[
+              const SizedBox(width: AppSpacing.md),
+              Text(
+                meta,
+                // Tabular, so a column of counts lines up digit by digit.
+                style: theme.textTheme.bodyMedium!.tabular.copyWith(
+                  color: CupolaThemeColors.of(context).dimText,
+                ),
+              ),
+            ],
           ],
         ),
       ),

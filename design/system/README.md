@@ -253,6 +253,7 @@ Binding, not best effort. WCAG AA in both rooms, measured against the ground eac
 - A `Semantics(hint:)` wrapped around a button is dropped: annotate the child.
 - A dimmed control is never `Semantics(enabled: false)`: it is tappable, and its hint says what it needs.
 - Status is spoken, not only coloured. The focus ring and a focused field are `line.focus`.
+- **An off switch is seen** in both rooms: its thumb and the track's edge are the secondary ink (`on-surface-variant`) over the highest container, 3:1 or more off the ground (dark about 10:1, light about 6.5:1); an on switch is the theme's own.
 - A carousel that advances by itself shows its pause control and stops advancing under a screen reader and under Reduce Motion.
 
 ## Iconography

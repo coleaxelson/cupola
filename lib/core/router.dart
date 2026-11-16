@@ -32,6 +32,7 @@ import 'package:cupola/features/discover/presentation/seerr_overview_screen.dart
 import 'package:cupola/features/discover/presentation/seerr_admin_screens.dart';
 import 'package:cupola/features/activity/domain/service_type.dart';
 import 'package:cupola/features/activity/domain/activity_tab.dart';
+import 'package:cupola/features/activity/domain/request_filters.dart';
 import 'package:cupola/features/activity/presentation/activity_blocklist_page.dart';
 import 'package:cupola/features/activity/presentation/activity_needs_you_page.dart';
 import 'package:cupola/features/activity/presentation/download_page.dart';
@@ -689,9 +690,10 @@ RouteBase _seerrRoutes() => _serviceRoutes(
   roots: {
     ServiceTab.overview: (state) =>
         const SeerrOverviewScreen(topPadding: _serviceTabTopPadding),
-    ServiceTab.requests: (state) => const ServiceAllRequestsScreen(
+    ServiceTab.requests: (state) => ServiceAllRequestsScreen(
       showAppBar: false,
       topPadding: _serviceTabTopPadding,
+      filters: RequestFilters.fromQuery(state.uri.queryParameters),
     ),
     ServiceTab.issues: (state) =>
         const SeerrIssuesScreen(topPadding: _serviceTabTopPadding),
@@ -1800,6 +1802,9 @@ Page<void> _activityPage(GoRouterState state, ActivityTab tab) => _tabPage(
     requestsOf: tab == ActivityTab.requests
         ? state.uri.queryParameters['i']
         : null,
+    requestFilters: tab == ActivityTab.requests
+        ? RequestFilters.fromQuery(state.uri.queryParameters)
+        : RequestFilters.none,
   ),
   key: const ValueKey('activity'),
 );

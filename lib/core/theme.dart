@@ -1360,6 +1360,28 @@ class AppTheme {
         shape: corners(AppRadius.md),
       ),
 
+      // Switch: an off switch is drawn in the secondary ink (the thumb and the
+      // track's edge) over the highest container, so it reads on the ground
+      // in both themes at the 3:1 a control needs; the theme's own default
+      // (the outline for both) left it a ghost in the dark. A switch that is
+      // on, and one that cannot be changed, keep the framework's look.
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) =>
+              states.contains(WidgetState.selected) ||
+                  states.contains(WidgetState.disabled)
+              ? null
+              : colorScheme.onSurfaceVariant,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) =>
+              states.contains(WidgetState.selected) ||
+                  states.contains(WidgetState.disabled)
+              ? null
+              : colorScheme.onSurfaceVariant,
+        ),
+      ),
+
       // TabBar: the active tab in ink, the rest in the tertiary ink.
       tabBarTheme: TabBarThemeData(
         labelColor: colorScheme.primary,

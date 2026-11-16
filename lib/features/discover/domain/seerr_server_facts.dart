@@ -167,6 +167,7 @@ final class SeerrServerFacts {
     this.movie4kEnabled = false,
     this.series4kEnabled = false,
     this.partialRequestsEnabled = false,
+    this.hideAvailable = false,
     this.emailEnabled = false,
     this.jellyfinForgotPasswordUrl,
     this.jellyfinServerName,
@@ -192,6 +193,7 @@ final class SeerrServerFacts {
       movie4kEnabled: json['movie4kEnabled'] == true,
       series4kEnabled: json['series4kEnabled'] == true,
       partialRequestsEnabled: json['partialRequestsEnabled'] == true,
+      hideAvailable: json['hideAvailable'] == true,
       emailEnabled: json['emailEnabled'] == true,
       jellyfinForgotPasswordUrl: text(json['jellyfinForgotPasswordUrl']),
       jellyfinServerName: text(json['jellyfinServerName']),
@@ -224,6 +226,11 @@ final class SeerrServerFacts {
   /// Whether a series may be requested season by season.
   final bool partialRequestsEnabled;
 
+  /// Whether the server's own Discover hides what it already has: the
+  /// operator's choice, which seeds "Hide what I have" until the person
+  /// makes theirs.
+  final bool hideAvailable;
+
   /// Whether the server sends email, and so can send a password reset to a
   /// local account.
   final bool emailEnabled;
@@ -255,6 +262,7 @@ final class SeerrServerFacts {
       other.movie4kEnabled == movie4kEnabled &&
       other.series4kEnabled == series4kEnabled &&
       other.partialRequestsEnabled == partialRequestsEnabled &&
+      other.hideAvailable == hideAvailable &&
       other.emailEnabled == emailEnabled &&
       other.jellyfinForgotPasswordUrl == jellyfinForgotPasswordUrl &&
       other.jellyfinServerName == jellyfinServerName;
@@ -269,6 +277,7 @@ final class SeerrServerFacts {
     movie4kEnabled,
     series4kEnabled,
     partialRequestsEnabled,
+    hideAvailable,
     emailEnabled,
     jellyfinForgotPasswordUrl,
     jellyfinServerName,

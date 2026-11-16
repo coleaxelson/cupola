@@ -174,7 +174,10 @@ class SearchRow extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      maxLines: 1,
+                      // A long title takes a second line, so titles that share a
+                      // long beginning can still be told apart; a person's
+                      // name keeps one.
+                      maxLines: _person ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: AppType.row.copyWith(color: room.ink),
                     ),

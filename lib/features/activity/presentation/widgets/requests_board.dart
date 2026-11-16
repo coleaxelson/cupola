@@ -7,15 +7,19 @@ import 'package:cupola/core/capability/role_gate.dart';
 import 'package:cupola/core/capability/role_gate_provider.dart';
 import 'package:cupola/core/status/lexicon.dart';
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/utils/snack_bar_helper.dart';
 import 'package:cupola/core/widgets/app_dialog.dart';
 import 'package:cupola/core/widgets/app_empty_state.dart';
 import 'package:cupola/core/widgets/app_skeleton.dart';
 import 'package:cupola/core/widgets/brief_failure_line.dart';
+import 'package:cupola/core/widgets/media_value_sheet.dart';
 import 'package:cupola/core/widgets/not_configured_placeholder.dart';
+import 'package:cupola/core/widgets/selection_pills.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/activity/data/household_requests.dart';
 import 'package:cupola/features/activity/domain/activity_tab.dart';
+import 'package:cupola/features/activity/domain/request_filters.dart';
 import 'package:cupola/features/activity/presentation/widgets/activity_download_row.dart';
 import 'package:cupola/features/activity/presentation/widgets/activity_section.dart';
 import 'package:cupola/features/activity/presentation/widgets/everyone_request_row.dart';
@@ -35,17 +39,8 @@ import 'package:cupola/features/settings/domain/connection_presentation.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
 
-/// One of the household's requests that waits on nobody here, with the
-/// Seerr it lives on: its id is per server, and so is its delete.
-typedef HouseholdRequest = ({
-  MyRequest mine,
-  String instanceId,
-  String? connection,
-
-  /// Whether its row names who asked: where the connection sees everyone's
-  /// requests, never to the requester.
-  bool namesWho,
-});
+export 'package:cupola/features/activity/domain/request_filters.dart'
+    show HouseholdRequest;
 
 /// The household's requests as Activity draws them: those that wait for the
 /// operator, as decisions, the longest waiting first, then every other in the order of the requester's
@@ -98,10 +93,19 @@ class HouseholdRequests {
   /// count less the requests waiting above, which the section does not list.
   /// Never fewer than the rows it lists. `47+ total` where the count is a
   /// floor.
-  String get totalLabel {
+  String get totalLabel => requestsFigure(
+    listed: listed,
+    listedFloor: floor,
+    shown: listed,
+    narrowed: false,
+    whole: whole,
+  );
+
+  /// The figure behind [totalLabel]: Seerr's count less the requests waiting
+  /// above, never fewer than the rows listed. A floor where [floor] is set.
+  int get listed {
     final less = total - waiting.length;
-    final listed = less < rest.length ? rest.length : less;
-    return '$listed${floor ? '+' : ''} total';
+    return less < rest.length ? rest.length : less;
   }
 }
 
@@ -202,11 +206,23 @@ const requestsBoardPage = 30;
 /// Requests tab both draw it; the host scrolls and refreshes.
 ///
 /// [only] chooses whose: null every Seerr, `''` the lens's, an id that
-/// connection's (`?i=`).
+/// connection's (`?i=`). [filters] narrow the other requests (`?state=`,
+/// `?by=`): they live in the address, so a pick goes to [address] with the
+/// filters in its query, replacing the page rather than stacking on it.
 class RequestsBoard extends ConsumerStatefulWidget {
-  const RequestsBoard({super.key, this.only});
+  const RequestsBoard({
+    super.key,
+    this.only,
+    this.filters = RequestFilters.none,
+    this.address,
+  });
 
   final String? only;
+  final RequestFilters filters;
+
+  /// The address the board is drawn at, without the filters: Activity's
+  /// Requests view with its `i`, or Seerr's Requests tab.
+  final Uri? address;
 
   @override
   ConsumerState<RequestsBoard> createState() => _RequestsBoardState();
@@ -214,6 +230,13 @@ class RequestsBoard extends ConsumerStatefulWidget {
 
 class _RequestsBoardState extends ConsumerState<RequestsBoard> {
   int _shown = requestsBoardPage;
+
+  @override
+  void didUpdateWidget(RequestsBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Another filter is another list: it starts at its first page.
+    if (oldWidget.filters != widget.filters) _shown = requestsBoardPage;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -246,8 +269,11 @@ class _RequestsBoardState extends ConsumerState<RequestsBoard> {
       for (final answer in answered.values)
         if (ids.contains(answer.decision?.instanceId)) ?answer.decision,
     ];
-    final rows = requests.rest.take(_shown).toList(growable: false);
-    final more = requests.rest.length - rows.length;
+    final census = censusOf(requests.rest);
+    final filters = widget.filters.within(census);
+    final kept = filters.narrow(requests.rest);
+    final rows = kept.take(_shown).toList(growable: false);
+    final more = kept.length - rows.length;
     // The one Seerr the address named, of several: said once, with the way
     // back to all of them.
     final namedOnly = widget.only?.isNotEmpty == true && reads.length == 1
@@ -297,8 +323,30 @@ class _RequestsBoardState extends ConsumerState<RequestsBoard> {
         if (requests.rest.isNotEmpty)
           ActivitySection(
             title: "Everyone's requests",
-            meta: requests.totalLabel,
+            meta: requestsFigure(
+              listed: requests.listed,
+              listedFloor: requests.floor,
+              shown: kept.length,
+              narrowed: filters.isNarrowed,
+              whole: requests.whole,
+            ),
+            controls: _Filters(
+              filters: filters,
+              facets: facetsOf(requests.rest, filters),
+              named: census.namesPeople,
+              whole: requests.whole,
+              go: _go,
+            ),
             children: [
+              if (kept.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                  child: Text(
+                    Lexicon.noRequestsMatch,
+                    textAlign: TextAlign.center,
+                    style: AppType.body.copyWith(color: room.inkSecondary),
+                  ),
+                ),
               for (final (index, entry) in rows.indexed)
                 EveryoneRequestRow(
                   key: ValueKey('${entry.instanceId}-${entry.mine.request.id}'),
@@ -327,6 +375,18 @@ class _RequestsBoardState extends ConsumerState<RequestsBoard> {
           ),
       ],
     );
+  }
+
+  /// Goes to the board's address with [filters] in its query, the other
+  /// parameters kept.
+  void _go(RequestFilters filters) {
+    final address = widget.address ?? Uri(path: ServiceRoutes.activityRequests);
+    final query = {...address.queryParameters, ...filters.query};
+    final target = Uri(
+      path: address.path,
+      queryParameters: query.isEmpty ? null : query,
+    );
+    GoRouter.maybeOf(context)?.go(target.toString());
   }
 
   /// Delete request for the key and an account that manages requests;
@@ -434,5 +494,129 @@ class _OnlyLine extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// The pills over Everyone's requests: the state, the person where the
+/// connection names who asked, and `Clear` while either narrows. Whole, on as
+/// many lines as they need, never a row to scroll: a filter off the edge is
+/// one nobody can see is narrowing the list.
+class _Filters extends StatelessWidget {
+  const _Filters({
+    required this.filters,
+    required this.facets,
+    required this.named,
+    required this.whole,
+    required this.go,
+  });
+
+  final RequestFilters filters;
+  final RequestFacets facets;
+
+  /// Whether the list names who asked: `Anyone` exists only then.
+  final bool named;
+  final bool whole;
+  final ValueChanged<RequestFilters> go;
+
+  @override
+  Widget build(BuildContext context) {
+    final person = facets.people
+        .where((entry) => entry.key == filters.person)
+        .firstOrNull;
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        _pill(
+          label: filters.state?.label ?? Lexicon.anyState,
+          selected: filters.state != null,
+          onTap: () => _pickState(context),
+        ),
+        if (named)
+          _pill(
+            label: person?.label ?? 'Anyone',
+            selected: person != null,
+            onTap: () => _pickPerson(context, person?.label),
+          ),
+        if (filters.isNarrowed)
+          _pill(
+            label: 'Clear',
+            selected: false,
+            onTap: () => go(RequestFilters.none),
+            chevron: false,
+          ),
+      ],
+    );
+  }
+
+  Widget _pill({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    bool chevron = true,
+  }) => IntrinsicWidth(
+    child: SelectionPill(
+      label: label,
+      selected: selected,
+      onTap: onTap,
+      trailing: chevron ? Icons.expand_more_rounded : null,
+    ),
+  );
+
+  String _meta(int count) => requestCountLabel(count, whole: whole);
+
+  String _spoken(int count) => requestCountSpoken(count, whole: whole);
+
+  Future<void> _pickState(BuildContext context) async {
+    final picked = await showMediaValueSheet<RequestStateGroup?>(
+      context,
+      title: 'State',
+      value: filters.state,
+      currentLabel: filters.state?.label ?? Lexicon.anyState,
+      options: [
+        MediaDetailValueOption<RequestStateGroup?>(
+          value: null,
+          label: Lexicon.anyState,
+          meta: _meta(facets.anyState),
+          spokenMeta: _spoken(facets.anyState),
+        ),
+        for (final MapEntry(:key, :value) in facets.states.entries)
+          MediaDetailValueOption<RequestStateGroup?>(
+            value: key,
+            label: key.label,
+            meta: _meta(value),
+            spokenMeta: _spoken(value),
+          ),
+      ],
+    );
+    if (picked == null) return;
+    go(filters.withState(picked.value));
+  }
+
+  Future<void> _pickPerson(BuildContext context, String? current) async {
+    final picked = await showMediaValueSheet<RequestPersonKey?>(
+      context,
+      title: 'Person',
+      value: filters.person,
+      currentLabel: current ?? 'Anyone',
+      searchHint: 'Name',
+      options: [
+        MediaDetailValueOption<RequestPersonKey?>(
+          value: null,
+          label: 'Anyone',
+          meta: _meta(facets.anyone),
+          spokenMeta: _spoken(facets.anyone),
+        ),
+        for (final entry in facets.people)
+          MediaDetailValueOption<RequestPersonKey?>(
+            value: entry.key,
+            label: entry.label,
+            meta: _meta(entry.count),
+            spokenMeta: _spoken(entry.count),
+          ),
+      ],
+    );
+    if (picked == null) return;
+    go(filters.withPerson(picked.value));
   }
 }

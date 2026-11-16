@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/core/models/media_preview.dart';
+import 'package:cupola/features/discover/data/seerr_accounts.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
+import 'package:cupola/features/discover/domain/seerr_server_facts.dart';
+import 'package:cupola/features/discover/presentation/widgets/hide_owned_switch.dart';
 import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/models/seerr_genre.dart';
 import 'package:cupola/features/discover/presentation/catalog_page.dart';
@@ -120,6 +125,52 @@ void main() {
     expect(scope.prefs.getBool('catalog_hide_owned'), isTrue);
   });
 
+  testWidgets('the same switch as the atrium\'s, and its first value is '
+      'Seerr\'s for one who never chose', (tester) async {
+    await _pumpPage(
+      tester,
+      _CatalogSeerr(),
+      const CatalogQuery.all(CatalogKind.movie),
+      serverHides: true,
+    );
+
+    expect(find.byType(HideOwnedSwitch), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    expect(find.text('Elephants Dream'), findsNothing);
+    expect(find.text('Spring'), findsOneWidget);
+  });
+
+  testWidgets('the first fetch waits for the choice: no title is drawn and '
+      'taken away', (tester) async {
+    final seerr = _CatalogSeerr();
+    final facts = Completer<SeerrServerFacts>();
+    await _pumpPage(
+      tester,
+      seerr,
+      const CatalogQuery.all(CatalogKind.movie),
+      facts: () => facts.future,
+      settle: false,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The row is there, empty of its switch; nothing was asked or drawn.
+    expect(find.text('Hide what I have'), findsOneWidget);
+    expect(find.byType(Switch).hitTestable(), findsNothing);
+    expect(seerr.asked, isEmpty);
+    expect(find.text('Elephants Dream'), findsNothing);
+
+    facts.complete(
+      SeerrServerFacts.fromPublicSettings({'hideAvailable': true}),
+    );
+    await tester.pumpAndSettle();
+
+    // Asked once, with the choice already made.
+    expect(seerr.asked, hasLength(1));
+    expect(find.text('Elephants Dream'), findsNothing);
+    expect(find.text('Spring'), findsOneWidget);
+  });
+
   testWidgets('a genre reached by its id alone takes its name from Seerr', (
     tester,
   ) async {
@@ -226,6 +277,9 @@ Future<void> _pumpPage(
   FakeSeerrService seerr,
   CatalogQuery query, {
   SettingsScope? prefs,
+  bool serverHides = false,
+  Future<SeerrServerFacts> Function()? facts,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = const Size(1170, 2532);
   tester.view.devicePixelRatio = 3.0;
@@ -244,9 +298,20 @@ Future<void> _pumpPage(
         ),
         seerrServiceProvider.overrideWithValue(seerr),
         seerrNumberingProvider.overrideWith((ref) async => null),
+        // What the server says of "Hide what I have" for one who never
+        // chose: answered here, so no read leaves the test.
+        seerrServerFactsProvider.overrideWith(
+          (ref, id) =>
+              facts?.call() ??
+              Future.value(
+                SeerrServerFacts.fromPublicSettings({
+                  'hideAvailable': serverHides,
+                }),
+              ),
+        ),
       ],
       child: MaterialApp(home: CatalogPage(query: query)),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }

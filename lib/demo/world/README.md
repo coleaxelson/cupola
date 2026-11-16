@@ -179,6 +179,9 @@ Lidarr's every name, comes back unread (the title echoed alone).
 
 Seerr's `/discover/trending` leads with a person (`mediaType: person`,
 Elena Varga) before the world's films, as TMDB's trending mixes people in.
+Every title of Seerr's `/discover/*` lists, `/search` and the recommendations
+carries the `mediaInfo` the server holds of it (none when nobody asked for
+it), so `Hide what I have` has something to hide.
 
 Prowlarr answers `/applications` with the world's Radarr, Radarr 4K, Sonarr
 and Lidarr in its `ApplicationResource` shape: `prowlarrUrl` and `baseUrl`

@@ -75,9 +75,22 @@ void main() {
         width: 1068,
       ),
       CatalogScene(
-        'Whole · all on the server, the legend one word',
+        'Whole · all on the server, no legend: it would only repeat the '
+        'headline',
         (_) => CollectionTally(
           shelf: _shelf(_blender.take(4).map(_held).toList()),
+        ),
+        width: 390,
+      ),
+      CatalogScene(
+        'Part way · on the server and missing only: no legend, the headline '
+        'says it',
+        (_) => CollectionTally(
+          shelf: _shelf([
+            ..._blender.take(5).map(_held),
+            (6, 'Coffee Run', 2020, null),
+            (7, 'Sprite Fright', 2021, null),
+          ]),
         ),
         width: 390,
       ),
