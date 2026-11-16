@@ -162,6 +162,12 @@ def auto_cards(base: str, known: dict[str, Card]) -> list[Card]:
 # --- Rendering ---------------------------------------------------------------
 
 def _flutter_test(cwd: Path, tests: list[str], label: str) -> None:
+    # With no path `flutter test` runs everything under test/, e2e included.
+    # A card new in the tree has no catalog test in the base: nothing of it
+    # is drawn there, and its scenes come out as new.
+    if not tests:
+        print(f"board · nothing to render on {label}", file=sys.stderr)
+        return
     print(f"board · rendering {label}: {', '.join(Path(t).stem for t in tests)}",
           file=sys.stderr)
     done = subprocess.run(
