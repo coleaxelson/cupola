@@ -28,7 +28,8 @@ typedef ActivityBadge = ({
 ///
 /// **Amber** when something needs the person: the faults as Needs you counts
 /// them, each group weighing its own count (eighteen imports blocked alike are
-/// eighteen), the operator's alone. **Blue** when no fault is left: the
+/// eighteen, the problems people reported on Seerr as many as are open), the
+/// operator's alone. **Blue** when no fault is left: the
 /// requests waiting for an answer this account may give, and the finished
 /// searches nobody has opened. Downloads in progress never count: they ask
 /// for nothing. A service that did not answer is the sidebar's red, not a
@@ -83,6 +84,7 @@ final activityBadgeProvider = Provider<ActivityBadge?>((ref) {
       ? 0
       : faultCountsByService(
           read.decisions,
+          withReports: true,
         ).values.fold<int>(0, (sum, count) => sum + count);
   final waiting = ref.watch(pendingRequestCountProvider).value;
   return activityBadgeOf(

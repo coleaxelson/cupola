@@ -79,13 +79,16 @@ class MediaReportSource {
       if (issue.isOpen) issue,
   ];
 
-  /// The newest report [userId] made on the title, or null; the API key has
-  /// no user.
-  SeerrIssue? ownLatest(int? userId) {
+  /// The report of [userId]'s the title's row speaks of, or null; the API key
+  /// has no user. The newest one still open, if she has one: a newer report
+  /// that was resolved does not hide an older one that was not. Without an
+  /// open one, the newest she made.
+  SeerrIssue? ownCurrent(int? userId) {
     if (userId == null) return null;
-    return _newestFirst(
+    final own = _newestFirst(
       issues,
-    ).where((issue) => issue.isReportedBy(userId)).firstOrNull;
+    ).where((issue) => issue.isReportedBy(userId));
+    return own.where((issue) => issue.isOpen).firstOrNull ?? own.firstOrNull;
   }
 
   /// Season [number]'s episode count, 0 when unknown.

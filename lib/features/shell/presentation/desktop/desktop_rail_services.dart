@@ -54,11 +54,18 @@ final desktopStackFigureProvider =
 /// The things to fix in each service: the faults of [decisions], each
 /// weighing its own [DashboardDecision.count], so a group of eighteen imports
 /// counts eighteen, as Needs you says it.
-Map<ServiceKey, int> faultCountsByService(List<DashboardDecision> decisions) {
+///
+/// What people reported is not the service failing: the sidebar's counts and
+/// the service's light leave it out. Activity's badge counts it
+/// ([withReports]), because Needs you lists it among the faults.
+Map<ServiceKey, int> faultCountsByService(
+  List<DashboardDecision> decisions, {
+  bool withReports = false,
+}) {
   final counts = <ServiceKey, int>{};
   for (final decision in decisions) {
-    // What people reported is not the service failing: its light stays.
-    if (!decision.isFault || decision.kind == DecisionKind.reportedProblems) {
+    if (!decision.isFault ||
+        (!withReports && decision.kind == DecisionKind.reportedProblems)) {
       continue;
     }
     counts.update(

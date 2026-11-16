@@ -127,6 +127,10 @@ class _Seerr extends FakeApiClient {
   /// Thrown by the next write, then cleared.
   Object? failWrite;
 
+  /// Thrown by the next comment, after the server has taken it: the answer is
+  /// what was lost.
+  Object? failAfterComment;
+
   /// Thrown by every read of the issue while set.
   Object? failRead;
 
@@ -205,6 +209,11 @@ class _Seerr extends FakeApiClient {
           ),
         ],
       };
+      final lost = failAfterComment;
+      if (lost != null) {
+        failAfterComment = null;
+        throw lost;
+      }
     } else if (path.endsWith('/resolved')) {
       issue = {
         ...issue,
@@ -980,6 +989,42 @@ void main() {
         'POST /api/v1/issue/12/comment',
       ]);
       expect(tester.widget<TextField>(_field).controller?.text, '');
+    });
+
+    testWidgets('a timeout after the server took the reply counts as sent: '
+        'no Retry, no second reply', (tester) async {
+      final client = _Seerr(_issue())..failAfterComment = _timeout;
+      await _open(tester, client: client);
+      await tester.enterText(_field, 'Got it, a new copy is on its way.');
+      await tester.tap(find.bySemanticsLabel('Send reply'));
+      await tester.pumpAndSettle();
+
+      expect(_text('Retry'), findsNothing);
+      expect(find.textContaining('Could not send the reply'), findsNothing);
+      expect(tester.widget<TextField>(_field).controller?.text, '');
+      expect(client.requests.where((r) => r.startsWith('POST')), hasLength(1));
+      expect(
+        _text('Got it, a new copy is on its way.'),
+        findsOneWidget,
+        reason: 'the reply is on the thread once',
+      );
+    });
+
+    testWidgets('a timeout whose read-back fails too does not say nothing was '
+        'sent, and keeps Retry', (tester) async {
+      final client = _Seerr(_issue())..failWrite = _timeout;
+      await _open(tester, client: client);
+      client.failRead = _timeout;
+      await tester.enterText(_field, 'Got it.');
+      await tester.tap(find.bySemanticsLabel('Send reply'));
+      await tester.pumpAndSettle();
+
+      expect(
+        _text('Could not send the reply. We can’t tell if it arrived.'),
+        findsOneWidget,
+      );
+      expect(_text('Retry'), findsOneWidget);
+      expect(tester.widget<TextField>(_field).controller?.text, 'Got it.');
     });
 
     testWidgets('a refusal offers no Retry', (tester) async {

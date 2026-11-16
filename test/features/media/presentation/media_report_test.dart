@@ -148,11 +148,57 @@ Map<String, dynamic> _issue(int id, {int status = 1, int by = 2}) => {
 };
 
 class _Client extends FakeApiClient {
-  _Client({this.error, this.hang = false});
+  _Client({
+    this.error,
+    this.hang = false,
+    this.held,
+    this.readError,
+    this.whole = const {},
+  });
 
   final Object? error;
   final bool hang;
   final posts = <Object?>[];
+
+  /// What `GET /issue` answers: the issues the server holds. Null answers
+  /// nothing at all.
+  final List<Map<String, dynamic>>? held;
+
+  /// What `GET /issue/{id}` answers, by id: the whole issue, replies included.
+  final Map<int, Map<String, dynamic>> whole;
+
+  /// What `GET /issue` fails with, when the read-back is meant to fail.
+  final Object? readError;
+  var reads = 0;
+
+  @override
+  Future<Response<dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Duration? receiveTimeout,
+  }) {
+    reads++;
+    if (readError != null) return Future.error(readError!);
+    final one = RegExp(r'/issue/(\d+)$').firstMatch(path);
+    if (one != null) {
+      return Future.value(
+        Response(
+          requestOptions: RequestOptions(path: path),
+          data: whole[int.parse(one.group(1)!)],
+        ),
+      );
+    }
+    return Future.value(
+      Response(
+        requestOptions: RequestOptions(path: path),
+        data: {
+          'results': held ?? const <Object>[],
+          'pageInfo': {'results': held?.length ?? 0},
+        },
+      ),
+    );
+  }
 
   @override
   Future<Response<dynamic>> post(
@@ -323,6 +369,7 @@ Future<void> _openSheet(
   _Client? client,
   Audience audience = Audience.requester,
   RoleGate? gate,
+  int? userId = 2,
 }) async {
   final rows = movie
       ? _rows(seerr, mediaInfo: _info())
@@ -339,6 +386,7 @@ Future<void> _openSheet(
     gate: gate ?? _gate(audience: audience),
     client: client,
     audience: audience,
+    userId: userId,
   );
 }
 
@@ -441,6 +489,21 @@ void main() {
       expect(mediaReportSourceOf(rows, movie: true, focus: 'b')?.seerr.id, 'b');
     });
 
+    test('her own report is the open one when a newer one was resolved', () {
+      final source = _source(
+        _rows(
+          _anna,
+          mediaInfo: _info(
+            issues: [
+              {..._issue(1), 'createdAt': '2026-09-01T10:00:00Z'},
+              {..._issue(2, status: 2), 'createdAt': '2026-10-01T10:00:00Z'},
+            ],
+          ),
+        ),
+      );
+      expect(source.ownCurrent(2)?.id, 1);
+    });
+
     test('her own latest report is the newest one she made', () {
       final source = _source(
         _rows(
@@ -454,9 +517,9 @@ void main() {
           ),
         ),
       );
-      expect(source.ownLatest(2)?.id, 2);
-      expect(source.ownLatest(null), isNull);
-      expect(source.ownLatest(9), isNull);
+      expect(source.ownCurrent(2)?.id, 2);
+      expect(source.ownCurrent(null), isNull);
+      expect(source.ownCurrent(9), isNull);
       expect(source.openIssues.map((i) => i.id), [3, 2, 1]);
     });
   });
@@ -901,6 +964,133 @@ void main() {
         '  It plays Sintel.  ',
       );
       expect(find.text('Submit report'), findsOneWidget);
+    });
+
+    /// What the server holds after Anna's report went in and its answer was
+    /// lost: her issue 77, on media 81, a video problem, with her words.
+    Map<String, dynamic> filed({
+      String words = 'It plays Sintel.',
+      int by = 2,
+    }) => {
+      ..._issue(77, by: by),
+      'media': {'id': 81, 'mediaType': 'movie', 'tmdbId': 653},
+      'comments': [
+        {'id': 5, 'message': words},
+      ],
+    };
+
+    testWidgets('a timeout after the send finds the report on the server and '
+        'counts as filed: no Retry, no second report', (tester) async {
+      final client = _Client(
+        error: _failed(type: DioExceptionType.receiveTimeout),
+        held: [filed()],
+      );
+      await _openSheet(tester, seerr: _anna, client: client);
+      await _fill(tester);
+      await _submit(tester);
+      await tester.pump();
+
+      expect(client.reads, 1);
+      expect(client.posts, hasLength(1));
+      expect(find.text('Retry'), findsNothing);
+      expect(find.text('Your report is still here.'), findsNothing);
+    });
+
+    testWidgets('a list that sends the row without its replies is read issue '
+        'by issue: the report is found, not sent again', (tester) async {
+      final client = _Client(
+        error: _failed(type: DioExceptionType.receiveTimeout),
+        held: [
+          {...filed(), 'comments': <Object>[]},
+        ],
+        whole: {77: filed()},
+      );
+      await _openSheet(tester, seerr: _anna, client: client);
+      await _fill(tester);
+      await _submit(tester);
+      await tester.pump();
+
+      expect(client.posts, hasLength(1));
+      expect(find.text('Retry'), findsNothing);
+      expect(find.text('Your report is still here.'), findsNothing);
+    });
+
+    testWidgets('a timeout with nothing of hers on the server offers Retry as '
+        'before', (tester) async {
+      final client = _Client(
+        error: _failed(type: DioExceptionType.receiveTimeout),
+        held: [
+          filed(words: 'Another thing'),
+          filed(by: 3),
+        ],
+      );
+      await _openSheet(tester, seerr: _anna, client: client);
+      await _fill(tester);
+      await _submit(tester);
+      await tester.pump();
+
+      expect(client.reads, 1);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('Your report is still here.'), findsOneWidget);
+    });
+
+    testWidgets('a report she had already made, same words, is not taken for '
+        'the new one', (tester) async {
+      final client = _Client(
+        error: _failed(type: DioExceptionType.receiveTimeout),
+        held: [filed()],
+      );
+      final rows = _rows(_anna, mediaInfo: _info(issues: [_issue(77)]));
+      await _pump(
+        tester,
+        ReportProblemSheet(
+          scope: (key: _movie, focus: null),
+          source: _source(rows),
+          season: 0,
+          episode: 0,
+        ),
+        rows: rows,
+        gate: _gate(),
+        client: client,
+        userId: 2,
+      );
+      await _fill(tester);
+      await _submit(tester);
+      await tester.pump();
+
+      expect(find.text('Retry'), findsOneWidget);
+    });
+
+    testWidgets('a timeout whose read-back fails too does not say nothing was '
+        'sent, and keeps Retry', (tester) async {
+      final client = _Client(
+        error: _failed(type: DioExceptionType.receiveTimeout),
+        readError: _failed(type: DioExceptionType.connectionError),
+      );
+      await _openSheet(tester, seerr: _anna, client: client);
+      await _fill(tester);
+      await _submit(tester);
+      await tester.pump();
+
+      expect(
+        find.text('Your report is still here. We can’t tell if it arrived.'),
+        findsOneWidget,
+      );
+      expect(find.text('Retry'), findsOneWidget);
+    });
+
+    testWidgets('a refusal that certainly never arrived is not read back', (
+      tester,
+    ) async {
+      final client = _Client(
+        error: _failed(type: DioExceptionType.connectionError),
+      );
+      await _openSheet(tester, seerr: _anna, client: client);
+      await _fill(tester);
+      await _submit(tester);
+
+      expect(client.reads, 0);
+      expect(find.text('Retry'), findsOneWidget);
     });
 
     testWidgets('the operator\'s caption is where it is filed', (tester) async {

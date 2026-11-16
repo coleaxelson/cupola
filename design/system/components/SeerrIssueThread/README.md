@@ -20,7 +20,7 @@ Rendered from `lib/features/media/presentation/seerr_issue_thread_screen.dart` (
 
 ## Verdicts and failures
 
-Every control reads `RoleGate` (live, dimmed with the reason as hint and toast, or absent). A failed write keeps the words and says `Nothing was sent` or `Nothing changed`, with `Retry` where the same request can succeed; a reply deleted meanwhile reads the thread again; an issue deleted meanwhile reads `This issue is gone` (operator, `Back to Issues`) or `This report was deleted.` (requester). Every write reads the issue, the Issues list and the title's report rows again.
+Every control reads `RoleGate` (live, dimmed with the reason as hint and toast, or absent). A failed write keeps the words and says `Nothing was sent` or `Nothing changed`, with `Retry` where the same request can succeed; a reply whose outcome is not known (a timeout after the send, a 5xx) is first looked for on the issue (`GET /issue/{id}`: the newest reply, hers, with the same words, added after the replies the thread held): found, it counts as sent; not found, the failure is told as above; when the read fails too, it reads `Could not send the reply. We can’t tell if it arrived.` with `Retry`; a reply deleted meanwhile reads the thread again; an issue deleted meanwhile reads `This issue is gone` (operator, `Back to Issues`) or `This report was deleted.` (requester). Every write reads the issue, the Issues list and the title's report rows again.
 
 ## Scenes
 

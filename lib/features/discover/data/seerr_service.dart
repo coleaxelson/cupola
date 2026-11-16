@@ -449,6 +449,60 @@ class SeerrService {
     return SeerrIssue.fromJson(response.data);
   }
 
+  /// The report [draft] made, if the server already holds it, else null: what
+  /// is read before a report whose outcome is unknown is offered again.
+  ///
+  /// Matches the newest issues of the title that [userId] reported, of the
+  /// draft's type, place and words, and that are not in [known] (the ids the
+  /// title held before the report was sent). Throws [StateError] for the API
+  /// key, which has no user to match: the caller cannot tell.
+  Future<SeerrIssue?> findReportedIssue(
+    SeerrIssueDraft draft, {
+    required int? userId,
+    Set<int> known = const {},
+  }) async {
+    if (userId == null) throw StateError('no account to match a report to');
+    final page = await _issuePage(0, filter: SeerrIssueFilter.all, take: 30);
+    for (final issue in page.items) {
+      if (known.contains(issue.id) ||
+          !issue.isReportedBy(userId) ||
+          issue.media?.id != draft.mediaId ||
+          issue.type != draft.type ||
+          issue.problemSeason != (draft.problemSeason ?? 0) ||
+          issue.problemEpisode != (draft.problemEpisode ?? 0)) {
+        continue;
+      }
+      // The list may send a row without its replies: the words are then read
+      // from the issue itself.
+      final replies = issue.comments.isNotEmpty
+          ? issue.comments
+          : (await getIssue(issue.id)).comments;
+      if (replies.firstOrNull?.message.trim() == draft.message.trim()) {
+        return issue;
+      }
+    }
+    return null;
+  }
+
+  /// Whether [message] is already the newest reply of [issueId], written by
+  /// [userId] and added after the [before] replies the conversation held when
+  /// it was sent: what is read before a reply whose outcome is unknown is
+  /// offered again. Throws [StateError] for the API key.
+  Future<bool> hasSentReply(
+    int issueId,
+    String message, {
+    required int? userId,
+    required int before,
+  }) async {
+    if (userId == null) throw StateError('no account to match a reply to');
+    final replies = (await getIssue(issueId)).comments;
+    final last = replies.lastOrNull;
+    return replies.length > before &&
+        last != null &&
+        last.isBy(userId) &&
+        last.message.trim() == message.trim();
+  }
+
   /// One issue with its whole conversation, authors included
   /// (`GET /issue/{id}`), named from its title's page like the list.
   Future<SeerrIssue> getIssue(int issueId) async {

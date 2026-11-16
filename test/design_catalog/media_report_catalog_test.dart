@@ -508,6 +508,24 @@ void main() {
         ),
       ),
       _section(
+        'Requester · a newer report of hers was resolved and an older one is '
+        'still open: the row speaks of the open one',
+        MediaReportSection.requester(scope: (key: _movie, focus: null)),
+        overrides: _world(
+          rows: _movieRows(
+            _anna,
+            issues: [
+              _issue(12, at: DateTime(2026, 9, 20, 18, 10)),
+              _issue(14, status: 2, at: DateTime(2026, 10, 2, 9, 30)),
+            ],
+          ),
+          gate: _annaMayReport(),
+          audience: Audience.requester,
+          userId: 2,
+          issue: _detail,
+        ),
+      ),
+      _section(
         'Operator · one problem open: its words, who and when, the replies; '
         'then the way to report one',
         MediaReportSection.operator(scope: (key: _movie, focus: null)),

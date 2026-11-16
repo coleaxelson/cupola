@@ -31,6 +31,7 @@ import 'package:cupola/features/discover/data/seerr_session.dart';
 import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_issue_words.dart';
 import 'package:cupola/features/discover/domain/seerr_refusal.dart';
+import 'package:cupola/features/discover/domain/seerr_write_reach.dart';
 import 'package:cupola/features/discover/presentation/widgets/seerr_not_set_up.dart';
 import 'package:cupola/features/media/domain/media_key.dart';
 import 'package:cupola/features/media/domain/media_report.dart';
@@ -628,10 +629,18 @@ class _SeerrIssueThreadScreenState
   /// person wrote and says so with `Retry` where the same request can still
   /// succeed; an issue or reply that is gone is read again, not reported as a
   /// fault.
+  ///
+  /// [alreadyThere] is for a write that adds something and cannot be repeated
+  /// safely (Seerr takes no key for it): when the failure may have reached the
+  /// server, it reads what the server holds and says whether the write is
+  /// already in. If it is, the write counts as done. If reading fails too,
+  /// [unsure] is the failure's line, which does not say nothing was sent.
   Future<bool> _write(
     Future<void> Function(SeerrService service) call, {
     required String failure,
     required VoidCallback retry,
+    Future<bool> Function(SeerrService service)? alreadyThere,
+    String? unsure,
   }) async {
     final issue = ref.read(mediaReportIssueProvider(_source)).value;
     try {
@@ -640,12 +649,24 @@ class _SeerrIssueThreadScreenState
       return true;
     } catch (error) {
       if (!mounted) return false;
+      var line = failure;
+      if (alreadyThere != null && seerrWriteMayHaveLanded(error)) {
+        try {
+          if (await alreadyThere(ref.read(seerrServiceForProvider(_id)))) {
+            if (mounted) _readAgain(issue);
+            return true;
+          }
+        } catch (_) {
+          line = unsure ?? failure;
+        }
+        if (!mounted) return false;
+      }
       switch (seerrRefusalOf(error)) {
         case SeerrRefusal.issueGone || SeerrRefusal.replyGone:
           _readAgain(issue);
           setState(() => _editing = null);
         case _:
-          SnackBarHelper.error(context, failure, cause: error, onRetry: retry);
+          SnackBarHelper.error(context, line, cause: error, onRetry: retry);
       }
       return false;
     }
@@ -655,9 +676,18 @@ class _SeerrIssueThreadScreenState
     final text = _reply.text.trim();
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
+    final before =
+        ref.read(mediaReportIssueProvider(_source)).value?.comments.length ?? 0;
     final sent = await _write(
       (service) => service.commentOnIssue(widget.issueId, text),
       failure: 'Could not send the reply. Nothing was sent.',
+      unsure: 'Could not send the reply. We can’t tell if it arrived.',
+      alreadyThere: (service) => service.hasSentReply(
+        widget.issueId,
+        text,
+        userId: ref.read(seerrActingUserIdProvider(_id)),
+        before: before,
+      ),
       retry: _send,
     );
     if (!mounted) return;

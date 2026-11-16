@@ -24,6 +24,7 @@ import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/data/seerr_session.dart';
 import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_refusal.dart';
+import 'package:cupola/features/discover/domain/seerr_write_reach.dart';
 import 'package:cupola/features/discover/domain/seerr_grant.dart'
     show SeerrAbility;
 import 'package:cupola/features/media/domain/media_report.dart';
@@ -112,6 +113,10 @@ class _ReportProblemSheetState extends ConsumerState<ReportProblemSheet> {
   _Outcome? _outcome;
   Object? _error;
 
+  /// The report may have reached the server and reading it back failed too:
+  /// the failure cannot say that nothing was sent.
+  bool _unsure = false;
+
   bool get _movie => widget.scope.key.isMovie;
   String get _connection => widget.source.seerr.id;
 
@@ -150,6 +155,7 @@ class _ReportProblemSheetState extends ConsumerState<ReportProblemSheet> {
       _sending = true;
       _outcome = null;
       _error = null;
+      _unsure = false;
     });
     try {
       final filed = await ref
@@ -158,7 +164,30 @@ class _ReportProblemSheetState extends ConsumerState<ReportProblemSheet> {
       if (mounted) Navigator.of(context).pop(filed);
     } catch (error) {
       if (!mounted) return;
+      var unsure = false;
+      if (seerrWriteMayHaveLanded(error)) {
+        // Seerr takes no key that makes a second send harmless: what it holds
+        // is read before the report is offered again.
+        try {
+          final held = await ref
+              .read(seerrServiceForProvider(_connection))
+              .findReportedIssue(
+                draft,
+                userId: ref.read(seerrActingUserIdProvider(_connection)),
+                known: {for (final issue in widget.source.issues) issue.id},
+              );
+          if (!mounted) return;
+          if (held != null) {
+            Navigator.of(context).pop(held);
+            return;
+          }
+        } catch (_) {
+          unsure = true;
+        }
+        if (!mounted) return;
+      }
       setState(() {
+        _unsure = unsure;
         _sending = false;
         _error = error;
         _outcome = switch (seerrRefusalOf(error)) {
@@ -294,7 +323,10 @@ class _ReportProblemSheetState extends ConsumerState<ReportProblemSheet> {
         0,
       ),
       child: Text(
-        'Your report is still here.',
+        // Reading it back failed as well: nothing here says it was not sent.
+        _unsure
+            ? 'Your report is still here. We can’t tell if it arrived.'
+            : 'Your report is still here.',
         style: AppType.meta
             .weight(FontWeight.w400)
             .copyWith(color: room.inkSecondary),

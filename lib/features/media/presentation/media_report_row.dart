@@ -290,7 +290,7 @@ class MediaReportSection extends ConsumerWidget {
       );
     }
 
-    final own = source.ownLatest(userId);
+    final own = source.ownCurrent(userId);
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.lg),
       child: MediaGroup(
