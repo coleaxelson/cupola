@@ -132,7 +132,7 @@ Future<void> _pump(
             service: ServiceKey.unraid,
             status: ServiceSummaryStatus.online,
             host: 'tower.lan',
-            version: '7.0.0',
+            version: '7.2.0',
           ),
         ),
       ],

@@ -27,7 +27,7 @@ void main() {
 
       final info = await client.getInfo();
 
-      expect(info.version, '7.0.0');
+      expect(info.version, '7.2.0');
       expect(adapter.lastHeaders!['x-api-key'], 'UNRAID-KEY');
       final body = adapter.lastBody as Map<String, dynamic>;
       expect(body['query'], contains('info'));
