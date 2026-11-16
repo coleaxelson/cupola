@@ -236,7 +236,7 @@ Two columns say how far each integration goes:
 | --- | --- | --- | --- | :-: |
 | **TrueNAS** | Full console: dashboard, pools and disks, datasets and snapshots, SMB/NFS shares, apps, virtualization, replication and periodic tasks, reporting, users and groups; a disk with errors offers the scrub that repairs it | API key | Read + write | ◐ |
 | **Dockge** | Compose stacks with live terminal output: start, stop, restart, update, down, and edit or deploy the compose file itself | User + password | Read + write | ✅ |
-| **Unraid** | Array status, disks, shares, Docker containers, VMs and notifications; start and stop VMs, archive notifications | API key | Read + VMs | ○ ¹ |
+| **Unraid** | Array status, disks, shares, Docker containers, CPU and memory, VMs and notifications; start and stop VMs, archive notifications | API key | Read + VMs | ○ ¹ |
 | **Nginx Proxy Manager** | What the box is fronting, what is broken, which certificates are about to lapse; enable/disable hosts, renew a certificate | Email + password | Read + write | ◐ |
 
 ¹ Unraid is a whole operating system and we do not run it, so its integration is

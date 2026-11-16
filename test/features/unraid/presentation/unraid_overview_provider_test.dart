@@ -1,4 +1,8 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:cupola/core/network/connection_failure.dart';
+import 'package:cupola/features/unraid/data/unraid_client.dart';
 
 import 'package:cupola/features/unraid/domain/models/unraid_models.dart';
 import 'package:cupola/features/unraid/presentation/unraid_overview_provider.dart';
@@ -85,6 +89,87 @@ void main() {
 
       expect(facts.first.spoken, 'Uptime, 18 days');
       expect(facts.last.spoken, 'Release, Unraid 7.0.1');
+    });
+  });
+
+  group('unraidMetricFacts', () {
+    const reading = UnraidMetrics(
+      cpuPercent: 12,
+      memoryPercent: 41,
+      memoryUsed: 28350000000,
+      memoryTotal: 68719476736,
+    );
+
+    test('a reading gives CPU and Memory with the house formatters', () {
+      final facts = unraidMetricFacts(const AsyncData(reading));
+
+      expect(facts.map((f) => f.label), ['CPU', 'Memory']);
+      expect(facts[0].value, '12%');
+      expect(facts[1].value, '41%\u00A0· 26.4 of 64.0\u00A0GB');
+    });
+
+    test('a row speaks its label and its figure as one sentence', () {
+      final facts = unraidMetricFacts(const AsyncData(reading));
+
+      expect(facts[0].spoken, 'CPU, 12 percent');
+      expect(facts[1].spoken, 'Memory, 41 percent, 26.4 of 64.0\u00A0GB');
+    });
+
+    test('a percentage with no byte figures stands alone', () {
+      final facts = unraidMetricFacts(
+        const AsyncData(UnraidMetrics(cpuPercent: 3, memoryPercent: 41)),
+      );
+
+      expect(facts[1].value, '41%');
+      expect(facts[1].spoken, 'Memory, 41 percent');
+    });
+
+    test('a figure Unraid did not give reads an em dash, never 0', () {
+      final facts = unraidMetricFacts(const AsyncData(UnraidMetrics()));
+
+      expect(facts.map((f) => f.value), ['—', '—']);
+      expect(facts.map((f) => f.spoken), ['CPU, —', 'Memory, —']);
+    });
+
+    test('loading gives two rows of em dashes', () {
+      final facts = unraidMetricFacts(const AsyncLoading());
+
+      expect(facts.map((f) => f.label), ['CPU', 'Memory']);
+      expect(facts.map((f) => f.value), ['—', '—']);
+    });
+
+    test('a generic error gives two rows of em dashes', () {
+      final facts = unraidMetricFacts(
+        AsyncError<UnraidMetrics>(Exception('down'), StackTrace.empty),
+      );
+
+      expect(facts.map((f) => f.value), ['—', '—']);
+    });
+
+    test('an API that does not know `metrics` gives no rows', () {
+      final facts = unraidMetricFacts(
+        AsyncError<UnraidMetrics>(
+          const UnraidException(
+            'Cannot query field "metrics" on type "Query".',
+            reason: ServiceFailureReason.unknown,
+            code: 'GRAPHQL_VALIDATION_FAILED',
+          ),
+          StackTrace.empty,
+        ),
+      );
+
+      expect(facts, isEmpty);
+    });
+
+    test('another UnraidException is a failed read, not a missing field', () {
+      final facts = unraidMetricFacts(
+        AsyncError<UnraidMetrics>(
+          const UnraidException('Unauthorized'),
+          StackTrace.empty,
+        ),
+      );
+
+      expect(facts.map((f) => f.value), ['—', '—']);
     });
   });
 

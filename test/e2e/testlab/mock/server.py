@@ -2553,8 +2553,10 @@ class UnraidHandler(BaseHTTPRequestHandler):
                 "capacity": {"kilobytes": {"free": 8000000, "used": 2000000, "total": 10000000}},
                 "disks": [{"name": "disk1", "status": "DISK_OK", "temp": 34}],
             }
-        if "dockerContainers" in query:
-            data["dockerContainers"] = [{"id": "mock-1", "names": ["cupola-lab"], "state": "running", "status": "Up", "autoStart": True}]
+        if "docker {" in query:
+            data["docker"] = {"containers": [{"id": "mock-1", "names": ["cupola-lab"], "state": "RUNNING", "status": "Up", "autoStart": True}]}
+        if "metrics" in query:
+            data["metrics"] = {"cpu": {"percentTotal": 12.5}, "memory": {"total": 68719476736, "available": 40544491274, "percentTotal": 41.0}}
         if "me" in query:
             data["me"] = {"roles": ["ADMIN"], "permissions": [{"resource": "VM", "actions": ["START", "STOP"]}]}
         if "vms" in query:

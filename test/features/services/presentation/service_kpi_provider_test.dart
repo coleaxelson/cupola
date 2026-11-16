@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -22,6 +25,9 @@ import 'package:cupola/features/sabnzbd/domain/models/sabnzbd_models.dart';
 import 'package:cupola/features/sabnzbd/presentation/sabnzbd_provider.dart';
 import 'package:cupola/features/series/data/sonarr_service.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
+import 'package:cupola/features/unraid/data/unraid_client.dart';
+import 'package:cupola/features/unraid/domain/models/unraid_models.dart';
+import 'package:cupola/features/unraid/presentation/unraid_provider.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_instance.dart';
@@ -30,6 +36,7 @@ import 'package:cupola/features/settings/domain/settings_model.dart';
 
 import '../../../test_helpers/fake_api_client.dart';
 import '../../../test_helpers/capturing_http_adapter.dart';
+import '../../../test_helpers/fixtures.dart';
 
 SeerrRequest _request({
   required int id,
@@ -99,6 +106,7 @@ Future<Map<String, ServiceKpi>> _kpisFor(
 }
 
 void main() {
+  _unraidRailTests();
   group('Seerr KPIs', () {
     test('counts pending approvals off the request, not the media', () async {
       // The trap: `displayStatus` checks `media.status` first, so a request
@@ -632,5 +640,227 @@ void main() {
         expect(kpis['Status']!.tone, isNull);
       },
     );
+  });
+}
+
+/// Answers each Unraid GraphQL document by what it asks for: the array, the
+/// containers, or a refusal. Both documents go to the same `/graphql`, so a
+/// per-path adapter cannot tell them apart.
+class _UnraidAdapter implements HttpClientAdapter {
+  _UnraidAdapter({this.array = true, this.docker = true});
+
+  final bool array;
+  final bool docker;
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final query = (options.data as Map)['query'] as String;
+    final (fixture, answers) = query.contains('array {')
+        ? ('unraid/array.json', array)
+        : ('unraid/docker.json', docker);
+    return answers
+        ? ResponseBody.fromString(
+            jsonEncode(jsonFixtureMap(fixture)),
+            200,
+            headers: {
+              Headers.contentTypeHeader: ['application/json'],
+            },
+          )
+        : ResponseBody.fromString(
+            jsonEncode({
+              'errors': [
+                {
+                  'message': 'This read failed',
+                  'extensions': {'code': 'INTERNAL_SERVER_ERROR'},
+                },
+              ],
+            }),
+            500,
+            headers: {
+              Headers.contentTypeHeader: ['application/json'],
+            },
+          );
+  }
+}
+
+UnraidClient _unraidClient({bool array = true, bool docker = true}) {
+  final dio = Dio(BaseOptions(baseUrl: 'https://unraid.test'))
+    ..httpClientAdapter = _UnraidAdapter(array: array, docker: docker);
+  final client = UnraidClient(
+    url: 'https://unraid.test',
+    apiKey: 'key',
+    dio: dio,
+  );
+  addTearDown(client.close);
+  return client;
+}
+
+void _expectArrayFigures(Map<String, ServiceKpi> kpis, {required bool kept}) {
+  for (final label in ['Array', 'Used', 'Disks']) {
+    expect(
+      kpis[label]!.isUnavailable,
+      !kept,
+      reason: '$label ${kept ? 'keeps its value' : 'reads —'}',
+    );
+    if (!kept) expect(kpis[label]!.note, isNull, reason: '$label has no note');
+  }
+}
+
+void _expectContainersFigure(
+  Map<String, ServiceKpi> kpis, {
+  required bool kept,
+}) {
+  expect(kpis['Containers']!.isUnavailable, !kept);
+  if (kept) {
+    expect(kpis['Containers']!.value, '1/2');
+  } else {
+    expect(kpis['Containers']!.note, isNull);
+  }
+}
+
+void _unraidRailTests() {
+  group('Unraid rail degrades per document', () {
+    // The lens path reads the two providers the pages already load; the
+    // per-connection path reads its own client. Same rule on both.
+    const lensInstance = ServiceInstance(
+      id: 'unraid',
+      service: ServiceKey.unraid,
+      label: 'Home',
+      url: 'https://unraid-home.test',
+      credential: 'home-key',
+    );
+    const otherInstance = ServiceInstance(
+      id: 'unraid-away',
+      service: ServiceKey.unraid,
+      label: 'Away',
+      url: 'https://unraid-away.test',
+      credential: 'away-key',
+    );
+
+    final arrayValue = UnraidArray.fromJson(
+      (jsonFixtureMap('unraid/array.json')['data'] as Map)['array']
+          as Map<String, dynamic>,
+    );
+    final containers = [
+      for (final c
+          in ((jsonFixtureMap('unraid/docker.json')['data'] as Map)['docker']
+                  as Map)['containers']
+              as List)
+        UnraidDockerContainer.fromJson((c as Map).cast<String, dynamic>()),
+    ];
+
+    Future<List<ServiceKpi>> lens({
+      required bool arrayFails,
+      required bool dockerFails,
+    }) {
+      final container = ProviderContainer(
+        overrides: [
+          unraidArrayProvider.overrideWith(
+            (ref) async =>
+                arrayFails ? throw Exception('array down') : arrayValue,
+          ),
+          unraidDockerProvider.overrideWith(
+            (ref) async =>
+                dockerFails ? throw Exception('docker down') : containers,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      return container.read(serviceKpiProvider(ServiceKey.unraid).future);
+    }
+
+    Future<List<ServiceKpi>?> connection({
+      bool array = true,
+      bool docker = true,
+    }) {
+      final container = ProviderContainer(
+        overrides: [
+          currentSettingsProvider.overrideWithValue(
+            const SettingsModel(instances: [lensInstance, otherInstance]),
+          ),
+          unraidClientForProvider.overrideWith(
+            (ref, id) => _unraidClient(array: array, docker: docker),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      return container.read(
+        serviceKpiForProvider((
+          service: ServiceKey.unraid,
+          instanceId: otherInstance.id,
+        )).future,
+      );
+    }
+
+    test('both documents answer: four figures with values', () async {
+      final kpis = _byLabel(await lens(arrayFails: false, dockerFails: false));
+      _expectArrayFigures(kpis, kept: true);
+      _expectContainersFigure(kpis, kept: true);
+      expect(kpis.keys, ['Array', 'Used', 'Containers', 'Disks']);
+    });
+
+    test(
+      'lens: Docker failing leaves Array, Used and Disks standing',
+      () async {
+        final baseline = _byLabel(
+          await lens(arrayFails: false, dockerFails: false),
+        );
+        final kpis = _byLabel(await lens(arrayFails: false, dockerFails: true));
+
+        _expectArrayFigures(kpis, kept: true);
+        _expectContainersFigure(kpis, kept: false);
+        for (final label in ['Array', 'Used', 'Disks']) {
+          expect(kpis[label]!.value, baseline[label]!.value);
+        }
+      },
+    );
+
+    test('lens: the array failing leaves Containers standing', () async {
+      final kpis = _byLabel(await lens(arrayFails: true, dockerFails: false));
+
+      _expectArrayFigures(kpis, kept: false);
+      _expectContainersFigure(kpis, kept: true);
+    });
+
+    test('lens: both failing fails the rail, into its single card', () async {
+      await expectLater(
+        lens(arrayFails: true, dockerFails: true),
+        throwsA(isA<Exception>()),
+      );
+    });
+
+    test('connection: Docker failing leaves the array figures', () async {
+      final kpis = _byLabel((await connection(docker: false))!);
+
+      _expectArrayFigures(kpis, kept: true);
+      _expectContainersFigure(kpis, kept: false);
+    });
+
+    test('connection: the array failing leaves Containers', () async {
+      final kpis = _byLabel((await connection(array: false))!);
+
+      _expectArrayFigures(kpis, kept: false);
+      _expectContainersFigure(kpis, kept: true);
+    });
+
+    test('connection: both failing fails the rail', () async {
+      await expectLater(
+        connection(array: false, docker: false),
+        throwsA(isA<UnraidException>()),
+      );
+    });
+
+    test('connection: both answering gives the same four figures', () async {
+      final kpis = _byLabel((await connection())!);
+      _expectArrayFigures(kpis, kept: true);
+      _expectContainersFigure(kpis, kept: true);
+    });
   });
 }

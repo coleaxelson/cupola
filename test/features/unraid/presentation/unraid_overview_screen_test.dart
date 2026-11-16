@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,8 @@ import 'package:cupola/features/services/presentation/services_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
+import 'package:cupola/core/network/connection_failure.dart';
+import 'package:cupola/features/unraid/data/unraid_client.dart';
 import 'package:cupola/features/unraid/domain/models/unraid_models.dart';
 import 'package:cupola/features/unraid/presentation/unraid_overview_provider.dart';
 import 'package:cupola/features/unraid/presentation/unraid_overview_screen.dart';
@@ -36,8 +40,8 @@ void main() {
       ['Array', 'Docker', 'System'],
     );
 
-    // VMs, Notifications and Shares are on the bar and absent here: the client
-    // speaks `info`, `array` and `dockerContainers` and nothing else, and a
+    // VMs, Notifications and Shares are on the bar and absent here: the page
+    // reads `info`, `array`, `docker` and `metrics` and nothing else, and a
     // section of zeroes is a claim nobody made.
     expect(find.text('VMs'), findsNothing);
     expect(find.text('Notifications'), findsNothing);
@@ -144,16 +148,18 @@ void main() {
       containers: [for (var i = 0; i < 14; i++) _container('c$i', 'Up 1 day')],
     );
 
-    // Fourteen containers, five rows. `dockerContainers` is not paged, so the
-    // total may honestly be stated; the length of the preview never may.
+    // Fourteen containers, five rows. `docker { containers }` is not paged,
+    // so the total may honestly be stated; the length of the preview never
+    // may.
     final docker = tester.widget<SectionHeader>(
       find.widgetWithText(SectionHeader, 'Docker'),
     );
     expect(docker.subtitle, '14 containers\u00A0· 14 running');
     expect(
       find.byType(ServiceOverviewRow),
-      // Five containers, two disks, two system facts.
-      findsNWidgets(unraidContainerPreviewLimit + 4),
+      // Five containers, two disks, four system facts (CPU, Memory, Uptime,
+      // Release).
+      findsNWidgets(unraidContainerPreviewLimit + 6),
     );
   });
 
@@ -208,6 +214,68 @@ void main() {
     // replied, and the shape of the page does not depend on the payload.
     expect(find.semantics.byLabel('Uptime, —'), findsOneWidget);
     expect(find.semantics.byLabel('Release, Unraid 7.0.1'), findsOneWidget);
+  });
+
+  group('the CPU and Memory rows', () {
+    testWidgets('head the System section, ahead of Uptime and Release', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      expect(find.semantics.byLabel('CPU, 12 percent'), findsOneWidget);
+      expect(
+        find.semantics.byLabel('Memory, 41 percent, 26.4 of 64.0\u00A0GB'),
+        findsOneWidget,
+      );
+      expect(find.text('12%'), findsOneWidget);
+      expect(find.text('41%\u00A0· 26.4 of 64.0\u00A0GB'), findsOneWidget);
+
+      final cpu = tester.getTopLeft(find.text('12%')).dy;
+      final memory = tester.getTopLeft(find.textContaining('41%')).dy;
+      final uptime = tester.getTopLeft(find.text('Uptime')).dy;
+      expect(cpu, lessThan(memory));
+      expect(memory, lessThan(uptime));
+    });
+
+    testWidgets('a read that is still out draws two rows of —', (tester) async {
+      await _pump(tester, metrics: () => Completer<UnraidMetrics>().future);
+
+      expect(find.semantics.byLabel('CPU, —'), findsOneWidget);
+      expect(find.semantics.byLabel('Memory, —'), findsOneWidget);
+      // The two rows System always had stay.
+      expect(find.semantics.byLabel(RegExp(r'^Uptime, \d')), findsOneWidget);
+    });
+
+    testWidgets('a read that failed draws two rows of —, and never 0', (
+      tester,
+    ) async {
+      await _pump(tester, metrics: () async => throw Exception('no answer'));
+
+      expect(find.semantics.byLabel('CPU, —'), findsOneWidget);
+      expect(find.semantics.byLabel('Memory, —'), findsOneWidget);
+      expect(find.text('0%'), findsNothing);
+      // One failed document does not put the section into its error state.
+      expect(find.byType(InlineErrorRetry), findsNothing);
+      expect(find.semantics.byLabel('Release, Unraid 7.0.1'), findsOneWidget);
+    });
+
+    testWidgets('an API with no `metrics` draws no rows, and no dash', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        metrics: () async => throw const UnraidException(
+          'Cannot query field "metrics" on type "Query".',
+          reason: ServiceFailureReason.unknown,
+          code: 'GRAPHQL_VALIDATION_FAILED',
+        ),
+      );
+
+      expect(find.textContaining('CPU'), findsNothing);
+      expect(find.textContaining('Memory'), findsNothing);
+      expect(find.semantics.byLabel(RegExp(r'^Uptime, \d')), findsOneWidget);
+      expect(find.semantics.byLabel('Release, Unraid 7.0.1'), findsOneWidget);
+    });
   });
 
   testWidgets('a section whose source failed does not take the page with it', (
@@ -282,6 +350,13 @@ const _info = UnraidInfo(
   uptime: '2026-08-30T12:00:00Z',
 );
 
+Future<UnraidMetrics> _answeringMetrics() async => const UnraidMetrics(
+  cpuPercent: 12,
+  memoryPercent: 41,
+  memoryUsed: 28350000000,
+  memoryTotal: 68719476736,
+);
+
 UnraidDockerContainer _container(String name, String status) =>
     UnraidDockerContainer.fromJson({
       'id': name,
@@ -298,6 +373,7 @@ Future<void> _pump(
   List<UnraidDockerContainer>? containers,
   bool failArray = false,
   bool failDocker = false,
+  Future<UnraidMetrics> Function() metrics = _answeringMetrics,
   bool configured = true,
   double textScaleFactor = 1.0,
 }) async {
@@ -330,6 +406,10 @@ Future<void> _pump(
           return containers ?? [_container('plex', 'Up 12 days')];
         }),
         unraidInfoProvider.overrideWith((ref) async => info),
+        // No network, no timer: the metrics read is the test's, and the poll
+        // that would read it again every five seconds is not started.
+        unraidMetricsProvider.overrideWith((ref) => metrics()),
+        unraidMetricsPollProvider.overrideWith((ref) {}),
         serviceSummaryProvider.overrideWith(
           (ref, service) async => ServiceSummary(
             service: service,

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **CPU and memory on the Unraid Overview.** The System section now opens with the
+  server's CPU load and memory in use (*41% · 26.4 of 64.0 GB*), read again every few
+  seconds while you look at it. An Unraid whose API is too old to know them shows
+  neither row, rather than a dash that never fills in.
+
+### Fixed
+
+- **Unraid shows its containers and figures again on Unraid 7.2 and later** (#14).
+  We asked for the container list by a name Unraid's API dropped before 7.2, so the
+  server refused the whole request and the Docker tab, the container count and the
+  other readout figures all disappeared. We now ask the way the current API answers,
+  and the figures no longer disappear together: if the containers cannot be read, the
+  array's figures stay, and the other way round.
+
 ## 1.1.0-beta
 
 Two new services in the Stream group, Emby and Tracearr, both tried on servers we use

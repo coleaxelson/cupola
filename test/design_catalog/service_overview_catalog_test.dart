@@ -43,6 +43,7 @@ import 'package:cupola/features/tracearr/presentation/tracearr_violation_screen.
 import 'package:cupola/features/tracearr/presentation/tracearr_violations_screen.dart';
 import 'package:cupola/demo/world/fakes/media_fakes.dart' show TracearrFake;
 import 'package:cupola/features/tracearr/presentation/tracearr_violations_provider.dart';
+import 'package:cupola/features/unraid/presentation/unraid_overview_screen.dart';
 
 import 'package:cupola/features/onboarding/data/onboarding_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +56,7 @@ import '../test_helpers/profiles/profiles.dart';
 import 'catalog.dart';
 import 'emby_world.dart';
 import 'tracearr_world.dart';
+import 'unraid_world.dart';
 
 /// Radarr with an address away: at home on the home network's name, away
 /// on a public one.
@@ -84,6 +86,18 @@ const _oneRadarr = SettingsModel(
       service: ServiceKey.radarr,
       label: '',
       url: 'https://radarr.lan:7878',
+      credential: 'k',
+    ),
+  ],
+);
+
+const _oneUnraid = SettingsModel(
+  instances: [
+    ServiceInstance(
+      id: 'unraid',
+      service: ServiceKey.unraid,
+      label: '',
+      url: 'http://tower.lan',
       credential: 'k',
     ),
   ],
@@ -550,6 +564,17 @@ Widget _radarr(
   ),
 ], child);
 
+/// The Unraid Overview against [api]: the app's own client, over the server's
+/// HTTP answers, so the page draws what the app draws against that server.
+Widget _unraid(UnraidCatalogApi api) => _Isolated([
+  sharedPreferencesProvider.overrideWithValue(_prefs),
+  secureSettingsStoreProvider.overrideWithValue(FakeSecureSettingsStore()),
+  initialSettingsProvider.overrideWithValue(_oneUnraid),
+  initialOnboardingCompletedProvider.overrideWithValue(true),
+  initialActiveInstancesProvider.overrideWithValue(const {}),
+  ...unraidCatalogOverrides(api),
+], const UnraidOverviewScreen(topPadding: 0));
+
 /// The five shapes a [ServiceOverviewRow] takes, one under another, as a
 /// Needs attention section would draw them. Tones are walked against the
 /// surface the rows sit on, as the screens do.
@@ -750,6 +775,53 @@ void main() {
         width: 390,
         height: 680,
         id: 'tracearr-violations',
+      ),
+      CatalogScene(
+        'UnraidOverviewScreen · Unraid 7.3.5 (API 4.37.11), every document '
+        'answers',
+        (_) => _unraid(UnraidCatalogApi()),
+        width: 390,
+        height: 1300,
+        id: 'unraid-answers',
+      ),
+      CatalogScene(
+        'UnraidOverviewScreen · Unraid 7.3.5 with its Docker service stopped: '
+        'the containers document fails on the server',
+        (_) => _unraid(UnraidCatalogApi(docker: UnraidCatalogAnswer.fails)),
+        width: 390,
+        height: 1000,
+        id: 'unraid-docker-stopped',
+      ),
+      CatalogScene(
+        'UnraidOverviewScreen · Unraid 7.3.5, the metrics document fails on '
+        'the server',
+        (_) => _unraid(UnraidCatalogApi(metrics: UnraidCatalogAnswer.fails)),
+        width: 390,
+        height: 1300,
+        id: 'unraid-metrics-fail',
+      ),
+      CatalogScene(
+        'UnraidOverviewScreen · the metrics document still on its way',
+        (_) => _unraid(UnraidCatalogApi(metrics: UnraidCatalogAnswer.pending)),
+        width: 390,
+        height: 1300,
+        id: 'unraid-metrics-pending',
+      ),
+      CatalogScene(
+        'UnraidOverviewScreen · an API older than 4.15 (an out-of-date Connect '
+        'plugin), which has no metrics',
+        (_) => _unraid(UnraidCatalogApi(metrics: UnraidCatalogAnswer.unknown)),
+        width: 390,
+        height: 1300,
+        id: 'unraid-metrics-unknown',
+      ),
+      CatalogScene(
+        'Text at 200% · UnraidOverviewScreen, every document answers',
+        (_) => _unraid(UnraidCatalogApi()),
+        width: 390,
+        height: 1950,
+        textScale: catalogTextScale,
+        id: 'unraid-text-200',
       ),
       CatalogScene(
         'RadarrOverviewScreen · loaded · identity, readouts, then Coming up, '

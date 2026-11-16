@@ -44,6 +44,13 @@ secrets):
 makes a mutating run repeatable. `GET /graphql` answers `200` with an empty
 body, which is what the Compose healthcheck asks.
 
+A root field this schema does not have (`dockerContainers`, which left the API
+before 4.9.0) is answered the way Apollo answers it: HTTP `400`, a body of
+`errors` only, `GRAPHQL_VALIDATION_FAILED`. Resolver errors (`FORBIDDEN`, an
+unknown notification) stay `200`, as they do on the real server. The schema is
+the floor's, Unraid API 4.25.3 (7.2.0): `docker { containers }` and
+`metrics { cpu memory }`, and no `metrics.network`, which that release lacks.
+
 Not simulated, on purpose: the intermediate libvirt states (`SHUTDOWN` while a
 guest halts), because there is no clock here and a state that changes by itself
 would make the answers depend on when they were read; and any container or
@@ -70,6 +77,7 @@ FORBIDDEN = {
     "message": "Forbidden resource",
     "extensions": {"code": "FORBIDDEN"},
 }
+VALIDATION_FAILED = "GRAPHQL_VALIDATION_FAILED"
 UNAUTHENTICATED = {
     "message": "API key is invalid",
     "extensions": {"code": "UNAUTHENTICATED"},
@@ -130,106 +138,122 @@ def initial_world() -> dict[str, Any]:
         # an exit code and an age (the two-member `state` enum cannot express
         # unhealthy, paused or a restart loop). One is stopped on purpose, one
         # is unhealthy while up, one was OOM-killed and one keeps restarting.
-        "dockerContainers": [
-            {
-                "id": "3f1c9a2b7d10",
-                "names": ["/plex"],
-                "state": "running",
-                "status": "Up 3 days",
-                "autoStart": True,
+        # `state` is the schema's upper-case enum (the restart loop is still
+        # `RUNNING` there: only the status line says it).
+        "docker": {
+            "containers": [
+                {
+                    "id": "3f1c9a2b7d10",
+                    "names": ["/plex"],
+                    "state": "RUNNING",
+                    "status": "Up 3 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "9a4e2c8f10b3",
+                    "names": ["/radarr"],
+                    "state": "RUNNING",
+                    "status": "Up 3 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "b7d210e5c4a8",
+                    "names": ["/sonarr"],
+                    "state": "RUNNING",
+                    "status": "Up 3 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "1c8f3a9d20e7",
+                    "names": ["/lidarr"],
+                    "state": "RUNNING",
+                    "status": "Up 2 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "5e2b7c1a9f04",
+                    "names": ["/readarr"],
+                    "state": "EXITED",
+                    "status": "Exited (0) 4 hours ago",
+                    "autoStart": True,
+                },
+                {
+                    "id": "8d3a1f6b2c95",
+                    "names": ["/prowlarr"],
+                    "state": "RUNNING",
+                    "status": "Up 2 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "c41e9b7a305d",
+                    "names": ["/bazarr"],
+                    "state": "RUNNING",
+                    "status": "Up 2 days (unhealthy)",
+                    "autoStart": True,
+                },
+                {
+                    "id": "2a7d5c8e1b46",
+                    "names": ["/qbittorrent"],
+                    "state": "RUNNING",
+                    "status": "Up 3 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "f9b1e4d6a273",
+                    "names": ["/sabnzbd"],
+                    "state": "RUNNING",
+                    "status": "Up 1 day",
+                    "autoStart": True,
+                },
+                {
+                    "id": "6c2e8a4f7b19",
+                    "names": ["/seerr"],
+                    "state": "RUNNING",
+                    "status": "Up 3 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "e7a3d1b9c582",
+                    "names": ["/jellyfin"],
+                    "state": "RUNNING",
+                    "status": "Up 3 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "4b9f2e7c1d68",
+                    "names": ["/dockge"],
+                    "state": "RUNNING",
+                    "status": "Up 2 days",
+                    "autoStart": True,
+                },
+                {
+                    "id": "a1d5c3e9b742",
+                    "names": ["/nginx-proxy-manager"],
+                    "state": "RUNNING",
+                    "status": "Restarting (1) 20 seconds ago",
+                    "autoStart": True,
+                },
+                {
+                    "id": "7e4b1a8d3c06",
+                    "names": ["/nzbget"],
+                    "state": "EXITED",
+                    "status": "Exited (137) 2 hours ago",
+                    "autoStart": True,
+                },
+            ],
+        },
+        # CPU and memory as `metrics` answers them: `percentTotal` is the load
+        # across cores, and memory's `percentTotal` is `(total - available) /
+        # total`, so 41% of 64 GiB. The BigInts cross the wire as numbers here;
+        # the client reads strings too.
+        "metrics": {
+            "cpu": {"percentTotal": 12.5},
+            "memory": {
+                "total": 68719476736,
+                "available": 40544491274,
+                "percentTotal": 41.0,
             },
-            {
-                "id": "9a4e2c8f10b3",
-                "names": ["/radarr"],
-                "state": "running",
-                "status": "Up 3 days",
-                "autoStart": True,
-            },
-            {
-                "id": "b7d210e5c4a8",
-                "names": ["/sonarr"],
-                "state": "running",
-                "status": "Up 3 days",
-                "autoStart": True,
-            },
-            {
-                "id": "1c8f3a9d20e7",
-                "names": ["/lidarr"],
-                "state": "running",
-                "status": "Up 2 days",
-                "autoStart": True,
-            },
-            {
-                "id": "5e2b7c1a9f04",
-                "names": ["/readarr"],
-                "state": "exited",
-                "status": "Exited (0) 4 hours ago",
-                "autoStart": True,
-            },
-            {
-                "id": "8d3a1f6b2c95",
-                "names": ["/prowlarr"],
-                "state": "running",
-                "status": "Up 2 days",
-                "autoStart": True,
-            },
-            {
-                "id": "c41e9b7a305d",
-                "names": ["/bazarr"],
-                "state": "running",
-                "status": "Up 2 days (unhealthy)",
-                "autoStart": True,
-            },
-            {
-                "id": "2a7d5c8e1b46",
-                "names": ["/qbittorrent"],
-                "state": "running",
-                "status": "Up 3 days",
-                "autoStart": True,
-            },
-            {
-                "id": "f9b1e4d6a273",
-                "names": ["/sabnzbd"],
-                "state": "running",
-                "status": "Up 1 day",
-                "autoStart": True,
-            },
-            {
-                "id": "6c2e8a4f7b19",
-                "names": ["/seerr"],
-                "state": "running",
-                "status": "Up 3 days",
-                "autoStart": True,
-            },
-            {
-                "id": "e7a3d1b9c582",
-                "names": ["/jellyfin"],
-                "state": "running",
-                "status": "Up 3 days",
-                "autoStart": True,
-            },
-            {
-                "id": "4b9f2e7c1d68",
-                "names": ["/dockge"],
-                "state": "running",
-                "status": "Up 2 days",
-                "autoStart": True,
-            },
-            {
-                "id": "a1d5c3e9b742",
-                "names": ["/nginx-proxy-manager"],
-                "state": "restarting",
-                "status": "Restarting (1) 20 seconds ago",
-                "autoStart": True,
-            },
-            {
-                "id": "7e4b1a8d3c06",
-                "names": ["/nzbget"],
-                "state": "exited",
-                "status": "Exited (137) 2 hours ago",
-                "autoStart": True,
-            },
-        ],
+        },
         "vms": {
             "domains": [
                 {
@@ -607,6 +631,11 @@ class UnraidState:
                 else:
                     data[name] = self._mutation(name, selection, variables, role)
             except GraphQlError as error:
+                # A field the schema does not have fails the whole document
+                # before anything runs, as Apollo does: it is not one more
+                # error beside the roots that resolved.
+                if error.payload["extensions"]["code"] == VALIDATION_FAILED:
+                    raise
                 errors.append(error.payload)
         return data, errors
 
@@ -622,8 +651,10 @@ class UnraidState:
             return world["info"]
         if name == "array":
             return world["array"]
-        if name == "dockerContainers":
-            return world["dockerContainers"]
+        if name == "docker":
+            return world["docker"]
+        if name == "metrics":
+            return world["metrics"]
         if name == "shares":
             return world["shares"]
         if name == "me":
@@ -733,7 +764,13 @@ class UnraidHandler(BaseHTTPRequestHandler):
         try:
             data, errors = UnraidHandler.state.answer(document, variables, role)
         except GraphQlError as error:
-            data, errors = {}, [error.payload]
+            # Apollo answers a document its schema rejects with a 400 and a
+            # body of errors only, which is what Unraid 7.2 and later answer
+            # to a root field they no longer have (`dockerContainers`). Any
+            # other document-level error keeps the 200 the resolvers use.
+            status = 400 if error.payload["extensions"]["code"] == VALIDATION_FAILED else 200
+            self._send_json(status, {"errors": [error.payload]})
+            return
         body: dict[str, Any] = {"data": data if data or not errors else None}
         if errors:
             body["errors"] = errors

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:cupola/core/lifecycle/page_activity.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/services/domain/service_tab.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -35,9 +36,10 @@ import 'package:cupola/features/unraid/presentation/unraid_provider.dart';
 /// tabs are shown only when the instance advertises the matching capability.
 ///  * **Parity**: `valid · checked 12 days ago · 0 errors` needs the parity
 ///    history the `array` document does not carry.
-///  * **The System strip**: `CPU 12% · RAM 41% · Net 84 Mb/s` needs live
-///    metrics. `info { os }` answers a distro, a release and a boot time, which
-///    is what the System section below actually draws.
+///  * **The System strip**: `CPU 12% · RAM 41% · Net 84 Mb/s` is drawn as
+///    CPU and Memory rows at the top of the System section, from `metrics`.
+///    The network figure is absent: `metrics.network` is not in the API Unraid
+///    7.2.0 ships, and asking for it would take CPU and Memory down there.
 ///
 /// Fields the contract still does not provide remain absent rather than being
 /// represented by invented zeroes. That distinction keeps the dashboard's
@@ -47,12 +49,16 @@ import 'package:cupola/features/unraid/presentation/unraid_provider.dart';
 /// `ArrayDisk` type this app queries carries `name`, `status` and `temp`, and
 /// nothing else. **SMART verdicts** likewise.
 ///
-/// **Unraid has never been run against a real instance here**, so nothing on
-/// this page is inferred from a field the three committed queries do not name.
+/// Nothing on this page is inferred from a field the committed queries do not
+/// name: each is held to the upstream schema captures by the contract test.
+/// Unraid has never been run against a real instance here: the captures are
+/// upstream's schema, not an instance's answers, so no real Unraid has
+/// answered these documents yet and the schema is the only proof of their
+/// shape.
 ///
 /// Sections load and fail independently. An Unraid answering `array` but not
-/// `dockerContainers` still draws two regions, and the third says so in its own
-/// slot instead of taking the page down.
+/// `docker { containers }` still draws two regions, and the third says so in
+/// its own slot instead of taking the page down.
 class UnraidOverviewScreen extends StatelessWidget {
   const UnraidOverviewScreen({
     super.key,
@@ -86,6 +92,7 @@ void _refresh(WidgetRef ref) {
   ref.invalidate(unraidArrayProvider);
   ref.invalidate(unraidDockerProvider);
   ref.invalidate(unraidInfoProvider);
+  ref.invalidate(unraidMetricsProvider);
   ref.invalidate(unraidOverviewArrayProvider);
   ref.invalidate(unraidOverviewDockerProvider);
   ref.invalidate(unraidOverviewSystemProvider);
@@ -195,7 +202,7 @@ class _DockerSection extends ConsumerWidget {
       title: 'Docker',
       // The **census**, not the length of the preview below it. Five rows over
       // forty containers would otherwise print "5 containers" and report the
-      // other thirty-five nowhere; `dockerContainers` is not paged, so the
+      // other thirty-five nowhere; `docker { containers }` is not paged, so the
       // total this states is the whole population the rows are drawn from.
       subtitle: data == null ? '—' : data.headline,
       destination: ServiceTab.docker,
@@ -274,14 +281,17 @@ class _SystemSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final facts = ref.watch(unraidOverviewSystemProvider);
+    // CPU and Memory first, read again every few seconds while this page is
+    // the one on screen. A server whose API has no `metrics` gets no rows.
+    ref.watchWhileLive(context, unraidMetricsPollProvider);
+    final load = unraidMetricFacts(ref.watch(unraidMetricsProvider));
 
     return ServiceOverviewSection(
       service: ServiceKey.unraid,
       title: 'System',
-      // No CPU, RAM or network figure, which the board's System region draws:
-      // `info { os { distro release uptime } }` is the whole document, and
-      // there is no metrics call to add one. Deleting the promise beats drawing
-      // three meters that would read zero forever.
+      // No network figure, which the board's System region draws: `network`
+      // is not in the API Unraid 7.2 ships, and asking for it would take the
+      // CPU and Memory rows down with it there.
       //
       // No link either. Unraid's bar is Overview, Array, Docker, VMs,
       // Notifications and Shares, and there is no System tab to send anyone to.
@@ -293,13 +303,17 @@ class _SystemSection extends ConsumerWidget {
         onRetry: () {
           ref.invalidate(unraidOverviewSystemProvider);
           ref.invalidate(unraidInfoProvider);
+          ref.invalidate(unraidMetricsProvider);
         },
-        skeleton: const ServiceOverviewRowsSkeleton(rows: 2),
+        skeleton: ServiceOverviewRowsSkeleton(rows: 2 + load.length),
         // Never empty: `info` either answers both facts (with `—` for one it
         // left out), or it fails, and a failure is the error state rather than
         // an empty one.
-        data: (data) =>
-            Column(children: [for (final fact in data) _SystemRow(fact: fact)]),
+        data: (data) => Column(
+          children: [
+            for (final fact in [...load, ...data]) _SystemRow(fact: fact),
+          ],
+        ),
       ),
     );
   }
