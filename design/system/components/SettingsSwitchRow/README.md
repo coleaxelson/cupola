@@ -13,7 +13,7 @@ Rendered from `lib/core/widgets/settings_switch_row.dart` by `test/design_catalo
   `textTheme.bodySmall` and `onSurfaceVariant`. A **note** may follow, 2 above, in the same face: quiet in
   `onSurfaceVariant`, or in its tone, walked against `surfaceContainer` (`statusToneColor`): a permission blocked is
   amber, something to switch back on and not something that failed.
-- **The switch**, the theme's own. While something outside the app answers for it (the OS asking for a permission), a
+- **The switch**, the theme's own (`SwitchThemeData` in `lib/core/theme.dart`: off, the thumb and the track's edge in `on-surface-variant` over `surface-container-highest`, so it reads on the ground in the dark room as well as the light; on, the framework's own). While something outside the app answers for it (the OS asking for a permission), a
   20pt spinner, stroke 2, stands in its place.
 
 ## The consumer provides

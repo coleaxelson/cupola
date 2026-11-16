@@ -7,6 +7,7 @@ import 'package:cupola/features/discover/presentation/library_calendar_provider.
     show calendarClockProvider;
 import 'package:cupola/features/home/presentation/home_screen.dart';
 import 'package:cupola/features/home/presentation/widgets/featured_pager.dart';
+import 'package:cupola/features/home/presentation/widgets/your_requests_module.dart';
 import 'package:cupola/features/requests/presentation/requests_screen.dart';
 import 'package:cupola/features/requests/presentation/widgets/requester_request_row.dart';
 
@@ -16,6 +17,12 @@ import '../../../test_helpers/profiles/profiles.dart';
 /// world gives her Charge waiting since two hours, Sprite Fright at 62% and
 /// two episodes of Cosmos Laundromat on their way, Sintel on the server
 /// since Wednesday and Tears of Steel in 4K since September.
+/// [finder] inside the Your requests module: the posters of Discover's rails
+/// on the same Home wear the same download state, and are not what these
+/// tests look at.
+Finder _inYourRequests(Finder finder) =>
+    find.descendant(of: find.byType(HomeYourRequestsModule), matching: finder);
+
 void main() {
   // Friday 9 October 2026, 20:30.
   final now = DateTime(2026, 10, 9, 20, 30);
@@ -66,7 +73,7 @@ void main() {
         WorldTitles.cosmosLaundromat.title,
         WorldTitles.charge.title,
       ]);
-      expect(find.text('62%'), findsOne);
+      expect(_inYourRequests(find.text('62%')), findsOne);
       expect(find.text('Ready around 20:41'), findsOne);
       expect(find.text('Waiting for approval'), findsOne);
       expect(find.text('Asked 2\u00A0h ago\u00A0· Standard'), findsOne);
@@ -103,7 +110,7 @@ void main() {
     testWidgets('what was read before the server went quiet stays, with no '
         'figure that stopped moving', (tester) async {
       final harness = await pump(tester, const HomeScreen());
-      expect(find.text('62%'), findsOne);
+      expect(_inYourRequests(find.text('62%')), findsOne);
 
       harness.network.on(
         WorldIds.seerr,
@@ -128,7 +135,7 @@ void main() {
         matching: finder,
       );
       expect(inRows(find.text(WorldTitles.spriteFright.title)), findsOne);
-      expect(find.text('62%'), findsNothing);
+      expect(_inYourRequests(find.text('62%')), findsNothing);
       expect(inRows(find.text('On its way')), findsNWidgets(2));
 
       await harness.unmount(tester);
