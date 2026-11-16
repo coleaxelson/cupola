@@ -1925,6 +1925,104 @@ void main() {
           await _land(tester);
         },
       ),
+      CatalogScene(
+        'MediaBrowseScaffold · Remove, a title the chip hides · the three are '
+        'selected and the chip hides one: the confirmation counts and sizes '
+        'only the two the wall shows',
+        (_) => _phone(
+          Consumer(
+            builder: (context, ref, _) => _shelled(
+              _selectWall(
+                bulk: lidarrBulk(
+                  ref: ref,
+                  instanceId: '',
+                  name: 'Lidarr',
+                  dialogsOnRoot: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+        id: 'select-remove-hidden',
+        overrides: _selectOverrides(),
+        act: (tester, scene) async {
+          await _selectThree(tester, scene);
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Available')),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.byKey(const ValueKey('library-selection-remove')),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
+      CatalogScene(
+        'MediaBrowseScaffold · Search over fifty-one artists · above fifty the '
+        'wall asks first: how many, that Lidarr goes one by one, and that '
+        'the searches cannot be stopped from here',
+        (_) => _phone(
+          Consumer(
+            builder: (context, ref, _) => _shelled(
+              _selectWall(
+                bulk: lidarrBulk(
+                  ref: ref,
+                  instanceId: '',
+                  name: 'Lidarr',
+                  dialogsOnRoot: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+        id: 'select-search-many',
+        overrides: [
+          // The board's nine and forty-two more: the wall reads these.
+          ..._selectOverrides().skip(1),
+          musicProvider.overrideWith(
+            (ref) async => [
+              ..._selectArtists,
+              for (var id = 10; id < 52; id++)
+                LidarrArtist(
+                  id: id,
+                  artistName: 'Artist $id',
+                  foreignArtistId: 'mb-select-$id',
+                  status: 'continuing',
+                  monitored: true,
+                  images: const [],
+                  genres: const [],
+                  monitorNewItems: 'all',
+                  qualityProfileId: 1,
+                  metadataProfileId: 1,
+                  statistics: const {'albumCount': 1, 'sizeOnDisk': 1 << 30},
+                ),
+            ],
+          ),
+        ],
+        act: (tester, scene) async {
+          await tester.tap(
+            find.descendant(of: scene, matching: find.text('Select')),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.textContaining('Select all'),
+            ),
+          );
+          await _land(tester);
+          await tester.tap(
+            find.descendant(
+              of: scene,
+              matching: find.byKey(const ValueKey('library-selection-search')),
+            ),
+          );
+          await _land(tester);
+        },
+      ),
       _selectScene(
         'MediaBrowseScaffold · after an action Lidarr refused for one artist '
         '· the amber notice over the wall: how many were updated, the refusal '

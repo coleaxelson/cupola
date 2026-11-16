@@ -247,13 +247,22 @@ class SearchRow extends StatelessWidget {
   static const Size _square = Size(44, 44);
   static const double _dot = 7;
 
-  /// Up to two initials, for a title or a person with no picture.
-  static String initialsOf(String name) => name
-      .split(RegExp(r'\s+'))
-      .where((part) => part.isNotEmpty)
-      .take(2)
-      .map((part) => part.characters.first.toUpperCase())
-      .join();
+  /// Up to two initials, for a title or a person with no picture: the first
+  /// letter or digit of each of the first two words that have one, so a
+  /// bracket or a dash never stands for a word (`SA` for *Sintel
+  /// (Anniversary Edition)*).
+  static String initialsOf(String name) {
+    final initials = <String>[];
+    for (final word in name.split(RegExp(r'\s+'))) {
+      final match = _letterOrDigit.firstMatch(word);
+      if (match == null) continue;
+      initials.add(match.group(0)!.toUpperCase());
+      if (initials.length == 2) break;
+    }
+    return initials.join();
+  }
+
+  static final _letterOrDigit = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
   @override
   Widget build(BuildContext context) {

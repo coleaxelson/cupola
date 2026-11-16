@@ -720,18 +720,76 @@ class _MediaBrowseScaffoldState<T>
     );
   }
 
+  /// Taps on an action that takes only what the chip shows, when the chip
+  /// shows none of the selection.
+  void _toastHidden(BuildContext context) {
+    final bulk = widget.bulk!;
+    final chip = _filterLabel(_selectedFilter, widget.wanted?.label);
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('None of the selected ${bulk.plural} show under $chip'),
+        margin: _hasNavBar(context)
+            ? null
+            : EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                FloatingNavBarMetrics.barHeightFor(context) +
+                    _railBarGap +
+                    AppSpacing.md,
+              ),
+      ),
+    );
+  }
+
   Future<void> _tapAction(int index, List<T> items) async {
     final bulk = widget.bulk;
     if (bulk == null || _running != null) return;
-    final chosen = _chosen(items);
-    if (chosen.isEmpty) {
+    final action = bulk.actions[index];
+    final selected = _chosen(items);
+    if (selected.isEmpty) {
       _toastNone(context);
       return;
     }
+    // An action that takes only what the chip shows leaves the rest selected.
+    final shown = {
+      for (final item in _filteredItems(items)) widget.idExtractor(item),
+    };
+    final chosen = action.shownOnly
+        ? [
+            for (final item in selected)
+              if (shown.contains(widget.idExtractor(item))) item,
+          ]
+        : selected;
+    if (chosen.isEmpty) {
+      _toastHidden(context);
+      return;
+    }
+    final keep = action.shownOnly
+        ? {
+            for (final item in selected)
+              if (!shown.contains(widget.idExtractor(item)))
+                widget.idExtractor(item),
+          }
+        : const <int>{};
     final connection = _connection;
-    final job = await bulk.actions[index].prepare(context, chosen);
+    final job = await action.prepare(context, chosen);
     if (!mounted || job == null || connection != _connection) return;
-    await _perform(job, chosen, running: index);
+    await _perform(job, chosen, running: index, keep: keep);
+  }
+
+  /// Leaves selection mode, unless [keep] (the titles an action did not take
+  /// because the chip hides them) is not empty: those stay selected.
+  void _finishSelecting(Set<int> keep) {
+    if (keep.isEmpty) {
+      _endSelecting();
+      return;
+    }
+    setState(() {
+      _selected.retainAll(keep);
+      _failure = null;
+    });
   }
 
   /// Runs [job] for [items] and says what became of each title.
@@ -743,6 +801,7 @@ class _MediaBrowseScaffoldState<T>
     List<T> items, {
     required int running,
     _BulkNotice<T>? retrying,
+    Set<int> keep = const {},
   }) async {
     final bulk = widget.bulk;
     final connection = _connection;
@@ -792,10 +851,10 @@ class _MediaBrowseScaffoldState<T>
             // The library no longer holds any of them: the write had gone
             // through.
             setState(() => _notice = null);
-            _endSelecting();
+            _finishSelecting(keep);
             return;
           }
-          _perform(job, left, running: running, retrying: retrying);
+          _perform(job, left, running: running, retrying: retrying, keep: keep);
         },
       );
       return;
@@ -807,7 +866,7 @@ class _MediaBrowseScaffoldState<T>
     final done = (retrying?.done ?? 0) + result.done.length;
     if (result.isWhole) {
       setState(() => _notice = null);
-      _endSelecting();
+      _finishSelecting(keep);
       SnackBarHelper.success(context, job.doneLine(total));
       return;
     }
@@ -819,12 +878,12 @@ class _MediaBrowseScaffoldState<T>
         () => _failure = (
           message: _failureLines(result.failures).join(' '),
           error: first.error,
-          retry: () => _perform(job, items, running: running),
+          retry: () => _perform(job, items, running: running, keep: keep),
         ),
       );
       return;
     }
-    _endSelecting();
+    _finishSelecting(keep);
     setState(
       () => _notice = _BulkNotice<T>(
         job: job,
@@ -896,7 +955,13 @@ class _MediaBrowseScaffoldState<T>
       setState(() => _notice = null);
       return;
     }
-    await _perform(notice.job, again, running: -1, retrying: notice);
+    await _perform(
+      notice.job,
+      again,
+      running: -1,
+      retrying: notice,
+      keep: {..._selected},
+    );
   }
 
   /// Whether the wall is the thing on screen: not under another route, not in

@@ -158,6 +158,7 @@ class _RecentlyAddedSection extends ConsumerWidget {
           idOf: (artist) => artist.id,
           titleOf: (artist) => artist.artistName,
           imagesOf: (artist) => artist.images,
+          fallbackIcon: Icons.person_outline_rounded,
           // Albums, never tracks: the two are different counts of different
           // things. Zero is silence, not a caption: `albumCount` reads
           // `statistics`, which is absent from any artist record the server

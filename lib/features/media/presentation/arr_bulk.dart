@@ -471,6 +471,11 @@ Future<ArrBulkRemoval?> showArrBulkRemoveDialog(
   );
 }
 
+/// How many titles Search takes without asking. Above it the service is
+/// asked for one search per title (Radarr's one command fans out the same
+/// way) and nothing here can stop them, so the person is asked first.
+const arrBulkSearchConfirmAbove = 50;
+
 /// What a service's wall can do to several of its titles, in its own terms:
 /// how to read a title and how to ask the arr. [arrBulk] turns it into the
 /// selection bar's four actions.
@@ -596,17 +601,34 @@ MediaBulk<T> arrBulk<T>(
     instanceId: adapter.instanceId,
     onChanged: adapter.onChanged,
     actions: [
-      // A search starts nothing to ask about: it runs.
+      // A search asks nothing up to [arrBulkSearchConfirmAbove] titles: it
+      // runs. Above, it says what it starts, which cannot be stopped from here.
       MediaBulkAction<T>(
         label: 'Search',
         icon: Icons.search_rounded,
-        prepare: (context, titles) async => job(
-          adapter.search,
-          doneLine: (count) => '$name is searching ${bulk.countOf(count)}',
-          partialLine: (done, total) =>
-              '$name is searching ${formatCount(done)} of '
-              '${bulk.countOf(total)}',
-        ),
+        prepare: (context, titles) async {
+          if (titles.length > arrBulkSearchConfirmAbove) {
+            final answer = await showAppConfirmDialog(
+              context: context,
+              useRootNavigator: dialogsOnRoot,
+              title: 'Search ${bulk.countOf(titles.length)} in $name?',
+              message:
+                  '$name searches them one by one, and the searches can’t be '
+                  'stopped from here.',
+              icon: Icons.search_rounded,
+              cancelLabel: 'Not now',
+              confirmLabel: 'Search ${bulk.countOf(titles.length)}',
+            );
+            if (!answer.confirmed) return null;
+          }
+          return job(
+            adapter.search,
+            doneLine: (count) => '$name is searching ${bulk.countOf(count)}',
+            partialLine: (done, total) =>
+                '$name is searching ${formatCount(done)} of '
+                '${bulk.countOf(total)}',
+          );
+        },
       ),
       MediaBulkAction<T>(
         label: 'Monitor',
@@ -674,6 +696,8 @@ MediaBulk<T> arrBulk<T>(
       MediaBulkAction<T>(
         label: 'Remove',
         icon: Icons.delete_outline_rounded,
+        // A title the chip hides is not on the screen the person decides on.
+        shownOnly: true,
         prepare: (context, titles) async {
           final removal = await showArrBulkRemoveDialog(
             context,

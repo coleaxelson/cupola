@@ -233,6 +233,74 @@ void main() {
     });
   });
 
+  group('Search over many titles', () {
+    List<SonarrSeries> many(int n) => [
+      for (var i = 1; i <= n; i++) _series(i, 'Show $i'),
+    ];
+    MediaBulk<SonarrSeries> sonarr(WidgetRef ref) =>
+        sonarrBulk(ref: ref, instanceId: 'sonarr', name: 'Sonarr');
+    MediaBulk<RadarrMovie> radarr(WidgetRef ref) =>
+        radarrBulk(ref: ref, instanceId: 'radarr', name: 'Radarr');
+
+    testWidgets('50 titles run without asking', (tester) async {
+      final arr = await _pump(tester, bulkOf: sonarr, items: many(50));
+
+      await tester.tap(find.text('Run Search'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Search 50 series in Sonarr?'), findsNothing);
+      expect(arr.requests, hasLength(50));
+    });
+
+    testWidgets('51 titles ask first, and Not now sends nothing', (
+      tester,
+    ) async {
+      final arr = await _pump(tester, bulkOf: sonarr, items: many(51));
+
+      await tester.tap(find.text('Run Search'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Search 51 series in Sonarr?'), findsOneWidget);
+      expect(
+        find.text(
+          'Sonarr searches them one by one, and the searches can’t be '
+          'stopped from here.',
+        ),
+        findsOneWidget,
+      );
+      expect(arr.requests, isEmpty);
+
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+      expect(arr.requests, isEmpty);
+
+      await tester.tap(find.text('Run Search'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search 51 series'));
+      await tester.pumpAndSettle();
+      expect(arr.requests, hasLength(51));
+    });
+
+    testWidgets('Radarr asks above 50 too, then sends its one command', (
+      tester,
+    ) async {
+      final arr = await _pump(
+        tester,
+        bulkOf: radarr,
+        items: [for (var i = 1; i <= 51; i++) _movie(i, 'Movie $i')],
+      );
+
+      await tester.tap(find.text('Run Search'));
+      await tester.pumpAndSettle();
+      expect(find.text('Search 51 movies in Radarr?'), findsOneWidget);
+      expect(arr.requests, isEmpty);
+
+      await tester.tap(find.text('Search 51 movies'));
+      await tester.pumpAndSettle();
+      expect(arr.requests, ['POST /api/v3/command']);
+    });
+  });
+
   group('Movies', () {
     MediaBulk<RadarrMovie> bulkOf(WidgetRef ref) =>
         radarrBulk(ref: ref, instanceId: 'radarr', name: 'Radarr');

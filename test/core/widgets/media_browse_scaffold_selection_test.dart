@@ -36,6 +36,9 @@ class _Asked {
   /// The titles each run was for, in the order they ran.
   final runs = <List<String>>[];
 
+  /// The titles Remove was asked about, in the order it was.
+  final removing = <List<String>>[];
+
   /// How many times an action asked what it needed.
   var prepared = 0;
 
@@ -65,6 +68,7 @@ MediaBulk<String> _bulk(
   _Asked asked, {
   Future<MediaBulkOutcome> Function(List<String> titles)? outcome,
   String instanceId = 'lidarr-one',
+  bool removeRuns = false,
 }) {
   Future<MediaBulkOutcome> whole(List<String> titles) async =>
       MediaBulkOutcome(done: [for (final title in titles) _id(title)]);
@@ -97,10 +101,18 @@ MediaBulk<String> _bulk(
       MediaBulkAction<String>(
         label: 'Remove',
         icon: Icons.delete_outline_rounded,
-        // Backs out of what it asks.
+        shownOnly: true,
+        // Backs out of what it asks, unless the test lets it run.
         prepare: (context, titles) async {
           asked.prepared++;
-          return null;
+          asked.removing.add(titles);
+          if (!removeRuns) return null;
+          return MediaBulkJob<String>(
+            run: (items) async =>
+                MediaBulkOutcome(done: [for (final title in items) _id(title)]),
+            doneLine: (count) => 'Removed $count',
+            partialLine: (done, total) => '$done of $total removed',
+          );
         },
       ),
     ],
@@ -786,6 +798,95 @@ void main() {
       expect(find.text('Searching 2'), findsOneWidget);
       expect(find.text('Cancel'), findsNothing);
       expect(find.text('Select'), findsOneWidget);
+    });
+
+    testWidgets('Remove takes only the selected titles the chip shows, the '
+        'others stay selected and are not touched', (tester) async {
+      final asked = _Asked();
+      await _pump(
+        tester,
+        _wall(
+          bulk: _bulk(asked, removeRuns: true),
+          status: (title) => MediaStatusInfo(
+            availability: title == 'Bill Evans'
+                ? MediaAvailability.missing
+                : MediaAvailability.available,
+          ),
+        ),
+      );
+      await _longPress(tester, 'Anton Bruckner');
+      await _tapTile(tester, 'Bill Evans');
+      await tester.tap(find.text('Missing'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 hidden by Missing'), findsOneWidget);
+
+      await tester.tap(_remove);
+      await tester.pumpAndSettle();
+
+      expect(asked.removing, [
+        ['Bill Evans'],
+      ], reason: 'the confirmation counts only what the wall shows');
+      expect(find.text('Removed 1'), findsOneWidget);
+      // The hidden one is still selected, and the header still says so.
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(find.text('1 hidden by Missing'), findsOneWidget);
+    });
+
+    testWidgets('Remove with every selected title hidden does not start, '
+        'and says why', (tester) async {
+      final asked = _Asked();
+      await _pump(
+        tester,
+        _wall(
+          bulk: _bulk(asked, removeRuns: true),
+          status: (title) => MediaStatusInfo(
+            availability: title == 'Bill Evans'
+                ? MediaAvailability.missing
+                : MediaAvailability.available,
+          ),
+        ),
+      );
+      await _longPress(tester, 'Anton Bruckner');
+      await tester.tap(find.text('Missing'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_remove);
+      await tester.pumpAndSettle();
+
+      expect(asked.prepared, 0);
+      expect(
+        find.text('None of the selected artists show under Missing'),
+        findsOneWidget,
+      );
+      expect(find.text('1 selected'), findsOneWidget);
+    });
+
+    testWidgets('Search still takes the whole selection, hidden titles '
+        'included', (tester) async {
+      final asked = _Asked();
+      await _pump(
+        tester,
+        _wall(
+          bulk: _bulk(asked),
+          status: (title) => MediaStatusInfo(
+            availability: title == 'Bill Evans'
+                ? MediaAvailability.missing
+                : MediaAvailability.available,
+          ),
+        ),
+      );
+      await _longPress(tester, 'Anton Bruckner');
+      await _tapTile(tester, 'Bill Evans');
+      await tester.tap(find.text('Missing'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_search);
+      await tester.pumpAndSettle();
+
+      expect(asked.runs, [
+        ['Anton Bruckner', 'Bill Evans'],
+      ]);
     });
 
     testWidgets('one that is backed out of leaves the selection as it was', (

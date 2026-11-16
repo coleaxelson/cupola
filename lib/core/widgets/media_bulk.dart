@@ -86,6 +86,7 @@ class MediaBulkAction<T> {
     required this.label,
     required this.icon,
     required this.prepare,
+    this.shownOnly = false,
   });
 
   final String label;
@@ -96,6 +97,12 @@ class MediaBulkAction<T> {
   /// selection stays.
   final Future<MediaBulkJob<T>?> Function(BuildContext context, List<T> items)
   prepare;
+
+  /// Whether the action takes only the selected titles the chip shows: the
+  /// ones a person cannot see are not acted on (Remove). They stay selected
+  /// and the header keeps saying so. Search, Monitor and Profile take the
+  /// whole selection.
+  final bool shownOnly;
 }
 
 /// What a library can do to several of its titles at once. A wall without one
