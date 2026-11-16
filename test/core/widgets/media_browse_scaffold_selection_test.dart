@@ -41,6 +41,9 @@ class _Asked {
 
   /// What the library said changed.
   var changed = 0;
+
+  /// What reading the library again does, when a test makes it matter.
+  void Function(WidgetRef ref)? reread;
 }
 
 MediaBulkFailure _refused(String title) => MediaBulkFailure(
@@ -61,6 +64,7 @@ MediaBulkFailure _refused(String title) => MediaBulkFailure(
 MediaBulk<String> _bulk(
   _Asked asked, {
   Future<MediaBulkOutcome> Function(List<String> titles)? outcome,
+  String instanceId = 'lidarr-one',
 }) {
   Future<MediaBulkOutcome> whole(List<String> titles) async =>
       MediaBulkOutcome(done: [for (final title in titles) _id(title)]);
@@ -69,8 +73,11 @@ MediaBulk<String> _bulk(
     plural: 'artists',
     noneHint: 'Select an artist first',
     service: ServiceKey.lidarr,
-    instanceId: 'lidarr-one',
-    onChanged: (_) => asked.changed++,
+    instanceId: instanceId,
+    onChanged: (ref) {
+      asked.changed++;
+      asked.reread?.call(ref);
+    },
     actions: [
       MediaBulkAction<String>(
         label: 'Search',
@@ -105,8 +112,10 @@ Widget _wall({
   List<String> titles = _titles,
   MediaStatusInfo Function(String title)? status,
   bool peek = false,
+  FutureProvider<List<String>>? library,
+  Map<String, int> ids = const {},
 }) {
-  final library = FutureProvider<List<String>>((ref) async => titles);
+  library ??= FutureProvider<List<String>>((ref) async => titles);
   return MediaBrowseScaffold<String>(
     title: 'Music',
     searchHint: 'Search',
@@ -123,7 +132,7 @@ Widget _wall({
     titleExtractor: (title) => title,
     subtitleExtractor: (_) => '6 albums',
     imagesExtractor: (_) => null,
-    idExtractor: _id,
+    idExtractor: (title) => ids[title] ?? _id(title),
     statusExtractor: status,
     settingsSelector: (_) => ('', '', const NoAccess()),
     onItemTap: (_, _, _) {},
@@ -1008,6 +1017,174 @@ void main() {
       expect(find.byType(InlineErrorRetry), findsOneWidget);
       expect(find.textContaining('Lidarr refused Bill Evans'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
+    });
+  });
+
+  group('another connection', () {
+    // Ids are one connection's. Two Lidarrs number their artists alike.
+    const first = {'Anton Bruckner': 1, 'Bill Evans': 2, 'Brian Eno': 3};
+    const second = {'Alice Coltrane': 1, 'Bobby Hutcherson': 2, 'Can': 3};
+
+    Widget wallOf(String lens, {_Asked? asked, Completer<void>? hold}) {
+      final names = lens == 'one' ? first : second;
+      return _wall(
+        titles: names.keys.toList(),
+        ids: names,
+        bulk: _bulk(
+          asked ?? _Asked(),
+          instanceId: 'lidarr-$lens',
+          outcome: hold == null
+              ? null
+              : (titles) async {
+                  await hold.future;
+                  return MediaBulkOutcome(
+                    done: const [1],
+                    failures: [_refused('Bill Evans')],
+                  );
+                },
+        ),
+      );
+    }
+
+    testWidgets('a selection does not follow the wall to the other '
+        'connection, where its ids are other titles', (tester) async {
+      final asked = _Asked();
+      await _pump(tester, wallOf('one', asked: asked));
+      await _longPress(tester, 'Bill Evans');
+      expect(find.text('1 selected'), findsOneWidget);
+
+      await tester.pumpWidget(_app(wallOf('two', asked: asked)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bobby Hutcherson'), findsOneWidget);
+      expect(find.textContaining('selected'), findsNothing);
+      expect(_bar, findsNothing);
+      expect(find.text('Select'), findsOneWidget);
+      expect(asked.runs, isEmpty);
+    });
+
+    testWidgets('what the last action left (a failure and its retry) does '
+        'not follow either', (tester) async {
+      final asked = _Asked();
+      await _pump(
+        tester,
+        _wall(
+          titles: first.keys.toList(),
+          ids: first,
+          bulk: _bulk(
+            asked,
+            outcome: (_) => Future.error(
+              DioException.connectionError(
+                requestOptions: RequestOptions(path: '/api/v1/artist/editor'),
+                reason: 'Connection refused',
+              ),
+            ),
+          ),
+        ),
+      );
+      await _longPress(tester, 'Bill Evans');
+      await tester.tap(_search);
+      await tester.pumpAndSettle();
+      expect(find.byType(InlineErrorRetry), findsOneWidget);
+
+      await tester.pumpWidget(_app(wallOf('two', asked: asked)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineErrorRetry), findsNothing);
+      expect(find.textContaining('selected'), findsNothing);
+    });
+
+    testWidgets('an action still out when the connection changes paints '
+        'nothing on the new wall, and reads the library again', (tester) async {
+      final asked = _Asked();
+      final hold = Completer<void>();
+      await _pump(tester, wallOf('one', asked: asked, hold: hold));
+      await _longPress(tester, 'Bill Evans');
+      await tester.tap(_search);
+      await tester.pump();
+
+      await tester.pumpWidget(_app(wallOf('two', asked: asked)));
+      await tester.pump();
+      hold.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('selected'), findsNothing);
+      expect(find.byType(InlineErrorRetry), findsNothing);
+      expect(find.textContaining('updated'), findsNothing);
+      expect(find.text('Select'), findsOneWidget);
+      expect(asked.changed, 1);
+    });
+  });
+
+  group('an outcome nobody can know', () {
+    DioException receiveTimeout() => DioException.receiveTimeout(
+      timeout: const Duration(seconds: 30),
+      requestOptions: RequestOptions(path: '/api/v1/artist/editor'),
+    );
+
+    testWidgets('a timeout after the request went out does not say nothing '
+        'was changed, and the library is read again', (tester) async {
+      final asked = _Asked();
+      await _pump(
+        tester,
+        _wall(
+          bulk: _bulk(asked, outcome: (_) => Future.error(receiveTimeout())),
+        ),
+      );
+      await _longPress(tester, 'Bill Evans');
+
+      await tester.tap(_search);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineErrorRetry), findsOneWidget);
+      expect(find.textContaining('nothing was changed'), findsNothing);
+      expect(find.textContaining('may have changed'), findsOneWidget);
+      expect(asked.changed, 1);
+      expect(find.text('1 selected'), findsOneWidget);
+    });
+
+    testWidgets('Retry acts on the selected titles the library still holds, '
+        'not on the list captured before', (tester) async {
+      final asked = _Asked();
+      final held = StateProvider<List<String>>((ref) => _titles);
+      final library = FutureProvider<List<String>>(
+        (ref) async => ref.watch(held),
+      );
+      asked.reread = (ref) {
+        // The write had gone through for Bill Evans.
+        ref.read(held.notifier).state = [
+          for (final title in _titles)
+            if (title != 'Bill Evans') title,
+        ];
+      };
+      var calls = 0;
+      await _pump(
+        tester,
+        _wall(
+          library: library,
+          bulk: _bulk(
+            asked,
+            outcome: (titles) {
+              if (calls++ == 0) return Future.error(receiveTimeout());
+              return Future.value(
+                MediaBulkOutcome(done: [for (final t in titles) _id(t)]),
+              );
+            },
+          ),
+        ),
+      );
+      await _longPress(tester, 'Bill Evans');
+      await _tapTile(tester, 'Brian Eno');
+
+      await tester.tap(_search);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(asked.runs, [
+        ['Bill Evans', 'Brian Eno'],
+        ['Brian Eno'],
+      ]);
     });
   });
 

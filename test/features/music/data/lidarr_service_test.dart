@@ -506,6 +506,21 @@ void main() {
       expect(client.postCallCount, 0);
     });
 
+    test('monitorAndSearchAlbum says when the monitor was written and the '
+        'search did not start', () async {
+      client.postException = Exception('timed out');
+
+      await expectLater(
+        service.monitorAndSearchAlbum(7),
+        throwsA(isA<LidarrSearchNotStarted>()),
+      );
+
+      expect(client.lastPutData, {
+        'albumIds': [7],
+        'monitored': true,
+      });
+    });
+
     group('addAlbum', () {
       final raw = {
         ..._albumJson(id: 0, title: 'Elephant', monitored: false),

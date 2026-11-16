@@ -637,6 +637,48 @@ void main() {
       expect(olafur, lessThan(oyvind));
     });
 
+    testWidgets('everything that is not A to Z is one # section, first, and '
+        'the strip jumps to its start', (tester) async {
+      await _phone(tester);
+      await tester.pumpWidget(
+        _wall([
+          '1975',
+          '~Tilde',
+          'Кино',
+          'Мумий Тролль',
+          'Ásgeir',
+          'Abba',
+          for (var i = 0; i < 40; i++) 'Zed ${i.toString().padLeft(2, '0')}',
+        ], subtitle: (_) => ''),
+      );
+      await tester.pumpAndSettle();
+
+      Finder section(String letter) =>
+          find.byKey(ValueKey('media-browse-section-$letter'));
+      // One `#`, however many keys sort past the letters, above the A.
+      expect(section('#'), findsOneWidget);
+      expect(
+        tester.getTopLeft(section('#')).dy,
+        lessThan(tester.getTopLeft(section('A')).dy),
+      );
+      // Its titles in key order, then the As, Ásgeir among them.
+      double at(String title) => tester.getTopLeft(find.text(title)).dy;
+      final run = [
+        for (final t in ['1975', '~Tilde', 'Кино', 'Мумий Тролль']) at(t),
+      ];
+      expect(run, orderedEquals([...run]..sort()));
+      expect(run.last, lessThan(tester.getTopLeft(section('A')).dy));
+      expect(
+        tester.getTopLeft(find.text('Abba')).dx,
+        lessThan(tester.getTopLeft(find.text('Ásgeir')).dx),
+      );
+
+      // From far down the wall, `#` lands at its top, not after the Z.
+      await _jump(tester, 'Z');
+      await _jump(tester, '#');
+      expect(_position(tester).pixels, 0);
+    });
+
     testWidgets('the strip draws the same letters, # included', (tester) async {
       await _phone(tester);
       await tester.pumpWidget(

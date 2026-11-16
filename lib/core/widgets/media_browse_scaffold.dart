@@ -13,6 +13,7 @@ import 'package:cupola/core/app_breakpoints.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/lifecycle/page_activity.dart';
+import 'package:cupola/core/network/connection_failure.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/service_theme.dart';
 import 'package:cupola/core/theme.dart';
@@ -459,6 +460,12 @@ class _MediaBrowseScaffoldState<T>
   /// notice. While one is out the others are inert and Back is not heard.
   int? _running;
 
+  /// Which connection the wall is showing, counted: it moves when the wall is
+  /// handed another connection's titles. An action that began under an earlier
+  /// count paints nothing when it ends, since its ids and its words are
+  /// another connection's.
+  int _connection = 0;
+
   /// What the last action left undone for some titles, over the chips.
   _BulkNotice<T>? _notice;
 
@@ -537,6 +544,23 @@ class _MediaBrowseScaffoldState<T>
     // Likewise a chip the screen no longer offers.
     if (_selectedFilter == MediaBrowseFilter.wanted && widget.wanted == null) {
       _selectedFilter = MediaBrowseFilter.all;
+    }
+    // The ids are one connection's: a selection that outlives the lens would
+    // name other titles, and Remove would take them from the wrong server. It
+    // ends as it does on leaving the tab, and what it left (a notice, a
+    // failure whose retry carries the old ids) goes with it.
+    if (widget.bulk != null &&
+        oldWidget.bulk != null &&
+        widget.bulk!.instanceId != oldWidget.bulk!.instanceId) {
+      _connection++;
+      _running = null;
+      if (_selecting) {
+        _selecting = false;
+        _scope?.release(this);
+      }
+      _selected.clear();
+      _notice = null;
+      _failure = null;
     }
     // A wall that can no longer do anything to its titles does not select.
     if (widget.bulk == null) {
@@ -704,8 +728,9 @@ class _MediaBrowseScaffoldState<T>
       _toastNone(context);
       return;
     }
+    final connection = _connection;
     final job = await bulk.actions[index].prepare(context, chosen);
-    if (!mounted || job == null) return;
+    if (!mounted || job == null || connection != _connection) return;
     await _perform(job, chosen, running: index);
   }
 
@@ -720,6 +745,7 @@ class _MediaBrowseScaffoldState<T>
     _BulkNotice<T>? retrying,
   }) async {
     final bulk = widget.bulk;
+    final connection = _connection;
     setState(() {
       _running = running;
       _failure = null;
@@ -732,13 +758,45 @@ class _MediaBrowseScaffoldState<T>
       thrown = error;
     }
     if (!mounted) return;
+    if (connection != _connection) {
+      // The wall moved to another connection while this ran: what became of
+      // these titles is the old connection's to hear, and nothing of it may
+      // be drawn over the new one's titles. The library is read again.
+      if (bulk != null && (thrown != null || outcome!.done.isNotEmpty)) {
+        bulk.onChanged?.call(ref);
+      }
+      return;
+    }
     setState(() => _running = null);
 
     if (thrown != null) {
+      final unknown = _mayHaveApplied(thrown);
+      // A write that may have gone through is read back, so the wall shows
+      // what the server holds and a retry is for what is still to do.
+      if (unknown && bulk != null) bulk.onChanged?.call(ref);
       _fail(
         thrown,
         retrying: retrying != null,
-        again: () => _perform(job, items, running: running, retrying: retrying),
+        unknown: unknown,
+        again: () {
+          if (connection != _connection) return;
+          final ids = {for (final item in items) widget.idExtractor(item)};
+          final held = ref.read(widget.libraryProvider).value;
+          final left = unknown && held != null
+              ? [
+                  for (final item in held)
+                    if (ids.contains(widget.idExtractor(item))) item,
+                ]
+              : items;
+          if (left.isEmpty) {
+            // The library no longer holds any of them: the write had gone
+            // through.
+            setState(() => _notice = null);
+            _endSelecting();
+            return;
+          }
+          _perform(job, left, running: running, retrying: retrying);
+        },
       );
       return;
     }
@@ -782,6 +840,7 @@ class _MediaBrowseScaffoldState<T>
   void _fail(
     Object error, {
     required bool retrying,
+    required bool unknown,
     required VoidCallback again,
   }) {
     final bulk = widget.bulk;
@@ -789,13 +848,31 @@ class _MediaBrowseScaffoldState<T>
     final message = sectionFailureMessage(
       bulk.service,
       error,
-      consequence: 'nothing was changed',
+      consequence: unknown
+          ? 'some of these ${bulk.plural} may have changed'
+          : 'nothing was changed',
     );
     if (retrying) {
       SnackBarHelper.error(context, message, cause: error, onRetry: again);
       return;
     }
     setState(() => _failure = (message: message, error: error, retry: again));
+  }
+
+  /// Whether [error] leaves it unknown if the write was carried out: the
+  /// request was sent and nothing readable came back (a timeout after the
+  /// connection was made, a reply that broke off, a 5xx). A request that
+  /// certainly never arrived (refused, unresolved, not set up, refused by the
+  /// key or the address) changed nothing.
+  static bool _mayHaveApplied(Object error) {
+    if (unwrapFailure(error) is ServiceNotConfigured) return false;
+    return switch (classifyConnectionFailure(error)) {
+      ServiceFailureReason.timeout ||
+      ServiceFailureReason.serverError ||
+      ServiceFailureReason.invalidResponse ||
+      ServiceFailureReason.unknown => true,
+      _ => false,
+    };
   }
 
   /// Each refusal in the service's words, up to three, then how many more.
@@ -837,7 +914,14 @@ class _MediaBrowseScaffoldState<T>
       label: 'Title A–Z',
       lettered: true,
       compare: (left, right) {
-        final bySortTitle = _sortKeyFor(left).compareTo(_sortKeyFor(right));
+        final leftKey = _sortKeyFor(left);
+        final rightKey = _sortKeyFor(right);
+        // The `#` section is one run, first: whatever is not a Latin letter
+        // (digits, symbols, Cyrillic) goes before A whatever its code units
+        // say, so a name past `z` cannot make a second `#` after Z.
+        final leftHashed = _headedHash(leftKey);
+        if (leftHashed != _headedHash(rightKey)) return leftHashed ? -1 : 1;
+        final bySortTitle = leftKey.compareTo(rightKey);
         if (bySortTitle != 0) {
           return bySortTitle;
         }
@@ -1925,13 +2009,14 @@ class _MediaBrowseScaffoldState<T>
         .trim(),
   );
 
+  /// Whether a sort key is headed `#`: empty, or not starting with A–Z.
+  static bool _headedHash(String sortKey) =>
+      sortKey.isEmpty ||
+      !_sectionLetter.hasMatch(sortKey.characters.first.toUpperCase());
+
   String _sectionLabelFor(T item) {
     final sortKey = _sortKeyFor(item);
-    if (sortKey.isEmpty) {
-      return '#';
-    }
-    final firstCharacter = sortKey.characters.first.toUpperCase();
-    return _sectionLetter.hasMatch(firstCharacter) ? firstCharacter : '#';
+    return _headedHash(sortKey) ? '#' : sortKey.characters.first.toUpperCase();
   }
 }
 

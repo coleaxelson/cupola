@@ -387,10 +387,15 @@ class LidarrService with ArrActivityMixin {
   /// Monitors [albumId] and has Lidarr look for it: the two halves of "get
   /// this album" on an album the library holds and was told to leave alone.
   /// Throws on failure, and the search is not started when the monitor was not
-  /// written.
+  /// written. A search that failed after the monitor was written is a
+  /// [LidarrSearchNotStarted]: the album is monitored all the same.
   Future<void> monitorAndSearchAlbum(int albumId) async {
     await setAlbumsMonitored([albumId], true);
-    await searchAlbums([albumId]);
+    try {
+      await searchAlbums([albumId]);
+    } catch (error) {
+      throw LidarrSearchNotStarted(error);
+    }
   }
 
   /// Adds [hit]'s album (`POST /api/v1/album`), the way Lidarr's own front
@@ -615,4 +620,16 @@ class LidarrService with ArrActivityMixin {
       },
     );
   }
+}
+
+/// [LidarrService.monitorAndSearchAlbum] wrote the monitor and the search did
+/// not start: the album is monitored, and the failure is the search's
+/// ([cause]).
+class LidarrSearchNotStarted implements Exception {
+  const LidarrSearchNotStarted(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'Lidarr did not start the search: $cause';
 }

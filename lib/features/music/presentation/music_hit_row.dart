@@ -71,12 +71,24 @@ class _MusicHitRowState extends ConsumerState<MusicHitRow> {
   }
 
   Future<void> _monitor(LidarrAlbum album, String name) async {
+    if (_monitoring) return;
     setState(() => _monitoring = true);
+    // Whether the monitor was written: the library's list is read again
+    // whenever it was, and the row waits for that read.
+    var monitored = false;
     try {
       await ref.read(lidarrServiceProvider).monitorAndSearchAlbum(album.id);
+      monitored = true;
       if (!mounted) return;
       SnackBarHelper.success(context, '$name is looking for ${album.title}');
-      ref.invalidate(musicAlbumsProvider);
+    } on LidarrSearchNotStarted catch (error) {
+      monitored = true;
+      if (!mounted) return;
+      SnackBarHelper.error(
+        context,
+        '${album.title} is monitored, but $name did not start looking for it.',
+        detail: error.cause,
+      );
     } catch (error) {
       if (!mounted) return;
       SnackBarHelper.error(
@@ -85,6 +97,14 @@ class _MusicHitRowState extends ConsumerState<MusicHitRow> {
         detail: error,
       );
     } finally {
+      if (monitored && mounted) {
+        ref.invalidate(musicAlbumsProvider);
+        try {
+          await ref.read(musicAlbumsProvider.future);
+        } catch (_) {
+          // The search's own surface says when this read failed.
+        }
+      }
       if (mounted) setState(() => _monitoring = false);
     }
   }

@@ -93,6 +93,13 @@ class _Lidarr extends FakeLidarrService {
   final monitored = <int>[];
   Object? monitorError;
 
+  /// The search failed after the monitor was written.
+  Object? searchStartError;
+
+  /// How many times the library's albums were read, and a read held open.
+  var albumReads = 0;
+  Completer<void>? albumsGate;
+
   static final artists = [
     _artist(
       2,
@@ -144,10 +151,11 @@ class _Lidarr extends FakeLidarrService {
   Future<List<LidarrArtist>> getArtists() async => artists;
 
   @override
-  Future<List<LidarrAlbum>> getAllAlbumsOrThrow() async => [
-    ...albums,
-    ...extraAlbums,
-  ];
+  Future<List<LidarrAlbum>> getAllAlbumsOrThrow() async {
+    albumReads++;
+    await albumsGate?.future;
+    return [...albums, ...extraAlbums];
+  }
 
   @override
   Future<List<LidarrSearchHit>> search(
@@ -164,6 +172,9 @@ class _Lidarr extends FakeLidarrService {
   Future<void> monitorAndSearchAlbum(int albumId) async {
     if (monitorError != null) throw monitorError!;
     monitored.add(albumId);
+    if (searchStartError != null) {
+      throw LidarrSearchNotStarted(searchStartError!);
+    }
   }
 }
 
@@ -646,6 +657,72 @@ void main() {
 
       expect(lidarr.monitored, [13]);
       expect(find.text('Lidarr is looking for Electric Ladyland'), findsOne);
+
+      await harness.unmount(tester);
+    });
+
+    testWidgets('a monitor that went through and a search that did not '
+        'says the album is monitored, and the albums are read again', (
+      tester,
+    ) async {
+      final lidarr = _Lidarr(searchAnswer: _catalog())
+        ..searchStartError = DioException.receiveTimeout(
+          timeout: const Duration(seconds: 30),
+          requestOptions: RequestOptions(path: '/api/v1/command'),
+        );
+      final (:harness, :router, lidarr: _) = await _open(
+        tester,
+        lidarr: lidarr,
+      );
+      await _type(tester, harness, 'el');
+      await _askLidarr(tester, harness);
+      final reads = lidarr.albumReads;
+
+      await tester.tap(_disc('Electric Ladyland'));
+      await harness.settle(tester);
+
+      expect(lidarr.monitored, [13]);
+      expect(
+        find.textContaining(
+          'Electric Ladyland is monitored, but Lidarr did not start looking '
+          'for it.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Could not monitor'), findsNothing);
+      expect(lidarr.albumReads, greaterThan(reads));
+
+      await harness.unmount(tester);
+    });
+
+    testWidgets('the control stays busy until the albums are read again, '
+        'and a second tap in that stretch asks for nothing', (tester) async {
+      final lidarr = _Lidarr(searchAnswer: _catalog());
+      final (:harness, :router, lidarr: _) = await _open(
+        tester,
+        lidarr: lidarr,
+      );
+      await _type(tester, harness, 'el');
+      await _askLidarr(tester, harness);
+      final reads = lidarr.albumReads;
+      lidarr.albumsGate = Completer<void>();
+
+      final disc = _disc('Electric Ladyland');
+      expect(disc, findsOneWidget);
+      await tester.tap(disc);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // The write is done and the read is out: the plus is still busy, so
+      // there is nothing to tap for a second search.
+      expect(lidarr.monitored, [13]);
+      expect(lidarr.albumReads, greaterThan(reads));
+      expect(disc, findsNothing);
+
+      lidarr.albumsGate!.complete();
+      await harness.settle(tester);
+      expect(disc, findsOneWidget);
+      expect(lidarr.monitored, [13]);
 
       await harness.unmount(tester);
     });

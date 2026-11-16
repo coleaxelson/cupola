@@ -227,7 +227,9 @@ void main() {
     await harness.settle(tester);
 
     expect(find.text('2 selected'), findsOneWidget);
-    expect(find.textContaining('nothing was changed'), findsOneWidget);
+    // A 5xx may have come after the write: Lidarr is not said to be untouched.
+    expect(find.textContaining('nothing was changed'), findsNothing);
+    expect(find.textContaining('may have changed'), findsOneWidget);
     // One request: nothing was asked artist by artist of a server that
     // answered with a fault.
     expect(_writes(harness), hasLength(1));
