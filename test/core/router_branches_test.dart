@@ -127,6 +127,11 @@ _tabDetailPaths = [
     tab: ServiceTab.violations,
     path: 'person/:id',
   ),
+  // An issue, opened from the Issues list and from the title's page. Seerr's
+  // see-alls, person and collection went with Discover to the app's own tab; a
+  // title, a person and a collection hang under every tab of its bar like
+  // everywhere else (`_mediaPaths`).
+  (service: ServiceKey.seerr, tab: ServiceTab.issues, path: ':issueId'),
   // A violation, opened from Violations' list, the Overview and Needs you; a
   // title opens under every tab like everywhere else (`_mediaPaths`).
   (service: ServiceKey.tracearr, tab: ServiceTab.violations, path: ':id'),
@@ -171,10 +176,6 @@ const List<String> _mediaPaths = [
 ///  * Unraid: it was one page, and the split produced sections rather than
 ///    pages.
 const List<ServiceKey> _servicesWithoutTabDetails = [
-  // Seerr's see-alls, person and collection went with Discover to the app's
-  // own tab; a title, a person and a collection hang under every tab of its
-  // bar like everywhere else (`_mediaPaths`).
-  ServiceKey.seerr,
   ServiceKey.transmission,
   ServiceKey.sabnzbd,
   ServiceKey.nzbget,

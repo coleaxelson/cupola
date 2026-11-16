@@ -275,6 +275,39 @@ void main() {
     });
   });
 
+  group('reported problems in the pipeline', () {
+    DashboardDecision problems(String instance, int count) => DashboardDecision(
+      kind: DecisionKind.reportedProblems,
+      id: 'seerr-issues-$instance',
+      service: ServiceKey.seerr,
+      title: reportedProblemsClause(count),
+      detail: 'Seerr',
+      occurredAt: DateTime.utc(2026, 9, 26),
+      count: count,
+      instanceId: instance,
+      members: [
+        _decision(DecisionKind.reportedProblems, 'Tears of Steel', at: null),
+      ],
+    );
+
+    test('are one fault per Seerr, never folded, and keep their rows', () {
+      final grouped = groupDecisions([problems('a', 3), problems('b', 1)]);
+
+      expect(grouped, hasLength(2));
+      expect(grouped.first.count, 3);
+      expect(grouped.first.members, hasLength(1));
+    });
+
+    test('rank before a stuck download, as the board draws them', () {
+      final ranked = rankDecisions([
+        _decision(DecisionKind.stalledDownload, 'Big Buck Bunny', at: null),
+        problems('a', 3),
+      ]);
+
+      expect(ranked.first.kind, DecisionKind.reportedProblems);
+    });
+  });
+
   group('decisionCapFor', () {
     test('three on the phone, four on the desktop, two at compact', () {
       expect(decisionCapFor(desktopShell: false, compact: false), 3);
@@ -292,6 +325,14 @@ void main() {
           reason: '$kind',
         );
       }
+    });
+
+    test('reported problems are reviewed, in a Seerr brought under the lens, '
+        'and say how many', () {
+      expect(decisionActionLabel(DecisionKind.reportedProblems), 'Review');
+      expect(DecisionKind.reportedProblems.opensUnderLens, isTrue);
+      expect(reportedProblemsClause(3), '3 reported problems');
+      expect(reportedProblemsClause(1), '1 reported problem');
     });
 
     test('a violation is reviewed, and says what it could not open', () {

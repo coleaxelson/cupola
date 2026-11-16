@@ -1,0 +1,59 @@
+{
+  "id": 22,
+  "issueType": 3,
+  "status": 1,
+  "problemSeason": 2,
+  "problemEpisode": 4,
+  "createdAt": "2026-11-09T20:00:00.000Z",
+  "updatedAt": "2026-11-09T22:10:00.000Z",
+  "media": {
+    "id": 82,
+    "mediaType": "tv",
+    "tmdbId": 1399,
+    "tvdbId": 121361,
+    "imdbId": null,
+    "status": 4,
+    "status4k": 1,
+    "createdAt": "2026-07-21T10:00:00.000Z",
+    "updatedAt": "2026-07-29T11:00:00.000Z",
+    "serviceUrl": "http://sonarr.local:8989/series/game-of-thrones"
+  },
+  "createdBy": {
+    "id": 5,
+    "displayName": "Luca",
+    "username": "luca",
+    "email": "luca@example.com",
+    "avatar": "/avatarproxy/luca",
+    "permissions": 4194336
+  },
+  "modifiedBy": {
+    "id": 1,
+    "displayName": "Matt",
+    "username": "matt",
+    "email": "matt@example.com",
+    "permissions": 2
+  },
+  "comments": [
+    {
+      "id": 2,
+      "message": "Subtitles are missing",
+      "createdAt": "2026-11-09T20:00:00.000Z",
+      "updatedAt": "2026-11-09T20:00:00.000Z",
+      "user": { "id": 5, "displayName": "Luca", "username": "luca", "email": "luca@example.com", "permissions": 4194336 }
+    },
+    {
+      "id": 3,
+      "message": "Which language?",
+      "createdAt": "2026-11-09T21:00:00.000Z",
+      "updatedAt": "2026-11-09T21:00:00.000Z",
+      "user": { "id": 1, "displayName": "Matt", "username": "matt", "email": "matt@example.com", "permissions": 2 }
+    },
+    {
+      "id": 4,
+      "message": "Italian, episode 4",
+      "createdAt": "2026-11-09T22:00:00.000Z",
+      "updatedAt": "2026-11-09T22:10:00.000Z",
+      "user": { "id": 5, "displayName": "Luca", "username": "luca", "email": "luca@example.com", "permissions": 4194336 }
+    }
+  ]
+}

@@ -6,12 +6,16 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/widgets/not_configured_placeholder.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
+import 'package:cupola/features/discover/domain/seerr_numbering.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/discover/presentation/seerr_admin_screens.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
 
+import '../../../test_helpers/fake_api_client.dart';
 import '../../../test_helpers/fake_services.dart';
+import '../../../test_helpers/fixtures.dart';
 import '../../../test_helpers/settings_scope.dart';
 
 void main() {
@@ -22,9 +26,8 @@ void main() {
       ..issues = [
         SeerrIssue(
           id: 7,
-          issueType: 2,
-          // Overseerr's own spelling: 1 open, 2 resolved.
-          status: 1,
+          type: SeerrIssueType.audio,
+          status: SeerrIssueStatus.open,
           media: const SeerrIssueMedia(title: 'Dune: Part Two'),
           createdBy: const SeerrUser(id: 1, username: 'Matt'),
         ),
@@ -40,12 +43,16 @@ void main() {
     );
     expect(find.text('Dune: Part Two'), findsOneWidget);
     expect(find.text('Audio\u00A0· Matt'), findsOneWidget);
-    // Asks first, naming the issue and who reported it; Cancel sends nothing.
+    // Asks first, naming the issue and who it closes it for; Cancel sends
+    // nothing.
     await tester.tap(find.byTooltip('Resolve issue'));
     await tester.pumpAndSettle();
     expect(find.text('Resolve this issue?'), findsOneWidget);
+    expect(find.textContaining('Dune: Part Two\u00A0· Audio.'), findsOneWidget);
     expect(
-      find.textContaining('Dune: Part Two\u00A0· Audio, reported by Matt'),
+      find.textContaining(
+        'Seerr marks it resolved for Matt. It can be reopened.',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.text('Cancel'));
@@ -67,6 +74,69 @@ void main() {
     // line when Seerr has no separate username.
     expect(find.text('matt@example.com'), findsNWidgets(2));
     expect(find.text('3 requests'), findsOneWidget);
+  });
+
+  testWidgets('the Issues tab, left on Resolved, draws the open issues once '
+      'a surface that promises them puts the filter back', (tester) async {
+    final service = FakeSeerrService()
+      ..issues = [
+        SeerrIssue(
+          id: 7,
+          type: SeerrIssueType.audio,
+          status: SeerrIssueStatus.open,
+          media: const SeerrIssueMedia(title: 'Dune: Part Two'),
+          createdBy: const SeerrUser(id: 1, username: 'Matt'),
+        ),
+        SeerrIssue(
+          id: 8,
+          type: SeerrIssueType.video,
+          status: SeerrIssueStatus.resolved,
+          media: const SeerrIssueMedia(title: 'Arrival'),
+          createdBy: const SeerrUser(id: 1, username: 'Matt'),
+        ),
+      ];
+    await _pump(
+      tester,
+      service: service,
+      screen: const SeerrIssuesScreen(topPadding: 0),
+    );
+    await tester.tap(find.text('Resolved'));
+    await tester.pumpAndSettle();
+    expect(find.text('Arrival'), findsOneWidget);
+    expect(find.text('Dune: Part Two'), findsNothing);
+
+    // The tab stays mounted while the person is on Home.
+    ProviderScope.containerOf(
+      tester.element(find.byType(SeerrIssuesScreen)),
+    ).read(seerrIssueFilterProvider.notifier).showOpen();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dune: Part Two'), findsOneWidget);
+    expect(find.text('Arrival'), findsNothing);
+  });
+
+  testWidgets('the Issues tab draws the title hydrated from its page', (
+    tester,
+  ) async {
+    // Seerr's issue list names no title: the screen reads the real service,
+    // which asks each title's own page, and draws what came back.
+    final client = FakeApiClient()
+      ..getResponseQueue.addAll([
+        jsonFixtureMap('seerr/issues.json'),
+        {'title': 'Fight Club'},
+        {'name': 'Game of Thrones'},
+        // The third title cannot be read: its row stays as it was.
+      ]);
+
+    await _pump(
+      tester,
+      service: SeerrService(client, numbering: SeerrNumbering.seerr),
+      screen: const SeerrIssuesScreen(topPadding: 0),
+    );
+
+    expect(find.text('Fight Club'), findsOneWidget);
+    expect(find.text('Game of Thrones'), findsOneWidget);
+    expect(find.text('Unknown media'), findsOneWidget);
   });
 
   testWidgets('does not read admin providers before Seerr is configured', (
@@ -107,7 +177,7 @@ void main() {
 
 Future<void> _pump(
   WidgetTester tester, {
-  required FakeSeerrService service,
+  required SeerrService service,
   required Widget screen,
 }) async {
   await tester.pumpWidget(

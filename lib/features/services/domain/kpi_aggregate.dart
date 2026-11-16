@@ -93,6 +93,7 @@ ServiceKpi _foldOne(List<ServiceKpi> terms) {
       label: lens.label,
       icon: lens.icon,
       note: _sharedNote(terms),
+      overviewOnly: lens.overviewOnly,
     );
   }
 
@@ -120,6 +121,7 @@ ServiceKpi _foldOne(List<ServiceKpi> terms) {
       tone: _worstTone(terms),
       note: _sharedNote(terms),
       members: union,
+      overviewOnly: lens.overviewOnly,
     );
   }
 
@@ -138,6 +140,7 @@ ServiceKpi _foldOne(List<ServiceKpi> terms) {
       icon: lens.icon,
       tone: _worstTone(terms),
       note: _sharedNote(terms),
+      overviewOnly: lens.overviewOnly,
     );
   }
 
@@ -151,6 +154,7 @@ ServiceKpi _foldOne(List<ServiceKpi> terms) {
       icon: lens.icon,
       tone: _worstTone(terms),
       note: _sharedNote(terms),
+      overviewOnly: lens.overviewOnly,
     );
   }
 

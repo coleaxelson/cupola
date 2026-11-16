@@ -92,6 +92,11 @@ enum DecisionSource {
   /// is the red line above Needs you, never one of its faults.
   connections([]),
 
+  /// The problems people reported with what they watch, which Seerr holds
+  /// open. One source per Seerr, apart from its requests: it reads Seerr's own
+  /// count and one page of the newest open issues.
+  issues([ServiceKey.seerr]),
+
   /// Tracearr's violations of severity high that nobody has looked at. Not
   /// faults: a rule was broken, which is the person's to read, and nothing
   /// Cupola reaches stopped working. Read a page past [kNeedsYouViolationCap]
@@ -124,6 +129,16 @@ const int kNeedsYouViolationCap = 5;
 /// written worst-first: a transfer that stopped moving is more actionable than a
 /// certificate with six days left on it.
 enum DecisionKind {
+  /// What people said is wrong with what they watch: the open issues of one
+  /// Seerr, as one fault. Action: review them, in the Issues tab on Open.
+  ///
+  /// A fault, amber: something somebody relies on is not working. First of
+  /// the kinds, as the board draws it, because a person is waiting on it. One
+  /// decision per Seerr and never folded by [groupDecisions]: it is already
+  /// the group, [DashboardDecision.count] being Seerr's own count of what is
+  /// open and [DashboardDecision.members] the newest few.
+  reportedProblems,
+
   /// A download that has stopped moving. Action: open it in its client.
   stalledDownload,
 
@@ -182,6 +197,7 @@ extension DecisionKindRank on DecisionKind {
   /// that did not answer.
   bool get isFault => switch (this) {
     DecisionKind.pendingRequest || DecisionKind.violation => false,
+    DecisionKind.reportedProblems ||
     DecisionKind.stalledDownload ||
     DecisionKind.importBlocked ||
     DecisionKind.storageAlert ||
@@ -198,6 +214,7 @@ extension DecisionKindRank on DecisionKind {
   bool get opensUnderLens => switch (this) {
     DecisionKind.failingIndexer ||
     DecisionKind.expiringCertificate ||
+    DecisionKind.reportedProblems ||
     DecisionKind.storageAlert => true,
     DecisionKind.stalledDownload ||
     DecisionKind.importBlocked ||
@@ -237,6 +254,7 @@ class DashboardDecision {
     this.downloadKeys = const [],
     this.subject,
     this.members = const [],
+    this.reporters = const [],
   });
 
   final DecisionKind kind;
@@ -350,6 +368,11 @@ class DashboardDecision {
   /// the same for every member.
   final List<DashboardDecision> members;
 
+  /// For [DecisionKind.reportedProblems]: who reported the issues its
+  /// [members] are, each name once, in the order of the newest report. Empty
+  /// on every other kind.
+  final List<String> reporters;
+
   bool get isFault => kind.isFault;
 
   /// The service the trailing control would open: [requiresService] when the
@@ -369,6 +392,7 @@ class DashboardDecision {
 /// would have nothing to call them on.
 bool _groups(DecisionKind kind) => switch (kind) {
   DecisionKind.stalledDownload || DecisionKind.importBlocked => true,
+  DecisionKind.reportedProblems ||
   DecisionKind.storageAlert ||
   DecisionKind.connectionFault ||
   DecisionKind.serviceHealth ||
@@ -486,7 +510,13 @@ String _groupTitle(DecisionKind kind, int count) => switch (kind) {
   DecisionKind.expiringCertificate => '$count expiring certificates',
   DecisionKind.violation => '$count violations',
   DecisionKind.pendingRequest => '$count requests waiting for approval',
+  DecisionKind.reportedProblems => reportedProblemsClause(count),
 };
+
+/// `3 reported problems`, `1 reported problem`: the card's headline, and the
+/// Home's line.
+String reportedProblemsClause(int count) =>
+    count == 1 ? '1 reported problem' : '$count reported problems';
 
 /// `Shogun, The Bear and 16 more`: the first two names, and how many others.
 String _titlesSummary(List<String> titles) {
@@ -587,6 +617,8 @@ String decisionActionLabel(
   DecisionKind.violation => 'Review',
   // Two controls, not one: see the row.
   DecisionKind.pendingRequest => 'Approve',
+  // The Issues tab, on Open, where each is read and answered.
+  DecisionKind.reportedProblems => 'Review',
 };
 
 /// The toast a decision control opens when its target service is not set up.
@@ -605,6 +637,7 @@ String decisionUnavailableToast(DecisionKind kind, ServiceKey required) {
     DecisionKind.expiringCertificate => 'renew this certificate',
     DecisionKind.violation => 'open this violation',
     DecisionKind.pendingRequest => 'answer this request',
+    DecisionKind.reportedProblems => 'review these problems',
   };
   return '${Lexicon.setUp(required.title)} to $what.';
 }
@@ -615,9 +648,13 @@ String decisionUnavailableToast(DecisionKind kind, ServiceKey required) {
 /// Stack health lights them amber and the Stack's bands do not count them
 /// clean, so neither says a service is fine while Needs you holds a fault on
 /// it.
+///
+/// Not [DecisionKind.reportedProblems]: what is wrong is in what people
+/// watch, not in the Seerr that holds their reports, which answers. Needs you
+/// carries it, and Seerr's Overview its `Open problems`.
 Set<ServiceKey> faultedServices(Iterable<DashboardDecision> decisions) => {
   for (final decision in decisions)
-    if (decision.isFault) ...[
+    if (decision.isFault && decision.kind != DecisionKind.reportedProblems) ...[
       decision.service,
       for (final member in decision.members) member.service,
     ],

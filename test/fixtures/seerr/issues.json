@@ -1,12 +1,81 @@
 {
-  "pageInfo": { "results": 1, "pages": 1, "page": 1 },
+  "pageInfo": { "pages": 1, "pageSize": 50, "results": 3, "page": 1 },
   "results": [
     {
       "id": 21,
       "issueType": 2,
-      "media": { "id": 81, "tmdbId": 550, "title": "Fight Club", "mediaType": "movie" },
-      "createdBy": { "id": 4, "username": "matt", "email": "matt@example.com", "requestCount": 3 },
-      "comments": [{ "id": 1, "message": "Audio is out of sync" }]
+      "status": 1,
+      "problemSeason": 0,
+      "problemEpisode": 0,
+      "createdAt": "2026-11-10T09:00:00.000Z",
+      "updatedAt": "2026-11-11T18:30:00.000Z",
+      "media": {
+        "id": 81,
+        "mediaType": "movie",
+        "tmdbId": 550,
+        "tvdbId": null,
+        "imdbId": null,
+        "status": 5,
+        "status4k": 1,
+        "createdAt": "2026-07-20T10:00:00.000Z",
+        "updatedAt": "2026-07-28T11:00:00.000Z"
+      },
+      "createdBy": { "id": 4, "displayName": "Anna", "username": "anna", "email": "anna@example.com" },
+      "modifiedBy": null,
+      "comments": [
+        { "id": 1, "message": "Audio is out of sync", "createdAt": "2026-11-10T09:00:00.000Z", "updatedAt": "2026-11-10T09:00:00.000Z" }
+      ]
+    },
+    {
+      "id": 22,
+      "issueType": 3,
+      "status": 1,
+      "problemSeason": 2,
+      "problemEpisode": 4,
+      "createdAt": "2026-11-09T20:00:00.000Z",
+      "updatedAt": "2026-11-09T20:00:00.000Z",
+      "media": {
+        "id": 82,
+        "mediaType": "tv",
+        "tmdbId": 1399,
+        "tvdbId": 121361,
+        "imdbId": null,
+        "status": 4,
+        "status4k": 1,
+        "createdAt": "2026-07-21T10:00:00.000Z",
+        "updatedAt": "2026-07-29T11:00:00.000Z"
+      },
+      "createdBy": { "id": 5, "displayName": "Luca", "username": "luca", "email": "luca@example.com" },
+      "modifiedBy": null,
+      "comments": [
+        { "id": 2, "message": "Subtitles are missing", "createdAt": "2026-11-09T20:00:00.000Z", "updatedAt": "2026-11-09T20:00:00.000Z" },
+        { "id": 3, "message": "Which language?", "createdAt": "2026-11-09T21:00:00.000Z", "updatedAt": "2026-11-09T21:00:00.000Z" }
+      ]
+    },
+    {
+      "id": 23,
+      "issueType": 1,
+      "status": 1,
+      "problemSeason": 0,
+      "problemEpisode": 0,
+      "createdAt": "2026-11-08T08:00:00.000Z",
+      "updatedAt": "2026-11-08T08:00:00.000Z",
+      "media": {
+        "id": 83,
+        "mediaType": "movie",
+        "tmdbId": 603,
+        "tvdbId": null,
+        "imdbId": null,
+        "status": 5,
+        "status4k": 1,
+        "createdAt": "2026-07-22T10:00:00.000Z",
+        "updatedAt": "2026-07-30T11:00:00.000Z"
+      },
+      "createdBy": { "id": 4, "displayName": "Anna", "username": "anna", "email": "anna@example.com" },
+      "modifiedBy": null,
+      "comments": [
+        { "id": 4, "message": "Wrong file, this is another cut", "createdAt": "2026-11-08T08:00:00.000Z", "updatedAt": "2026-11-08T08:00:00.000Z" }
+      ]
     }
   ]
 }

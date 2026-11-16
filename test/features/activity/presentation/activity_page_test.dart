@@ -26,6 +26,7 @@ import 'package:cupola/features/activity/presentation/widgets/activity_download_
 import 'package:cupola/features/activity/presentation/widgets/activity_history_row.dart';
 import 'package:cupola/features/activity/presentation/widgets/activity_section.dart';
 import 'package:cupola/features/activity/presentation/widgets/fault_card.dart';
+import 'package:cupola/features/activity/presentation/widgets/reported_problems_card.dart';
 import 'package:cupola/features/activity/presentation/widgets/needs_you_cards.dart';
 import 'package:cupola/features/activity/presentation/widgets/requests_board.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
@@ -220,7 +221,7 @@ void main() {
       final harness = await _pump(tester, Profiles.p1, ActivityTab.all);
 
       expect(_sections(tester), [
-        'Needs you\u00A0· 3 faults\u00A0· 3 requests',
+        'Needs you\u00A0· 4 faults\u00A0· 3 requests',
         "Everyone's requests\u00A0· 5 total",
         'Watching now\u00A0· Jellyfin',
         'Downloads\u00A0· 4 moving\u00A0· 1 stuck',
@@ -307,12 +308,15 @@ void main() {
       final requests = decisions
           .where((d) => d.kind == DecisionKind.pendingRequest)
           .length;
-      expect((faults, requests), (3, 3));
-      expect(find.text('3 faults\u00A0· 3 requests'), findsOneWidget);
+      // The stack's three faults and the problems reported on Seerr, which
+      // are one fault however many they are.
+      expect((faults, requests), (4, 3));
+      expect(find.text('4 faults\u00A0· 3 requests'), findsOneWidget);
       expect(find.text('3 requests wait for your approval'), findsOneWidget);
       // Every fault is a card with its way out, every request a row with
       // Approve and Decline.
-      expect(find.byType(FaultCard), findsNWidgets(faults));
+      expect(find.byType(FaultCard), findsNWidgets(faults - 1));
+      expect(find.byType(ReportedProblemsCard), findsOneWidget);
       expect(find.byType(DecisionRow), findsNWidgets(requests));
       for (final title in ['Charge', 'Metropolis', 'Night Shift']) {
         expect(find.byTooltip('Approve $title'), findsOneWidget);
@@ -1477,7 +1481,7 @@ void main() {
       expect(find.textContaining('did not answer'), findsNothing);
       expect(
         _sections(tester).firstWhere((line) => line.startsWith('Needs you')),
-        'Needs you\u00A0· 3 faults\u00A0· 3 requests',
+        'Needs you\u00A0· 4 faults\u00A0· 3 requests',
       );
       // And the note under the title is the amber one, not the red.
       final note = find.ancestor(

@@ -74,7 +74,10 @@ void main() {
       expect(p2.seerrRequester?.displayName, WorldPeople.anna);
       final account = p2.connection(WorldIds.seerr).seerrAccount!;
       expect(account.kind, WorldSeerrUserType.local);
-      expect(account.permissions, SeerrPermission.request.value);
+      expect(
+        account.permissions,
+        SeerrPermission.request.value | SeerrPermission.createIssues.value,
+      );
       expect(p2.seerrRequester, same(account));
       final jellyfin = Profiles.p2WithJellyfin.connection(WorldIds.jellyfin);
       expect(jellyfin.behaviour, ConnectionBehaviour.readOnly);
@@ -278,7 +281,10 @@ void main() {
 
       expect(p2.seerrRequester?.permissions, mask);
       expect(p2.connection(WorldIds.seerr).seerrAccount?.permissions, mask);
-      expect(Profiles.p2.seerrRequester?.permissions, 32);
+      expect(
+        Profiles.p2.seerrRequester?.permissions,
+        SeerrPermission.request.value | SeerrPermission.createIssues.value,
+      );
       // P1 signs in with the key only: there is no account to change.
       expect(() => Profiles.p1.withSeerrPermissions(mask), throwsArgumentError);
     });

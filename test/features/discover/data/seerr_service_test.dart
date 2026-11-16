@@ -3,11 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/core/status/media_status.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
+import 'package:cupola/features/discover/data/seerr_session.dart';
 import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/models/person_credits.dart';
-import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/person_shelf.dart';
+import 'package:cupola/features/discover/domain/seerr_refusal.dart';
 import 'package:cupola/features/discover/domain/seerr_status.dart';
 
 import '../../../test_helpers/fake_api_client.dart';
@@ -571,27 +573,120 @@ void main() {
 
   group('admin endpoints', () {
     test('gets open issues with the documented query contract', () async {
-      client.getResponseData = {
-        'pageInfo': {'results': 1},
-        'results': [
-          {
-            'id': 21,
-            'issueType': 2,
-            'media': {'title': 'Fight Club'},
-            'createdBy': {'username': 'matt'},
-          },
-        ],
-      };
+      final routed = _RoutedClient(
+        pages: jsonFixtureMap('seerr/issues.json'),
+        titles: {
+          '/api/v1/movie/550': {'title': 'Fight Club'},
+        },
+      );
 
-      final issues = (await service.getIssuesResult()).items;
+      final issues = (await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getIssuesResult()).items;
 
-      expect(issues.single.media?.title, 'Fight Club');
-      expect(client.lastGetPath, '/api/v1/issue');
-      expect(client.lastGetQueryParameters, {
+      expect(issues.first.media?.title, 'Fight Club');
+      expect(routed.issuePaths.first, '/api/v1/issue');
+      expect(routed.issueQueries.first, {
         'take': 50,
         'skip': 0,
         'sort': 'modified',
         'filter': 'open',
+      });
+    });
+
+    test('getLatestIssues asks one page of the newest, no more, and names '
+        'its titles', () async {
+      final routed = _RoutedClient(
+        pages: jsonFixtureMap('seerr/issues.json'),
+        titles: {
+          '/api/v1/movie/550': {'title': 'Fight Club'},
+          '/api/v1/tv/1399': {'name': 'Game of Thrones'},
+          '/api/v1/movie/603': {'title': 'The Matrix'},
+        },
+      );
+
+      final issues = await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getLatestIssues(take: 3);
+
+      expect(issues.map((issue) => issue.media?.title), [
+        'Fight Club',
+        'Game of Thrones',
+        'The Matrix',
+      ]);
+      // One request, whatever Seerr holds: the walk of every page is the
+      // Issues tab's.
+      expect(routed.issueQueries, [
+        {'take': 3, 'skip': 0, 'sort': 'modified', 'filter': 'open'},
+      ]);
+    });
+
+    group('issue titles', () {
+      // Seerr's issue rows carry no title: the names come from each title's
+      // own page, once per title, and a title that will not read leaves its
+      // row as it was.
+      test('names every row from its title page, once per title', () async {
+        final page = jsonFixtureMap('seerr/issues.json');
+        // A second issue on the same movie must not read it again.
+        (page['results'] as List).add({
+          ...(page['results'] as List).first as Map<String, dynamic>,
+          'id': 24,
+        });
+        final routed = _RoutedClient(
+          pages: page,
+          titles: {
+            '/api/v1/movie/550': {
+              'title': 'Fight Club',
+              'releaseDate': '1999-10-15',
+              'posterPath': '/fight.jpg',
+            },
+            '/api/v1/tv/1399': {'name': 'Game of Thrones'},
+            '/api/v1/movie/603': {'title': 'The Matrix'},
+          },
+        );
+        final seerr = SeerrService(routed, numbering: SeerrNumbering.seerr);
+
+        final issues = (await seerr.getIssuesResult()).items;
+        await seerr.getIssuesResult();
+
+        expect(issues.map((i) => i.media?.title), [
+          'Fight Club',
+          'Game of Thrones',
+          'The Matrix',
+          'Fight Club',
+        ]);
+        expect(issues.first.media?.posterPath, '/fight.jpg');
+        // The year comes with the name, for the title card of its own page.
+        expect(issues.first.media?.year, '1999');
+        expect(issues.first.media?.tmdbId, 550);
+        expect(routed.titlePaths.toSet().length, 3);
+        // Three titles, read once across two refreshes.
+        expect(routed.titlePaths.length, 3);
+      });
+
+      test('a title that cannot be read keeps its row as it was', () async {
+        final routed = _RoutedClient(
+          pages: jsonFixtureMap('seerr/issues.json'),
+          titles: {
+            '/api/v1/movie/550': {'title': 'Fight Club'},
+            '/api/v1/tv/1399': null,
+          },
+        );
+
+        final result = await SeerrService(
+          routed,
+          numbering: SeerrNumbering.seerr,
+        ).getIssuesResult();
+
+        expect(result.items.map((i) => i.media?.title), [
+          'Fight Club',
+          null,
+          null,
+        ]);
+        expect(result.items[1].id, 22);
+        expect(result.isPartial, isFalse);
       });
     });
 
@@ -630,6 +725,239 @@ void main() {
         expect(issues.single.issueTypeLabel, 'Issue');
       },
     );
+  });
+
+  group('problem reports', () {
+    test('reportIssue posts the draft and reads the issue it made', () async {
+      client.postResponseData = jsonFixtureMap('seerr/issue_created.json');
+
+      final issue = await service.reportIssue(
+        const SeerrIssueDraft.movie(
+          type: SeerrIssueType.video,
+          message: 'The picture freezes at the start',
+          mediaId: 81,
+        ),
+      );
+
+      expect(client.lastPostPath, '/api/v1/issue');
+      expect(client.lastPostData, {
+        'issueType': 1,
+        'message': 'The picture freezes at the start',
+        'mediaId': 81,
+      });
+      expect(client.postCallCount, 1);
+      expect(issue.id, 31);
+      expect(issue.message, 'The picture freezes at the start');
+      expect(issue.isReportedBy(4), isTrue);
+    });
+
+    test(
+      'a series report carries its season and episode, never a user',
+      () async {
+        client.postResponseData = jsonFixtureMap('seerr/issue_created.json');
+
+        await service.reportIssue(
+          const SeerrIssueDraft.series(
+            type: SeerrIssueType.subtitles,
+            message: 'Out of sync',
+            mediaId: 82,
+            problemSeason: 2,
+            problemEpisode: 4,
+          ),
+        );
+
+        expect(client.lastPostData, {
+          'issueType': 3,
+          'message': 'Out of sync',
+          'mediaId': 82,
+          'problemSeason': 2,
+          'problemEpisode': 4,
+        });
+      },
+    );
+
+    test('a draft that cannot be sent never leaves the app', () async {
+      await expectLater(
+        service.reportIssue(
+          const SeerrIssueDraft.movie(
+            type: SeerrIssueType.video,
+            message: '   ',
+            mediaId: 81,
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(client.postCallCount, 0);
+    });
+
+    test('getIssue reads the conversation with its authors', () async {
+      final routed = _RoutedClient(
+        pages: const {},
+        titles: {
+          '/api/v1/tv/1399': {
+            'name': 'Game of Thrones',
+            'posterPath': '/g.jpg',
+          },
+        },
+        detail: jsonFixtureMap('seerr/issue_detail.json'),
+      );
+
+      final issue = await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getIssue(22);
+
+      expect(routed.detailPaths, ['/api/v1/issue/22']);
+      expect(issue.comments.map((c) => c.authorId), [5, 1, 5]);
+      expect(issue.problemEpisode, 4);
+      expect(issue.media?.title, 'Game of Thrones');
+      expect(issue.media?.posterPath, '/g.jpg');
+    });
+
+    test('getIssue keeps the issue when its title cannot be read', () async {
+      final routed = _RoutedClient(
+        pages: const {},
+        titles: {'/api/v1/tv/1399': null},
+        detail: jsonFixtureMap('seerr/issue_detail.json'),
+      );
+
+      final issue = await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getIssue(22);
+
+      expect(issue.media?.title, isNull);
+      expect(issue.comments, hasLength(3));
+    });
+
+    test('getIssue refuses an answer that is no issue', () async {
+      client.getResponseData = const <dynamic>[];
+      await expectLater(service.getIssue(1), throwsFormatException);
+    });
+
+    test('commentOnIssue posts the words to the issue', () async {
+      await service.commentOnIssue(22, '  Italian  ');
+
+      expect(client.lastPostPath, '/api/v1/issue/22/comment');
+      expect(client.lastPostData, {'message': 'Italian'});
+    });
+
+    test('editComment puts the new words to the comment', () async {
+      await service.editComment(4, 'Italian, episode 5');
+
+      expect(client.lastPutPath, '/api/v1/issueComment/4');
+      expect(client.lastPutData, {'message': 'Italian, episode 5'});
+      expect(client.putCallCount, 1);
+    });
+
+    test('deleteComment deletes the comment', () async {
+      await service.deleteComment(4);
+
+      expect(client.lastDeletePath, '/api/v1/issueComment/4');
+      expect(client.deleteCallCount, 1);
+    });
+
+    test('setIssueStatus resolves and reopens', () async {
+      await service.setIssueStatus(22, SeerrIssueStatus.resolved);
+      expect(client.lastPostPath, '/api/v1/issue/22/resolved');
+      await service.setIssueStatus(22, SeerrIssueStatus.open);
+      expect(client.lastPostPath, '/api/v1/issue/22/open');
+      expect(client.postCallCount, 2);
+    });
+
+    test('deleteIssue deletes the issue', () async {
+      await service.deleteIssue(22);
+
+      expect(client.lastDeletePath, '/api/v1/issue/22');
+      expect(client.deleteCallCount, 1);
+    });
+
+    test('getIssueCount reads the count', () async {
+      client.getResponseData = jsonFixtureMap('seerr/issue_count.json');
+
+      final count = await service.getIssueCount();
+
+      expect(client.lastGetPath, '/api/v1/issue/count');
+      expect(count.open, 4);
+      expect(count.closed, 3);
+      expect(count.total, 7);
+      expect(count.other, 1);
+    });
+
+    test('getIssueCount refuses an answer that is no count', () async {
+      client.getResponseData = const <dynamic>[];
+      await expectLater(service.getIssueCount(), throwsFormatException);
+    });
+
+    test('the requester\'s own issues are the list of all, hydrated', () async {
+      final routed = _RoutedClient(
+        pages: jsonFixtureMap('seerr/issues.json'),
+        titles: {
+          '/api/v1/movie/550': {'title': 'Fight Club'},
+          '/api/v1/tv/1399': {'name': 'Game of Thrones'},
+          '/api/v1/movie/603': {'title': 'The Matrix'},
+        },
+      );
+
+      final result = await SeerrService(
+        routed,
+        numbering: SeerrNumbering.seerr,
+      ).getOwnIssuesResult();
+
+      expect(routed.issueQueries.single, {
+        'take': 50,
+        'skip': 0,
+        'sort': 'modified',
+        'filter': 'all',
+      });
+      expect(result.items.map((i) => i.media?.title), [
+        'Fight Club',
+        'Game of Thrones',
+        'The Matrix',
+      ]);
+    });
+
+    test('a refused write keeps the verdict the transport gave it', () {
+      // The service adds nothing of its own: the refusal is classified by
+      // `seerrRefusalOf` from the error that comes out.
+      client.postException = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/issue/22/comment'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/v1/issue/22/comment'),
+          statusCode: 500,
+          data: {'message': 'Issue not found.'},
+        ),
+      );
+
+      expect(
+        service.commentOnIssue(22, 'hello'),
+        throwsA(
+          isA<DioException>().having(
+            (e) => seerrRefusalOf(e),
+            'refusal',
+            SeerrRefusal.issueGone,
+          ),
+        ),
+      );
+    });
+
+    test('a failed write puts no message in its error text', () async {
+      client.postException = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/issue/22/comment'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/v1/issue/22/comment'),
+          statusCode: 403,
+          data: {'message': 'You do not have permission to modify this issue.'},
+        ),
+      );
+
+      try {
+        await service.commentOnIssue(22, 'my private words');
+        fail('should throw');
+      } on DioException catch (error) {
+        expect(error.toString(), isNot(contains('private')));
+      }
+    });
   });
 
   group('media endpoints', () {
@@ -836,4 +1164,57 @@ void main() {
       expect((await service.search('dune')).isEmpty, isTrue);
     });
   });
+}
+
+/// Seerr as the issue list sees it: the page of issues, then one read per
+/// title page. A title mapped to null answers 500.
+class _RoutedClient extends FakeApiClient {
+  _RoutedClient({required this.pages, required this.titles, this.detail});
+
+  final Map<String, dynamic> pages;
+  final Map<String, dynamic>? detail;
+  final detailPaths = <String>[];
+  final Map<String, Map<String, dynamic>?> titles;
+  final issuePaths = <String>[];
+  final issueQueries = <Map<String, dynamic>?>[];
+  final titlePaths = <String>[];
+
+  @override
+  Future<Response<dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Duration? receiveTimeout,
+  }) async {
+    if (path == '/api/v1/issue') {
+      issuePaths.add(path);
+      issueQueries.add(queryParameters);
+      return Response(
+        requestOptions: RequestOptions(path: path),
+        data: pages,
+      );
+    }
+    if (detail != null && path.startsWith('/api/v1/issue/')) {
+      detailPaths.add(path);
+      return Response(
+        requestOptions: RequestOptions(path: path),
+        data: detail,
+      );
+    }
+    titlePaths.add(path);
+    final body = titles[path];
+    if (body == null) {
+      throw DioException(
+        requestOptions: RequestOptions(path: path),
+        response: Response(
+          requestOptions: RequestOptions(path: path),
+          statusCode: 500,
+        ),
+      );
+    }
+    return Response(
+      requestOptions: RequestOptions(path: path),
+      data: body,
+    );
+  }
 }

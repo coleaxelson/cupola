@@ -370,6 +370,18 @@ class ServiceRoutes {
   static const seerrIssues = '$seerr/issues';
   static const seerrUsers = '$seerr/users';
 
+  /// One issue, inside the Issues tab: the operator's page of a problem
+  /// somebody reported. An issue number is per Seerr connection, so
+  /// [instanceId] names the one it was read from (`?i=`), and only when
+  /// given: a missing one reads the lens.
+  static String seerrIssue(int issueId, {String? instanceId}) =>
+      _withQuery('$seerrIssues/$issueId', {'i': instanceId});
+
+  /// One report, under the requester's Requests tab: her own page of a
+  /// problem she reported. [instanceId] as for [seerrIssue].
+  static String requestsIssue(int issueId, {String? instanceId}) =>
+      _withQuery('$requests/issues/$issueId', {'i': instanceId});
+
   // ── Discover, the app's catalogue tab ────────────────────────────────────
   //
   // Discover was the fourth tab of Seerr's room; it is a tab of the app now,

@@ -309,6 +309,58 @@ class LiveSeerrRequest {
   bool changed = false;
 }
 
+/// One problem report as a living world keeps it: Seerr's `Issue` with its
+/// conversation. The first comment is the reporter's message.
+class LiveSeerrIssue {
+  LiveSeerrIssue({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.createdBy,
+    required this.created,
+    this.season = 0,
+    this.episode = 0,
+    List<LiveSeerrComment>? comments,
+  }) : updated = created,
+       comments = comments ?? [];
+
+  final int id;
+
+  /// Seerr's issue type: 1 video, 2 audio, 3 subtitles, 4 other.
+  final int type;
+  final WorldTitle title;
+
+  /// The Seerr user who reported it.
+  final int createdBy;
+  final DateTime created;
+
+  /// 0 means all, as Seerr stores it.
+  final int season;
+  final int episode;
+
+  /// 1 open, 2 resolved.
+  int status = 1;
+  int? modifiedBy;
+  DateTime updated;
+  final List<LiveSeerrComment> comments;
+}
+
+/// One reply of a report.
+class LiveSeerrComment {
+  LiveSeerrComment({
+    required this.id,
+    required this.user,
+    required this.message,
+    required this.created,
+  }) : updated = created;
+
+  final int id;
+  final int user;
+  String message;
+  final DateTime created;
+  DateTime updated;
+}
+
 /// One Seerr server's state between requests.
 class SeerrServerState {
   SeerrServerState._(this._network, this.serverId);
@@ -336,6 +388,11 @@ class SeerrServerState {
   /// own on first read, then what the demo asked for, decided or took back.
   /// Null while the world answers as written.
   List<LiveSeerrRequest>? liveRequests;
+
+  /// The problem reports, once the world lives: the world's own on first
+  /// read, then what the demo reported, answered, resolved or deleted. Null
+  /// while the world answers as written.
+  List<LiveSeerrIssue>? liveIssues;
 
   /// Requests somebody decided on in Seerr itself since the app read them:
   /// an edit of one is refused as Seerr refuses an edit of a request that no

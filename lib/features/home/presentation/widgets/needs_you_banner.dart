@@ -121,6 +121,10 @@ class NeedsYouLine extends StatelessWidget {
     final glyphIcon = Icon(
       needs.leadsWithSilence
           ? Icons.cloud_off_rounded
+          // What people reported is a flag, not a warning: the problem is
+          // in what they watch, not in a service.
+          : needs.lead?.kind == DecisionKind.reportedProblems
+          ? Icons.flag_rounded
           : Icons.warning_amber_rounded,
       size: 18,
       color: glyph,

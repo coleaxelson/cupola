@@ -490,7 +490,7 @@ void main() {
         classifyConnectionFailure(error),
         isNot(ServiceFailureReason.sessionEnded),
       );
-      expect(whoAmI, [32]);
+      expect(whoAmI, [4194336]);
       expect(ended, 0);
     });
 
@@ -599,7 +599,7 @@ void main() {
           .read(currentSettingsProvider)
           .instanceById(WorldIds.seerr)!
           .account!;
-      expect(account.permissions, 32);
+      expect(account.permissions, 4194336);
       expect(account.checkedAt, isNotNull);
       expect(account.isSignedIn, isTrue);
     });

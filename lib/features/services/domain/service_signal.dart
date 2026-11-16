@@ -162,8 +162,13 @@ class ServiceSignalPair {
 /// `47 wanted subs` beside an amber `API key rejected`. Painting both with the
 /// worse of the two would be the "one card, one colour" reduction the tone rule
 /// exists to prevent.
-ServiceSignalPair? resolveServiceSignalPair(List<ServiceKpi> kpis) {
-  final ranked = rankServiceKpis(kpis);
+ServiceSignalPair? resolveServiceSignalPair(List<ServiceKpi> allKpis) {
+  // A readout of the Overview alone (`ServiceKpi.overviewOnly`) is not the
+  // service's own health, so no card, band or light reads it.
+  final ranked = rankServiceKpis([
+    for (final kpi in allKpis)
+      if (!kpi.overviewOnly) kpi,
+  ]);
   if (ranked.isEmpty) return null;
   return ServiceSignalPair(
     primary: _signalFrom(ranked.first),

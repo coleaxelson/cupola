@@ -135,7 +135,10 @@ void main() {
       expect(me.data['displayName'], WorldPeople.anna);
       expect(me.data['userType'], 2);
       expect(me.data['email'], anna.email);
-      expect(SeerrGrant.fromWhoAmI(me.data).permissions, 32);
+      expect(
+        SeerrGrant.fromWhoAmI(me.data).permissions,
+        SeerrPermission.request.value | SeerrPermission.createIssues.value,
+      );
       // No new cookie on an ordinary request: the session does not roll the
       // cookie, only the server's row.
       expect(client.setCookieLine('connect.sid'), isNull);
@@ -443,7 +446,11 @@ void main() {
     );
 
     test("the operator's routes refuse a requester, the gate's body", () async {
-      final (harness, client) = await _start(Profiles.p2);
+      // REQUEST only: Anna's stock account may also report problems, which
+      // is what `GET /issue` asks for.
+      final (harness, client) = await _start(
+        Profiles.p2.withSeerrPermissions(SeerrPermission.request.value),
+      );
       client.cookies['connect.sid'] = harness.network.seerrSessionOf(
         WorldIds.seerr,
       );

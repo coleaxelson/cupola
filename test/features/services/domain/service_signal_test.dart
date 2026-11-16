@@ -254,4 +254,43 @@ void _twoFigures() {
       expect(ranked.map((kpi) => kpi.label), ['B', 'A', 'C']);
     });
   });
+
+  group('a readout of the Overview alone', () {
+    const problems = ServiceKpi(
+      label: 'Open problems',
+      value: '3',
+      icon: Icons.flag,
+      tone: StatusTone.warning,
+      overviewOnly: true,
+    );
+
+    test('is never the card\'s figure, however amber', () {
+      final pair = resolveServiceSignalPair([
+        _kpi('Requests', '48'),
+        problems,
+        _kpi('Available', '41'),
+      ])!;
+
+      expect(pair.primary.label, 'requests');
+      expect(pair.primary.tone, StatusTone.neutral);
+      expect(pair.secondary?.label, 'available');
+      expect(pair.secondary?.needsAttention, isFalse);
+    });
+
+    test(
+      'a dash readout stays out too, and a list of nothing else is none',
+      () {
+        expect(
+          resolveServiceSignalPair(const [
+            ServiceKpi.unavailable(
+              label: 'Open problems',
+              icon: Icons.flag,
+              overviewOnly: true,
+            ),
+          ]),
+          isNull,
+        );
+      },
+    );
+  });
 }

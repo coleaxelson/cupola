@@ -37,7 +37,7 @@ cards live in [`../motion/`](../motion/).
 | Metadata | [MachineName](MachineName/README.md) | `lib/core/widgets/machine_name.dart` |
 | Status | [DownloadDetail](DownloadDetail/README.md) | `lib/features/activity/presentation/download_page.dart`, `lib/features/activity/presentation/widgets/download_parts.dart` |
 | Status | [NoticeLine](NoticeLine/README.md) | `lib/core/widgets/notice_line.dart` |
-| Status | [FaultCard](FaultCard/README.md) | `lib/features/activity/presentation/widgets/fault_card.dart`, `lib/features/activity/presentation/widgets/needs_you_cards.dart` |
+| Status | [FaultCard](FaultCard/README.md) | `lib/features/activity/presentation/widgets/fault_card.dart`, `lib/features/activity/presentation/widgets/needs_you_cards.dart`, `lib/features/activity/presentation/widgets/reported_problems_card.dart` |
 | Status | [ImportReview](ImportReview/README.md) | `lib/features/import/presentation/blocked_import_review_page.dart`, `lib/features/import/presentation/blocked_import_parts.dart`, `lib/features/activity/presentation/widgets/import_done_card.dart` |
 | Status | [AppErrorState](AppErrorState/README.md) | `lib/core/widgets/app_error_state.dart`, `lib/core/widgets/inline_error_retry.dart`, `lib/core/widgets/brief_failure_line.dart` |
 | Status | [CapabilityBanner](CapabilityBanner/README.md) | `lib/core/widgets/capability_banner.dart`, `lib/core/capability/capability_copy.dart` |
@@ -60,7 +60,7 @@ cards live in [`../motion/`](../motion/).
 | Iconography | [ServiceGlyphs](ServiceGlyphs/README.md) | `lib/core/service_glyphs.dart`, `lib/features/settings/domain/service_key.dart` |
 | Home | [HomeModule](HomeModule/README.md) | `lib/features/home/presentation/widgets/home_module_frame.dart`, `lib/features/home/presentation/widgets/needs_you_banner.dart`, `lib/features/home/presentation/widgets/set_up_next_module.dart`, `lib/features/home/presentation/widgets/downloads_module.dart`, `lib/features/home/presentation/widgets/requests_module.dart`, `lib/features/home/presentation/widgets/now_playing_module.dart`, `lib/features/home/presentation/widgets/continue_watching_module.dart`, `lib/features/home/presentation/widgets/coming_up_module.dart`, `lib/features/home/presentation/widgets/arrived_module.dart` |
 | Home | [FeaturedPager](FeaturedPager/README.md) | `lib/features/home/presentation/widgets/featured_pager.dart`, `lib/features/home/presentation/widgets/featured_module.dart` |
-| Home | [RequesterRequestRow](RequesterRequestRow/README.md) | `lib/features/requests/presentation/widgets/requester_request_row.dart`, `lib/features/requests/presentation/requests_screen.dart`, `lib/features/home/presentation/widgets/ready_to_watch_module.dart`, `lib/features/home/presentation/widgets/your_requests_module.dart` |
+| Home | [RequesterRequestRow](RequesterRequestRow/README.md) | `lib/features/requests/presentation/widgets/requester_request_row.dart`, `lib/features/requests/presentation/requests_screen.dart`, `lib/features/requests/presentation/widgets/your_reports_section.dart`, `lib/features/home/presentation/widgets/ready_to_watch_module.dart`, `lib/features/home/presentation/widgets/your_requests_module.dart` |
 | Home | [EditHome](EditHome/README.md) | `lib/features/home/presentation/edit_home_page.dart`, `lib/features/home/domain/home_layout.dart` |
 | Media | [CalendarAgenda](CalendarAgenda/README.md) | `lib/features/discover/presentation/widgets/calendar_agenda.dart` |
 | Media | [CalendarBand](CalendarBand/README.md) | `lib/features/discover/presentation/widgets/calendar_band.dart` |
@@ -82,6 +82,7 @@ cards live in [`../motion/`](../motion/).
 | Media detail | [MediaDetailHero](MediaDetailHero/README.md) | `lib/core/widgets/media_detail_view.dart` |
 | Media detail | [MediaDetailSection](MediaDetailSection/README.md) | `lib/core/widgets/media_detail_slot.dart` |
 | Media detail | [MediaPage](MediaPage/README.md) | `lib/features/media/presentation/media_page.dart`, `lib/features/media/domain/media_row_view.dart`, `lib/core/title_light.dart` |
+| Media detail | [MediaReport](MediaReport/README.md) | `lib/features/media/presentation/media_report_row.dart`, `lib/features/media/presentation/report_problem_sheet.dart`, `lib/features/media/domain/media_report.dart` |
 | Media detail | [ShelfPage](ShelfPage/README.md) | `lib/features/media/presentation/shelf_page.dart`, `lib/features/music/presentation/artist_page.dart`, `lib/features/readarr/presentation/author_page.dart` |
 | Media detail | [MediaInfoCard](MediaInfoCard/README.md) | `lib/core/widgets/media_info_card.dart`, `lib/core/widgets/file_info_section.dart` |
 | Media detail | [MediaProseSection](MediaProseSection/README.md) | `lib/core/widgets/media_prose_section.dart` |
@@ -90,8 +91,10 @@ cards live in [`../motion/`](../motion/).
 | Downloads | [ReleaseRow](ReleaseRow/README.md) | `lib/core/widgets/release_list_widgets.dart`, `lib/core/widgets/interactive_search_sheet.dart` |
 | Service surfaces | [AmbientScaffold](AmbientScaffold/README.md) | `lib/core/widgets/ambient_scaffold.dart`, `lib/features/services/presentation/service_home_screen.dart` |
 | Service surfaces | [DomainSectionHeader](DomainSectionHeader/README.md) | `lib/core/widgets/domain_section.dart`, `lib/features/settings/domain/service_key.dart` |
-| Service surfaces | [ServiceOverview](ServiceOverview/README.md) | `lib/core/widgets/service_overview.dart`, `lib/features/movies/presentation/radarr_overview_screen.dart` |
+| Service surfaces | [ServiceOverview](ServiceOverview/README.md) | `lib/core/widgets/service_overview.dart`, `lib/features/movies/presentation/radarr_overview_screen.dart`, `lib/features/discover/presentation/seerr_overview_screen.dart` |
 | Service surfaces | [NowPlaying](NowPlaying/README.md) | `lib/features/stream/presentation/widgets/stream_session_slab.dart`, `lib/features/stream/presentation/widgets/stream_now_playing_section.dart` |
+| Service surfaces | [SeerrIssues](SeerrIssues/README.md) | `lib/features/discover/presentation/seerr_admin_screens.dart`, `lib/features/discover/presentation/seerr_issue_row.dart`, `lib/features/discover/data/seerr_service.dart` |
+| Service surfaces | [SeerrIssueThread](SeerrIssueThread/README.md) | `lib/features/media/presentation/seerr_issue_thread_screen.dart`, `lib/features/media/presentation/seerr_issue_thread_parts.dart`, `lib/features/media/presentation/issue_files_provider.dart` |
 | Service surfaces | [ServiceRing](ServiceRing/README.md) | `lib/core/widgets/service_ring.dart` |
 | Service surfaces | [TrueNasShares](TrueNasShares/README.md) | `lib/features/truenas/presentation/shares/truenas_shares_screen.dart`, `lib/core/widgets/floating_bottom_nav_bar.dart` |
 | Service surfaces | [TrueNasCredentials](TrueNasCredentials/README.md) | `lib/features/truenas/presentation/system/truenas_credentials_screen.dart`, `lib/core/widgets/floating_bottom_nav_bar.dart` |

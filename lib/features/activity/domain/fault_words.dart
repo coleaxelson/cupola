@@ -67,6 +67,13 @@ FaultWords faultWordsOf(DashboardDecision decision) {
     // The app's words where it knows the check, and every \*arr it fails
     // on under them; the \*arrs' own behind Why?.
     DecisionKind.serviceHealth => _healthWords(decision),
+    // The count in a sentence, who said it, and Seerr's name with `Issues`.
+    DecisionKind.reportedProblems => (
+      headline: reportedProblemsClause(count),
+      explanation: reportersSentence(decision.reporters),
+      source: decision.detail,
+      why: null,
+    ),
     // The hostname, and its expiry with the service under it.
     DecisionKind.expiringCertificate ||
     DecisionKind.stalledDownload ||
@@ -93,11 +100,30 @@ String faultActionLabel(DashboardDecision decision) {
       decision.actionTarget.supportsManualImport) {
     return decision.count > 1 ? 'Review ${decision.count}' : 'Review';
   }
+  if (decision.kind == DecisionKind.reportedProblems) {
+    return decision.count > 1 ? 'Review ${decision.count}' : 'Review';
+  }
   // Which \*arr, once the check fails on more than one.
   if (decision.kind == DecisionKind.serviceHealth) {
     return openHealthCheckLabel(decision.members.firstOrNull ?? decision);
   }
   return label;
+}
+
+/// Who said it, in the card's one sentence: `Luca says something is wrong
+/// with what they watch.`, `Luca and Anna say …`, `Luca, Anna and 2 others
+/// say …`. Null when nobody is named: the sentence is left out rather than
+/// said of no one.
+String? reportersSentence(List<String> names) {
+  if (names.isEmpty) return null;
+  const rest = 'something is wrong with what they watch.';
+  return switch (names.length) {
+    1 => '${names[0]} says $rest',
+    2 => '${names[0]} and ${names[1]} say $rest',
+    final count =>
+      '${names[0]}, ${names[1]} and ${count - 2} '
+          '${count - 2 == 1 ? 'other' : 'others'} say $rest',
+  };
 }
 
 FaultWords _healthWords(DashboardDecision decision) {

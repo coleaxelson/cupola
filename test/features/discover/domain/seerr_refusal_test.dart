@@ -175,6 +175,110 @@ void main() {
         _message('You do not have permission to modify this issue.'),
         SeerrRefusal.permissionDenied,
       ),
+      // `issue.ts`, `POST /`: the title's media row is gone.
+      (
+        404,
+        'POST',
+        '/api/v1/issue',
+        _message('Media does not exist.'),
+        SeerrRefusal.mediaGone,
+      ),
+      // `issue.ts`: a deleted issue. The read and the two writes answer a
+      // 500 from the error handler, the delete a 404.
+      (
+        500,
+        'GET',
+        '/api/v1/issue/3',
+        _message('Issue not found.'),
+        SeerrRefusal.issueGone,
+      ),
+      (
+        500,
+        'POST',
+        '/api/v1/issue/3/comment',
+        _message('Issue not found.'),
+        SeerrRefusal.issueGone,
+      ),
+      (
+        500,
+        'POST',
+        '/api/v1/issue/3/resolved',
+        _message('Issue not found.'),
+        SeerrRefusal.issueGone,
+      ),
+      (
+        500,
+        'POST',
+        '/api/v1/issue/3/open',
+        _message('Issue not found.'),
+        SeerrRefusal.issueGone,
+      ),
+      (
+        404,
+        'DELETE',
+        '/api/v1/issue/3',
+        _message('Issue not found.'),
+        SeerrRefusal.issueGone,
+      ),
+      // The permission checks of the same routes, word for word
+      // (`issue.ts`, `issueComment.ts`).
+      (
+        403,
+        'POST',
+        '/api/v1/issue',
+        _error(_endpoint),
+        SeerrRefusal.endpointRefused,
+      ),
+      (
+        403,
+        'GET',
+        '/api/v1/issue/3',
+        _message('You do not have permission to view this issue.'),
+        SeerrRefusal.permissionDenied,
+      ),
+      (
+        403,
+        'POST',
+        '/api/v1/issue/3/comment',
+        _message('You do not have permission to comment on this issue.'),
+        SeerrRefusal.permissionDenied,
+      ),
+      (
+        401,
+        'DELETE',
+        '/api/v1/issue/3',
+        _message('You do not have permission to delete this issue.'),
+        SeerrRefusal.permissionDenied,
+      ),
+      (
+        403,
+        'PUT',
+        '/api/v1/issueComment/4',
+        _message('You can only edit your own comments.'),
+        SeerrRefusal.permissionDenied,
+      ),
+      (
+        403,
+        'DELETE',
+        '/api/v1/issueComment/4',
+        _message('You do not have permission to delete this comment.'),
+        SeerrRefusal.permissionDenied,
+      ),
+      // A reply that was deleted: the issue is still there.
+      (
+        404,
+        'PUT',
+        '/api/v1/issueComment/4',
+        _message('Issue comment not found.'),
+        SeerrRefusal.replyGone,
+      ),
+      (
+        404,
+        'DELETE',
+        '/api/v1/issueComment/4',
+        _message('Issue comment not found.'),
+        SeerrRefusal.replyGone,
+      ),
       // `auth.ts:853-903`.
       (
         403,
@@ -329,6 +433,38 @@ void main() {
         expect(_classify(401, method, path, off), isNull, reason: path);
       }
     });
+  });
+
+  group('a deleted issue and a deleted title', () {
+    test('Issue not found. is read on an issue route only', () {
+      final gone = _message('Issue not found.');
+      expect(_classify(500, 'GET', '/api/v1/request/3', gone), isNull);
+      expect(_classify(500, 'GET', '/api/v1/issue/abc', gone), isNull);
+      expect(_classify(500, 'GET', '/api/v1/issue', gone), isNull);
+      // A status the server never answers it with is not its answer.
+      expect(_classify(403, 'GET', '/api/v1/issue/3', gone), isNull);
+      expect(_classify(200, 'GET', '/api/v1/issue/3', gone), isNull);
+    });
+
+    test('Media does not exist. is read on reporting alone', () {
+      final gone = _message('Media does not exist.');
+      expect(_classify(404, 'GET', '/api/v1/issue', gone), isNull);
+      expect(_classify(404, 'POST', '/api/v1/issue/3/comment', gone), isNull);
+      expect(_classify(500, 'POST', '/api/v1/issue', gone), isNull);
+    });
+
+    test(
+      'neither is a server fault, a permission or a question for /auth/me',
+      () {
+        for (final verdict in [
+          SeerrRefusal.mediaGone,
+          SeerrRefusal.issueGone,
+        ]) {
+          expect(verdict.asksWhoAmI, isFalse);
+          expect(verdict.afterWhoAmI(403), verdict);
+        }
+      },
+    );
   });
 
   group('the shapes of an answer', () {

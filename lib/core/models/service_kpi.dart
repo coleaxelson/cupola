@@ -58,6 +58,14 @@ class ServiceKpi {
   /// another.
   final Set<Object>? members;
 
+  /// A readout of the service's own Overview alone: the stack's cards and
+  /// bands, which speak of the service's own health, never read it.
+  ///
+  /// For a figure about what the service holds and not about how it runs: the
+  /// problems people reported with what they watch are amber in Seerr's
+  /// Overview, and Seerr answering normally keeps its green light.
+  final bool overviewOnly;
+
   /// Whether this figure is the reason you would look at the service.
   bool get isNoteworthy => tone != null;
 
@@ -68,6 +76,7 @@ class ServiceKpi {
     this.tone,
     this.note,
     this.members,
+    this.overviewOnly = false,
   });
 
   /// A figure whose source did not answer.
@@ -91,6 +100,7 @@ class ServiceKpi {
     required this.label,
     required this.icon,
     this.note,
+    this.overviewOnly = false,
   }) : value = unavailableValue,
        tone = null,
        members = null;

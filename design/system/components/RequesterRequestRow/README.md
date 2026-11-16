@@ -63,6 +63,10 @@ its way, ready to watch, the answers, what has long been on the server. Empty: `
 and `Discover`. A server that does not answer: one line with its time (when the app saw it stop answering) and `Retry` (`BriefFailureLine`), and the list as
 it last was. Read again on a pull, on a second tap of the tab, and on coming back after a minute.
 
+## Your reports (`YourReportsSection`)
+
+Under her requests, from `lib/features/requests/presentation/widgets/your_reports_section.dart`: `Your reports` in `AppType.section` with `1 open` (nothing when none is open), then one slab row each, the newest change first. The poster at 36×54 in the title's light, the title with ` · S2 E3` for an episode (it wraps, never cut), the state word (blue `Reported`, green `Resolved`), then `Audio · 1 reply from Matt` or, with nobody having replied, `Subtitles · Mon 28 Sep`; a chevron. Each opens her report. Read with her own session (Seerr lists only her own) and only where her grant may list issues. Absent with no reports, with a refusal, with no permission and while the read is out: the page's one line speaks for a silent server. The list names no replier, so a row with replies reads her conversation once for the name and says `1 reply` until it arrives. Never a service name.
+
 ## Semantics
 
 A row is one button that says it in one sentence (`Sprite Fright, Downloading 62%, Ready around 21:10`) and opens the
@@ -75,7 +79,7 @@ Each sheet is drawn in the dark and the light room: the Home's rows (downloading
 page's rows with Watch; the card that waits; the rows of a server gone quiet; her page, empty and with the server
 silent; Ready to watch with a second arrival; Your requests, and with nothing on its way; her Home at a cold start as last
 drawn (Ready to watch and Your requests, a download on its way with no figure; her two shelves, Coming soon cut again),
-and over a server that did not answer; text at 200%.
+and over a server that did not answer; her page with Your reports, and at 200%; text at 200%.
 
 ## Do / don't
 

@@ -1,5 +1,6 @@
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/core/models/media_preview.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/services/domain/request_ordering.dart';
@@ -40,6 +41,31 @@ final requestsProvider = FutureProvider<List<SeerrRequest>>((ref) async {
   return ref.watch(seerrServiceProvider).hydrate(rows);
 }, retry: noProviderRetry);
 
+/// Which issues the Issues tab lists: Open until a chip says otherwise.
+///
+/// Held here and not in the tab's `State`, because the tab's branch stays
+/// mounted while the person is elsewhere: a surface that sends them to the
+/// open issues (Needs you, Home, the Overview's link) puts it back on Open
+/// ([SeerrIssueFilterChoice.showOpen]) before it goes, or the tab would land
+/// on the filter it was left on. Reached by the tab bar, it is what was left.
+/// One per lens: another Seerr starts on Open. Never persisted.
+final seerrIssueFilterProvider =
+    NotifierProvider<SeerrIssueFilterChoice, SeerrIssueFilter>(
+      SeerrIssueFilterChoice.new,
+    );
+
+class SeerrIssueFilterChoice extends Notifier<SeerrIssueFilter> {
+  @override
+  SeerrIssueFilter build() {
+    ref.watch(activeInstanceProvider(ServiceKey.seerr).select((i) => i?.id));
+    return SeerrIssueFilter.open;
+  }
+
+  void choose(SeerrIssueFilter filter) => state = filter;
+
+  void showOpen() => state = SeerrIssueFilter.open;
+}
+
 final seerrIssuesProvider = FutureProvider.autoDispose
     .family<SeerrAdminResult<SeerrIssue>, SeerrIssueFilter>((
       ref,
@@ -47,6 +73,63 @@ final seerrIssuesProvider = FutureProvider.autoDispose
     ) async {
       return ref.watch(seerrServiceProvider).getIssuesResult(filter: filter);
     }, retry: noProviderRetry);
+
+/// The issues of connection [connectionId] (empty: the lens) that its account
+/// may see: only the caller's own to an account without MANAGE_ISSUES or
+/// VIEW_ISSUES, everyone's with VIEW_ISSUES. The page of her reports reads it
+/// and keeps the ones she reported (`SeerrIssue.isReportedBy`), and nobody
+/// else does.
+///
+/// Dropped through [invalidateSeerrIssues] only.
+final ownIssuesProvider =
+    FutureProvider.family<SeerrAdminResult<SeerrIssue>, String>(
+      (ref, connectionId) =>
+          ref.watch(seerrServiceForProvider(connectionId)).getOwnIssuesResult(),
+      retry: noProviderRetry,
+    );
+
+/// Seerr's own count of the issues of connection [connectionId] (empty: the
+/// lens): one cheap read, where the figure `Open problems` and the Needs you
+/// card come from. It never counts the rows of a page.
+///
+/// A caller asks it only for an account that may view issues, and treats a
+/// failure as a count that did not answer, never as nothing open.
+final issueCountProvider = FutureProvider.family<SeerrIssueCount, String>(
+  (ref, connectionId) =>
+      ref.watch(seerrServiceForProvider(connectionId)).getIssueCount(),
+  retry: noProviderRetry,
+);
+
+/// How many of the newest open issues the surfaces that show a few read: one
+/// page of this size, shared by Needs you (all of them) and the Seerr
+/// Overview (the first [seerrOverviewIssueRows]).
+const int seerrLatestIssueRows = 3;
+
+/// The newest [seerrLatestIssueRows] open issues of connection
+/// [connectionId] (empty: the lens), named from their titles.
+final latestOpenIssuesProvider =
+    FutureProvider.family<List<SeerrIssue>, String>(
+      (ref, connectionId) => ref
+          .watch(seerrServiceForProvider(connectionId))
+          .getLatestIssues(take: seerrLatestIssueRows),
+      retry: noProviderRetry,
+    );
+
+/// Reads every list and figure that speaks of Seerr's issues again: the
+/// Issues tab, the requester's own reports, Seerr's count and the newest open
+/// issues behind the Overview and Needs you.
+///
+/// **The one place that lists them.** A report, a reply, a resolve, a reopen
+/// and a delete each call it, so a surface added here is read again by all of
+/// them. The title's own reads (its record and the issue's page) are
+/// `readReportsAgain`'s, which calls this.
+void invalidateSeerrIssues(ProviderContainer container) {
+  container
+    ..invalidate(seerrIssuesProvider)
+    ..invalidate(ownIssuesProvider)
+    ..invalidate(issueCountProvider)
+    ..invalidate(latestOpenIssuesProvider);
+}
 
 final seerrUsersProvider =
     FutureProvider.autoDispose<SeerrAdminResult<SeerrUser>>((ref) async {

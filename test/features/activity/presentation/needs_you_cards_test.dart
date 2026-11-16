@@ -159,7 +159,7 @@ void main() {
   testWidgets('Keep waiting hides it for a day, out of the count, and Undo '
       'brings it back', (tester) async {
     final harness = await _pump(tester);
-    expect(find.text('3 faults\u00A0· 3 requests'), findsOneWidget);
+    expect(find.text('4 faults\u00A0· 3 requests'), findsOneWidget);
 
     await tester.tap(find.text('Keep waiting'));
     await harness.settle(tester);
@@ -171,7 +171,7 @@ void main() {
       findsOneWidget,
     );
     // Out of the faults, and nothing sent to any service.
-    expect(find.text('2 faults\u00A0· 3 requests'), findsOneWidget);
+    expect(find.text('3 faults\u00A0· 3 requests'), findsOneWidget);
     expect(harness.network.requests.where(_queueDelete), isEmpty);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ActivityPage)),
@@ -183,7 +183,7 @@ void main() {
 
     expect(container.read(keptWaitingProvider), isEmpty);
     expect(find.text('Try another download'), findsOneWidget);
-    expect(find.text('3 faults\u00A0· 3 requests'), findsOneWidget);
+    expect(find.text('4 faults\u00A0· 3 requests'), findsOneWidget);
 
     await harness.unmount(tester);
   });
@@ -238,7 +238,7 @@ void main() {
     expect(find.textContaining('Hidden until'), findsNothing);
     // Still kept waiting: its day is not up, so it is not back either.
     expect(find.text('Big Buck Bunny is stuck at 47%'), findsNothing);
-    expect(find.text('2 faults\u00A0· 3 requests'), findsOneWidget);
+    expect(find.text('3 faults\u00A0· 3 requests'), findsOneWidget);
 
     await harness.unmount(tester);
   });

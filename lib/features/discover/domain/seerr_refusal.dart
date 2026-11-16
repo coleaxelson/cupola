@@ -56,6 +56,21 @@ enum SeerrRefusal {
   /// its owner can no longer cancel it.
   noLongerCancellable,
 
+  /// `POST /issue` 404 `Media does not exist.`: the title's row is gone from
+  /// the server, so there is nothing left to report a problem on.
+  mediaGone,
+
+  /// `Issue not found.` on an issue's own routes: somebody deleted the issue.
+  /// Seerr answers 500 on `GET /issue/{id}`, `POST /issue/{id}/comment` and
+  /// `POST /issue/{id}/{status}`, and 404 on `DELETE /issue/{id}`. Never a
+  /// server fault: the issue is gone, read the list again.
+  issueGone,
+
+  /// `Issue comment not found.` on `PUT|DELETE /issueComment/{id}`: the
+  /// reply was deleted. Apart from [issueGone] because the issue is still
+  /// there: the conversation is read again, not left.
+  replyGone,
+
   /// `POST /auth/local` 403 `Access denied.`: no such user, or the wrong
   /// password. The server does not say which, on purpose.
   wrongEmailOrPassword,
@@ -104,6 +119,9 @@ enum SeerrRefusal {
     alreadyRequested ||
     noSeasonsLeft ||
     noLongerCancellable ||
+    mediaGone ||
+    issueGone ||
+    replyGone ||
     wrongEmailOrPassword ||
     wrongUsernameOrPassword ||
     accountNotAllowed ||
@@ -169,6 +187,16 @@ SeerrRefusal? classifySeerrRefusal({
   if (route.isNotEmpty && route.first == 'request') {
     final request = _requestRefusal(status, verb, route, text);
     if (request != null) return request;
+  }
+
+  if (route.isNotEmpty && route.first == 'issueComment') {
+    final reply = _replyRefusal(status, verb, route, text);
+    if (reply != null) return reply;
+  }
+
+  if (route.isNotEmpty && route.first == 'issue') {
+    final issue = _issueRefusal(status, verb, route, text);
+    if (issue != null) return issue;
   }
 
   // `server/middleware/auth.ts:48-52`, every route behind `isAuthenticated`.
@@ -327,6 +355,52 @@ SeerrRefusal? _requestRefusal(
       (text == 'Request for this media already exists.' ||
           text == 'Auto-request for this media and user already exists.')) {
     return SeerrRefusal.alreadyRequested;
+  }
+  return null;
+}
+
+/// The issue routes, `server/routes/issue.ts` v3.5.0.
+SeerrRefusal? _issueRefusal(
+  int status,
+  String verb,
+  List<String> route,
+  String text,
+) {
+  // `POST /issue` looks the title's media row up by `mediaId`.
+  if (verb == 'POST' && route.length == 1) {
+    return status == 404 && text == 'Media does not exist.'
+        ? SeerrRefusal.mediaGone
+        : null;
+  }
+  // `/issue/{id}`, `/issue/{id}/comment`, `/issue/{id}/open|resolved`. The
+  // read and the two writes answer a 500 from the error handler, the delete
+  // a 404; both read as the same thing.
+  if (route.length >= 2 &&
+      int.tryParse(route[1]) != null &&
+      (status == 404 || status == 500) &&
+      text == 'Issue not found.') {
+    return SeerrRefusal.issueGone;
+  }
+  return null;
+}
+
+/// The reply routes, `server/routes/issueComment.ts` v3.5.0.
+SeerrRefusal? _replyRefusal(
+  int status,
+  String verb,
+  List<String> route,
+  String text,
+) {
+  if (route.length != 2 || int.tryParse(route[1]) == null) return null;
+  if (verb != 'PUT' && verb != 'DELETE') return null;
+  if (status == 404 && text == 'Issue comment not found.') {
+    return SeerrRefusal.replyGone;
+  }
+  // A 403 that lacks the usual prefix: only an author edits a reply.
+  if (verb == 'PUT' &&
+      status == 403 &&
+      text == 'You can only edit your own comments.') {
+    return SeerrRefusal.permissionDenied;
   }
   return null;
 }

@@ -8,7 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cupola/core/theme.dart';
+import 'package:cupola/features/home/data/stack_lights.dart';
+import 'package:cupola/features/home/domain/stack_lights.dart';
+import 'package:cupola/features/services/domain/dashboard_decision.dart';
+import 'package:cupola/features/services/presentation/services_decisions.dart';
 import 'package:cupola/features/services/presentation/stack_screen.dart';
+import 'package:cupola/features/settings/domain/service_key.dart';
 
 import '../../../test_helpers/profiles/profiles.dart';
 
@@ -62,6 +67,50 @@ void main() {
     }
     // Another band is short of a service too.
     expect(find.text('1 not set up'), findsWidgets);
+
+    await harness.unmount(tester);
+  });
+
+  testWidgets('P1: Seerr with a problem reported on it and nothing else wrong '
+      'keeps its light and adds nothing to the band; Needs you holds it', (
+    tester,
+  ) async {
+    // The world's Seerr holds Anna's one open issue and answers normally.
+    final harness = await ProfileHarness.start(Profiles.p1);
+    harness.network.followFakeTime(tester.binding);
+    await tester.binding.setSurfaceSize(const Size(430, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: harness.overrides,
+        child: MaterialApp(
+          theme: AppTheme.darkTheme(),
+          home: const StackScreen(),
+        ),
+      ),
+    );
+    await harness.settle(tester);
+
+    expect(find.textContaining('Seerr needs a look'), findsNothing);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(StackScreen)),
+    );
+    final decisions = container.read(dashboardDecisionsProvider).decisions;
+    // Needs you still holds the card, as a fault.
+    expect(
+      decisions.where(
+        (decision) =>
+            decision.kind == DecisionKind.reportedProblems && decision.isFault,
+      ),
+      hasLength(1),
+    );
+    // And no service is lit by it.
+    expect(faultedServices(decisions), isNot(contains(ServiceKey.seerr)));
+    final lights = container.read(stackLightsProvider);
+    expect(
+      lights.rows.firstWhere((row) => row.service == ServiceKey.seerr).light,
+      StackLight.answering,
+    );
 
     await harness.unmount(tester);
   });

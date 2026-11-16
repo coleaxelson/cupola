@@ -9,6 +9,7 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/activity/presentation/widgets/decision_fault_card.dart';
+import 'package:cupola/features/activity/presentation/widgets/reported_problems_card.dart';
 import 'package:cupola/features/activity/presentation/widgets/storage_alert_card.dart';
 import 'package:cupola/features/activity/presentation/widgets/stuck_download_card.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
@@ -70,6 +71,15 @@ class NeedsYouCard extends StatelessWidget {
           : StuckDownloadCard(downloadKey: key, divided: divided, whole: whole);
     }
     final decision = entry.decision!;
+    // The wide list's line is the plain one every fault has; the card holds
+    // the newest issues themselves.
+    if (decision.kind == DecisionKind.reportedProblems && !_row) {
+      return ReportedProblemsCard(
+        decision: decision,
+        divided: divided,
+        whole: whole,
+      );
+    }
     if (decision.kind == DecisionKind.storageAlert) {
       return _row
           ? StorageAlertCard.row(decision: decision, divided: divided)

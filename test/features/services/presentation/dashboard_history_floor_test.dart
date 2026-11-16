@@ -123,7 +123,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(NeedsYouLine),
-          matching: find.text('+2'),
+          matching: find.text('+3'),
         ),
         findsOne,
       );
@@ -137,7 +137,7 @@ void main() {
       expect(
         find.bySemanticsLabel(
           RegExp(
-            r'^18 downloads need a manual import, and 2 more things need '
+            r'^18 downloads need a manual import, and 3 more things need '
             r'you\. Review$',
           ),
         ),

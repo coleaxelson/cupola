@@ -52,12 +52,15 @@ List<ProviderOrFamily> dashboardSourcesOf(ServiceKey service) =>
       ServiceKey.transmission => [transmissionTorrentsProvider],
       ServiceKey.sabnzbd => [sabnzbdQueueProvider],
       ServiceKey.nzbget => [nzbgetQueueProvider, nzbgetStatusProvider],
-      // The lens's list, every other Seerr's, which the region reads too, and
-      // the waiting page Requests on the Home counts from.
+      // The lens's list, every other Seerr's, which the region reads too, the
+      // waiting page Requests on the Home counts from, and the count and the
+      // newest page of the problems reported on it.
       ServiceKey.seerr => [
         requestRowsProvider,
         requestRowsForProvider,
         pendingRequestsForProvider,
+        issueCountProvider,
+        latestOpenIssuesProvider,
       ],
       // The status list *is* the failing-indexer list; the indexers name them.
       ServiceKey.prowlarr => [

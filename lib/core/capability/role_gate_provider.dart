@@ -112,3 +112,29 @@ final seerrAccountUserIdProvider = Provider.autoDispose.family<int?, String>((
     currentSettingsProvider.select((s) => s.instanceById(id)?.account?.userId),
   );
 });
+
+/// The Seerr user connection [connectionId] (empty: the lens) acts as: an
+/// account's own user id, and for the instance API key user 1, the first
+/// admin, which is who Seerr authenticates the key as (Cupola sends no
+/// `X-API-User`). What decides whether an issue or a reply is the reader's
+/// own; null only for no connection.
+///
+/// [seerrAccountUserIdProvider] stays null for the key, which is right for the
+/// callers that read "an account or nothing".
+final seerrActingUserIdProvider = Provider.autoDispose.family<int?, String>((
+  ref,
+  connectionId,
+) {
+  final id = connectionId.isEmpty
+      ? ref.watch(activeInstanceProvider(ServiceKey.seerr))?.id
+      : connectionId;
+  if (id == null) return null;
+  final account = ref.watch(seerrAccountUserIdProvider(id));
+  if (account != null) return account;
+  final isKey = ref.watch(
+    currentSettingsProvider.select(
+      (s) => s.instanceById(id)?.account == null && s.instanceById(id) != null,
+    ),
+  );
+  return isKey ? 1 : null;
+});

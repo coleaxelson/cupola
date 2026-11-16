@@ -39,6 +39,7 @@ import 'package:cupola/features/bazarr/domain/models/bazarr_models.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_videos_button.dart';
 import 'package:cupola/features/bazarr/presentation/widgets/bazarr_detail_sections.dart';
 import 'package:cupola/features/media/presentation/media_episode_sheet.dart';
+import 'package:cupola/features/media/presentation/media_report_row.dart';
 import 'package:cupola/features/media/presentation/media_episodes_graph.dart';
 import 'package:cupola/features/media/presentation/open_media.dart';
 import 'package:cupola/features/emby/presentation/emby_provider.dart';
@@ -968,6 +969,10 @@ class _MediaPageState extends ConsumerState<MediaPage> {
               },
             ),
           ],
+          // The requester's way to report a problem, and her own latest
+          // report: only where Seerr says the title is on the server.
+          if (audience == Audience.requester)
+            MediaReportSection.requester(scope: (key: mediaKey, focus: focus)),
         ];
         final serve = <Widget>[
           // The requester's line already says the title is not there, or
@@ -983,6 +988,9 @@ class _MediaPageState extends ConsumerState<MediaPage> {
             ),
             MediaGroup(children: views),
           ],
+          // The operator's reported problems and the way to report one.
+          if (audience == Audience.operator)
+            MediaReportSection.operator(scope: (key: mediaKey, focus: focus)),
           if (graphSource case (:final seerr, :final tvId, :final numbers))
             MediaEpisodesGraphPanel(
               connectionId: seerr,
@@ -1365,6 +1373,7 @@ class _MediaPageState extends ConsumerState<MediaPage> {
             seerr: seerr == null || tvId == null
                 ? null
                 : (connectionId: seerr, tvId: tvId),
+            report: (key: mediaKey, focus: focus),
             server: server,
             subtitles: subtitles,
             light: light,

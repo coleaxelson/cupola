@@ -687,6 +687,9 @@ class WorldSeerrUser {
 
 /// The household's Seerr users, as every Seerr of the world knows them.
 abstract final class WorldSeerrUsers {
+  /// REQUEST (32) | CREATE_ISSUES (4194304).
+  static const _annaPermissions = 4194336;
+
   /// User 1, the admin whose API key the operator holds.
   static const admin = WorldSeerrUser(
     id: 1,
@@ -694,10 +697,12 @@ abstract final class WorldSeerrUsers {
     permissions: 2,
   );
 
+  /// REQUEST and CREATE_ISSUES: she asks for titles and reports a problem
+  /// with one, and sees only her own reports (no VIEW or MANAGE_ISSUES).
   static const anna = WorldSeerrUser(
     id: 2,
     displayName: WorldPeople.anna,
-    permissions: 32,
+    permissions: _annaPermissions,
   );
 
   static const luca = WorldSeerrUser(
@@ -708,11 +713,11 @@ abstract final class WorldSeerrUsers {
 
   static const household = [admin, anna, luca];
 
-  /// Anna's own local account (P2): REQUEST only.
+  /// Anna's own local account (P2): REQUEST and CREATE_ISSUES.
   static const annaLocal = WorldSeerrUser(
     id: 2,
     displayName: WorldPeople.anna,
-    permissions: 32,
+    permissions: _annaPermissions,
     kind: WorldSeerrUserType.local,
   );
 
@@ -723,7 +728,7 @@ abstract final class WorldSeerrUsers {
   static const annaPlex = WorldSeerrUser(
     id: 2,
     displayName: WorldPeople.anna,
-    permissions: 32,
+    permissions: _annaPermissions,
     kind: WorldSeerrUserType.plex,
   );
 

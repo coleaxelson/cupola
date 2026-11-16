@@ -207,7 +207,7 @@ void main() {
       expect(account.userId, anna.id);
       expect(account.displayName, WorldPeople.anna);
       // `/auth/me`'s, not the sign-in answer's `0`.
-      expect(account.permissions, 32);
+      expect(account.permissions, 4194336);
       expect(account.checkedAt, now);
       expect(account.session, startsWith('s%3A'));
       final signIn = harness.network

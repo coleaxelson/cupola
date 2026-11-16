@@ -22,6 +22,7 @@ import 'package:cupola/core/widgets/failure_remedy.dart';
 import 'package:cupola/core/widgets/media_poster_card.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
+import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/dockge/domain/models/dockge_agent.dart';
 import 'package:cupola/features/dockge/presentation/dockge_provider.dart';
 import 'package:cupola/features/import/presentation/manual_import_routes.dart';
@@ -355,6 +356,15 @@ Future<void> runDecision(
     case DecisionKind.violation:
       // The violation's own page, where the owner answers it.
       return openDecision(context, ref, decision);
+    case DecisionKind.reportedProblems:
+      // The Issues tab of the Seerr they were reported on, on Open: the tab
+      // reads the lens, so that Seerr is brought under it first.
+      await bringUnderLens(ref, decision.service, decision.instanceId);
+      if (!context.mounted) return;
+      // The tab stays mounted with the filter it was left on: it is put back
+      // on Open, which is what the card counted.
+      ref.read(seerrIssueFilterProvider.notifier).showOpen();
+      context.go(decision.route ?? ServiceRoutes.seerrIssues);
     case DecisionKind.stalledDownload:
       // A service's page reads its lens, so the client this transfer is on
       // is brought under the lens first: with two qBittorrent, "Open in

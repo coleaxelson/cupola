@@ -16,6 +16,12 @@ import 'package:cupola/core/utils/arr_overview.dart';
 import 'package:cupola/core/widgets/service_overview.dart';
 import 'package:cupola/core/widgets/service_tab_bar.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
+import 'package:cupola/features/discover/data/seerr_service.dart';
+import 'package:cupola/features/discover/data/seerr_session.dart';
+import 'package:cupola/features/settings/domain/connection_reach.dart';
+import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
+import 'package:cupola/features/discover/presentation/seerr_overview_screen.dart';
 import 'package:cupola/features/movies/data/radarr_service.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
 import 'package:cupola/features/movies/presentation/radarr_overview_screen.dart';
@@ -53,6 +59,7 @@ import 'package:cupola/features/stream/presentation/stream_overview_screen.dart'
 import '../test_helpers/fake_secure_settings_store.dart';
 import '../test_helpers/fake_services.dart';
 import '../test_helpers/profiles/profiles.dart';
+import '../test_helpers/settings_scope.dart';
 import 'catalog.dart';
 import 'emby_world.dart';
 import 'tracearr_world.dart';
@@ -575,6 +582,76 @@ Widget _unraid(UnraidCatalogApi api) => _Isolated([
   ...unraidCatalogOverrides(api),
 ], const UnraidOverviewScreen(topPadding: 0));
 
+/// Seerr's Overview over [service], the operator's key, answering.
+Widget _seerr(FakeSeerrService service, Widget child) => _Isolated([
+  sharedPreferencesProvider.overrideWithValue(_prefs),
+  secureSettingsStoreProvider.overrideWithValue(FakeSecureSettingsStore()),
+  initialSettingsProvider.overrideWithValue(
+    settingsWith(seerrUrl: 'http://nas.home.arpa:5055', seerrApiKey: 'key'),
+  ),
+  initialOnboardingCompletedProvider.overrideWithValue(true),
+  initialActiveInstancesProvider.overrideWithValue(const {}),
+  seerrServiceProvider.overrideWithValue(service),
+  seerrServiceForProvider.overrideWith((ref, instanceId) => service),
+  serviceStatusClientFactoryProvider.overrideWithValue(
+    ({
+      required String baseUrl,
+      required String apiKey,
+      String? pinnedCertFingerprint,
+      Map<String, String> accessHeaders = const {},
+    }) => _StatusClient('3.5.0'),
+  ),
+  seerrClientFactoryProvider.overrideWith(
+    (ref) =>
+        (
+          instance, {
+          ConnectionReach? reach,
+          SeerrSessionEvents events = const SeerrSessionEvents(),
+        }) => _StatusClient('3.5.0'),
+  ),
+], ScaffoldMessenger(child: child));
+
+/// Three open problems on Seerr, newest first, as its issue list holds them.
+FakeSeerrService _seerrWithProblems() {
+  SeerrIssue issue(
+    int id,
+    String title,
+    String reporter,
+    SeerrIssueType type,
+    int days, {
+    int season = 0,
+    int episode = 0,
+  }) => SeerrIssue(
+    id: id,
+    type: type,
+    status: SeerrIssueStatus.open,
+    problemSeason: season,
+    problemEpisode: episode,
+    media: SeerrIssueMedia(
+      title: title,
+      mediaType: 'movie',
+      posterPath: CatalogArt.tmdbPoster,
+    ),
+    createdBy: SeerrUser(id: id, serverDisplayName: reporter),
+    createdAt: catalogNow.subtract(Duration(days: days)).toIso8601String(),
+  );
+  return FakeSeerrService()
+    ..issueCount = const SeerrIssueCount(open: 3, total: 4, closed: 1)
+    ..issues = [
+      issue(3, 'Tears of Steel', 'Luca', SeerrIssueType.video, 1),
+      issue(
+        2,
+        'Cosmos Laundromat',
+        'Anna',
+        SeerrIssueType.audio,
+        13,
+        season: 2,
+        episode: 3,
+      ),
+      issue(1, 'Big Buck Bunny', 'Anna', SeerrIssueType.subtitles, 15),
+    ];
+}
+
 /// The five shapes a [ServiceOverviewRow] takes, one under another, as a
 /// Needs attention section would draw them. Tones are walked against the
 /// surface the rows sit on, as the screens do.
@@ -822,6 +899,40 @@ void main() {
         height: 1950,
         textScale: catalogTextScale,
         id: 'unraid-text-200',
+      ),
+      CatalogScene(
+        'SeerrOverviewScreen · Open problems: the readout (amber above zero) '
+        'and Reported problems, the count, the newest two and the link to '
+        'Issues',
+        (_) => _seerr(
+          _seerrWithProblems(),
+          const SeerrOverviewScreen(topPadding: 0),
+        ),
+        width: 390,
+        height: 800,
+        id: 'seerr-reported-problems',
+      ),
+      CatalogScene(
+        'SeerrOverviewScreen · the count did not answer: Open problems reads '
+        '—, never 0, and there is no section',
+        (_) => _seerr(
+          (_seerrWithProblems()..issueCount = null),
+          const SeerrOverviewScreen(topPadding: 0),
+        ),
+        width: 390,
+        height: 700,
+        id: 'seerr-count-dash',
+      ),
+      CatalogScene(
+        'SeerrOverviewScreen · Reported problems at 200%: nothing cut',
+        (_) => _seerr(
+          _seerrWithProblems(),
+          const SeerrOverviewScreen(topPadding: 0),
+        ),
+        width: 390,
+        height: 1300,
+        textScale: catalogTextScale,
+        id: 'seerr-reported-problems-200',
       ),
       CatalogScene(
         'RadarrOverviewScreen · loaded · identity, readouts, then Coming up, '

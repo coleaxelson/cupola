@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/api/api_client.dart';
 import 'package:cupola/core/models/media_preview.dart';
@@ -11,6 +12,8 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/data/seerr_session.dart';
+import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/presentation/seerr_overview_screen.dart';
 import 'package:cupola/features/settings/domain/connection_reach.dart';
@@ -19,6 +22,7 @@ import 'package:cupola/features/settings/domain/service_key.dart';
 import 'package:cupola/features/settings/domain/settings_model.dart';
 
 import '../../../test_helpers/fake_services.dart';
+import '../../../test_helpers/requester_cold_start.dart' show seerrSignedInAs;
 import '../../../test_helpers/settings_scope.dart';
 
 void main() {
@@ -265,6 +269,153 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('Reported problems', () {
+    SeerrIssue issue(
+      int id,
+      String title,
+      String reporter, {
+      SeerrIssueType type = SeerrIssueType.video,
+      int season = 0,
+      int episode = 0,
+    }) => SeerrIssue(
+      id: id,
+      type: type,
+      status: SeerrIssueStatus.open,
+      problemSeason: season,
+      problemEpisode: episode,
+      media: SeerrIssueMedia(title: title, mediaType: 'movie'),
+      createdBy: SeerrUser(id: id, serverDisplayName: reporter),
+      createdAt: '2026-09-26T10:00:00.000Z',
+    );
+
+    final newest = [
+      issue(3, 'Tears of Steel', 'Luca'),
+      issue(
+        2,
+        'Cosmos Laundromat',
+        'Anna',
+        type: SeerrIssueType.audio,
+        season: 2,
+        episode: 3,
+      ),
+      issue(1, 'Big Buck Bunny', 'Anna', type: SeerrIssueType.subtitles),
+    ];
+
+    testWidgets('the readout and the section say what is open: the count '
+        'is Seerr\'s, the rows the newest two, and the link is the tab', (
+      tester,
+    ) async {
+      final service = _ScriptedSeerr()
+        ..issueCount = const SeerrIssueCount(open: 3)
+        ..issues = newest;
+      await _pump(tester, service: service);
+
+      // The readout between Processing and Available, with its figure.
+      expect(
+        find.semantics.byLabel(RegExp(r'^Open problems: 3')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widgetList<SectionHeader>(find.byType(SectionHeader))
+            .map((header) => header.title),
+        ['Needs a decision', 'Reported problems', 'Processing', 'Trending'],
+      );
+      expect(find.text('3 open'), findsOneWidget);
+      expect(find.textContaining('Issues', findRichText: true), findsOneWidget);
+      expect(
+        tester
+            .widgetList<SectionHeader>(find.byType(SectionHeader))
+            .map((header) => header.semanticHint),
+        contains('opens the Seerr Issues tab'),
+      );
+      // The newest two, never the third.
+      expect(find.text('Tears of Steel'), findsOneWidget);
+      expect(find.text('Cosmos Laundromat'), findsOneWidget);
+      expect(find.text('Big Buck Bunny'), findsNothing);
+      expect(find.textContaining('Video\u00A0· Luca\u00A0· '), findsOneWidget);
+      expect(
+        find.textContaining('S2\u00A0E3\u00A0· Audio\u00A0· Anna\u00A0· '),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a row opens its issue on the Seerr it was read from', (
+      tester,
+    ) async {
+      final service = _ScriptedSeerr()
+        ..issueCount = const SeerrIssueCount(open: 3)
+        ..issues = newest;
+      final opened = <String>[];
+      await _pump(tester, service: service, onLocation: opened.add);
+
+      await tester.tap(find.text('Cosmos Laundromat'));
+      await tester.pumpAndSettle();
+
+      expect(opened, ['/stack/seerr/issues/2?i=seerr']);
+    });
+
+    testWidgets('nothing open: the readout says 0 and there is no section', (
+      tester,
+    ) async {
+      final service = _ScriptedSeerr()
+        ..issueCount = const SeerrIssueCount(open: 0);
+      await _pump(tester, service: service);
+
+      expect(find.semantics.byLabel(RegExp(r'^Open problems: 0')), findsOne);
+      expect(find.text('Reported problems'), findsNothing);
+      // Nothing to list is not read.
+      expect(service.latestIssueReads, 0);
+    });
+
+    testWidgets('a count that did not answer reads a dash, never 0, and '
+        'draws no section', (tester) async {
+      await _pump(tester, service: _ScriptedSeerr());
+
+      expect(
+        find.semantics.byLabel(RegExp(r'^Open problems: unavailable')),
+        findsOneWidget,
+      );
+      expect(
+        find.semantics.byLabel(RegExp(r'^Open problems: 0')),
+        findsNothing,
+      );
+      expect(find.text('Reported problems'), findsNothing);
+    });
+
+    testWidgets('rows that did not arrive are said, under the count', (
+      tester,
+    ) async {
+      final service = _FailingIssuePage()
+        ..issueCount = const SeerrIssueCount(open: 2);
+      await _pump(tester, service: service);
+
+      expect(find.text('2 open'), findsOneWidget);
+      expect(
+        find.textContaining('so what was reported is not shown'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an account that may not view issues has no readout and no '
+        'section, and Seerr is asked nothing of them', (tester) async {
+      final service = _ScriptedSeerr()
+        ..issueCount = const SeerrIssueCount(open: 3)
+        ..issues = newest;
+      await _pump(
+        tester,
+        service: service,
+        // REQUEST alone: the server would refuse the issues.
+        customize: (settings) => seerrSignedInAs(settings),
+      );
+
+      expect(find.semantics.byLabel(RegExp(r'^Open problems')), findsNothing);
+      expect(find.text('Reported problems'), findsNothing);
+      expect(service.issueCountReads, 0);
+      expect(service.latestIssueReads, 0);
+    });
+  });
+
   testWidgets('a Seerr that was never set up gets its own door', (
     tester,
   ) async {
@@ -287,10 +438,29 @@ Future<void> _pump(
   bool configured = true,
   double textScaleFactor = 1.0,
   Size size = const Size(420, 2600),
+  SettingsModel Function(SettingsModel settings)? customize,
+  void Function(String location)? onLocation,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
+  final router = onLocation == null
+      ? null
+      : GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const SeerrOverviewScreen(topPadding: 0),
+            ),
+            GoRoute(
+              path: '/stack/seerr/issues/:id',
+              builder: (_, state) {
+                onLocation(state.uri.toString());
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
+        );
   await tester.pumpWidget(
     ProviderScope(
       // Riverpod 3 re-runs a failed provider on an exponential backoff, so one
@@ -298,14 +468,14 @@ Future<void> _pump(
       // retry a dozen times and never settle.
       retry: (_, _) => null,
       overrides: [
-        currentSettingsProvider.overrideWith(
-          (ref) => configured
-              ? settingsWith(
-                  seerrUrl: 'http://seerr.local:5055',
-                  seerrApiKey: 'key',
-                )
-              : const SettingsModel(),
-        ),
+        currentSettingsProvider.overrideWith((ref) {
+          if (!configured) return const SettingsModel();
+          final settings = settingsWith(
+            seerrUrl: 'http://seerr.local:5055',
+            seerrApiKey: 'key',
+          );
+          return customize == null ? settings : customize(settings);
+        }),
         seerrServiceProvider.overrideWith((ref) => service),
         seerrClientFactoryProvider.overrideWith(
           (ref) =>
@@ -316,20 +486,40 @@ Future<void> _pump(
               }) => _StatusClient(version),
         ),
       ],
-      child: MaterialApp(
-        theme: AppTheme.darkTheme(),
-        themeAnimationDuration: Duration.zero,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
-          child: child!,
-        ),
+      child: _app(
+        router: router,
+        textScaleFactor: textScaleFactor,
         home: const SeerrOverviewScreen(topPadding: 0),
       ),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Widget _app({
+  required GoRouter? router,
+  required double textScaleFactor,
+  required Widget home,
+}) {
+  Widget scaled(BuildContext context, Widget? child) => MediaQuery(
+    data: MediaQuery.of(
+      context,
+    ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
+    child: child!,
+  );
+  return router == null
+      ? MaterialApp(
+          theme: AppTheme.darkTheme(),
+          themeAnimationDuration: Duration.zero,
+          builder: scaled,
+          home: home,
+        )
+      : MaterialApp.router(
+          theme: AppTheme.darkTheme(),
+          themeAnimationDuration: Duration.zero,
+          builder: scaled,
+          routerConfig: router,
+        );
 }
 
 SeerrService _scripted({
@@ -349,6 +539,14 @@ class _ScriptedSeerr extends FakeSeerrService {
   @override
   Future<List<MediaPreview>> getDiscoverTrending({int page = 1}) async =>
       trending;
+}
+
+class _FailingIssuePage extends _ScriptedSeerr {
+  @override
+  Future<List<SeerrIssue>> getLatestIssues({
+    SeerrIssueFilter filter = SeerrIssueFilter.open,
+    int take = 3,
+  }) async => throw Exception('page failed');
 }
 
 class _FailingRequestsSeerr extends _ScriptedSeerr {

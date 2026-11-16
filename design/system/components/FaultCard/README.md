@@ -2,7 +2,7 @@
 
 One fault in Needs you, with its way out on the card: a headline that is a sentence by an amber warning glyph, what it means, which service raised it, the service's own words behind Why?, the proof a download carries, and the remedy. `StuckDownloadCard` builds one for each stuck download, with its four ways out; `StorageAlertCard` one for a TrueNAS alert about a disk, with its pool's evidence and Scrub; `DecisionFaultCard` one for every other kind of fault, with the control the Home's row has. A health check failing on several \*arrs is one card (`foldArrHealth`): the app's words for the check (`arr_health.dart`), the \*arrs named once on the source line, their own messages behind Why?, the first \*arr on the fill and each other one a quieter way out (`Open in Sonarr`).
 
-Rendered from `lib/features/activity/presentation/widgets/fault_card.dart` (`FaultCard`, `FaultCard.whole`, `FaultCard.row`; and `RequestsWaitRow` from `needs_you_cards.dart`) by `test/design_catalog/fault_card_catalog_test.dart`. The words come from `lib/features/activity/domain/stuck_download_fault.dart` and `lib/features/activity/domain/fault_words.dart`, never from the widget.
+Rendered from `lib/features/activity/presentation/widgets/fault_card.dart` (`FaultCard`, `FaultCard.whole`, `FaultCard.row`; `RequestsWaitRow` from `needs_you_cards.dart`, and `ReportedProblemsCard` from `reported_problems_card.dart`) by `test/design_catalog/fault_card_catalog_test.dart`. The words come from `lib/features/activity/domain/stuck_download_fault.dart` and `lib/features/activity/domain/fault_words.dart`, never from the widget.
 
 ## Where it is drawn
 
@@ -27,6 +27,17 @@ One line of a wide list: Needs you on a tablet and a desktop.
 - Beside the words, the remedy at the size of its words (`IntrinsicWidth` over the card's own fill), and the quieter ways out behind a 44pt outlined ⋯ (`Remove`, `Keep waiting`; `Open alert`), whose menu speaks *More ways out, Big Buck Bunny is stuck at 47%*. Narrower than 480, or at a large reading size, the remedy and the ⋯ go under the words, as on a tablet's list beside an open download.
 - Work that runs and a way out taken say so under the words, in place of the controls, as on the card.
 - **The requests** (`RequestsWaitRow`): the Seerr glyph's plate, `2 requests wait for your approval` in `AppType.row` the ink after a 7pt blue dot, under it what and who of the first two (`Charge · Anna · Metropolis · Luca`, then `· 3 more`), and `Review`, outlined, which opens the Requests view where each has its Approve and Decline.
+
+## The problems people reported (`ReportedProblemsCard`)
+
+One fault per Seerr whose account may view issues, in the page's slab and on All on a phone; first of the faults. The count is Seerr's own (`GET /issue/count`, `open`), the rows only the newest three open issues (one page, hydrated).
+
+- `3 reported problems` (`1 reported problem`) in `AppType.section` on the page, `AppType.row` on All; under it the amber flag (16px) by `Seerr · Issues` in `AppType.meta` w600 `inkSecondary` (the Seerr's own name once there are two).
+- One sentence, `AppType.body` `inkSecondary`: who said it, from the three rows read: `Luca and Anna say something is wrong with what they watch.`, `Luca says …`, `Luca, Anna and 1 other say …`. Left out when no row was read: never said of nobody.
+- Under it a mini row each, behind a hairline: the poster in the title's light at 36×54, the title, `Video · Luca · yesterday` (the day is worded when it is drawn). Each is one target to its own issue, 44pt at least, one sentence to a screen reader.
+- The amber fill `Review 3` (`Review` for one) with a chevron, opening the Issues tab on Open, on the Seerr they were reported on.
+- A line of a wide list is `FaultCard.row` through `DecisionFaultCard.row`: the same words and remedy, no rows.
+- Counts as one fault in the page's `2 faults · 1 request` and in the Home's line, where the largest group leads.
 
 ## Tracearr's violations (`ViolationDecisionRow`)
 
@@ -54,6 +65,7 @@ Each sheet is drawn in the dark and the light room, on the phone and on the desk
 - A scrub that runs, in place of the fill, with Open alert beside it.
 - A health check failing on four \*arrs: one card, the \*arrs on the source line, the other three two a row.
 - `FaultCard.whole`: a storage alert with its evidence and Why? open.
+- `ReportedProblemsCard`: on the page, on All beside a stuck download, and at 200%.
 - Tracearr's violations under the faults: three rows, and the floor (`5+`); at 200%.
 - Text at 200%.
 - The desktop: a stuck download in the page well.

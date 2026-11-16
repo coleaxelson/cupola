@@ -127,14 +127,14 @@ void main() {
 
       await _advance(tester, const Duration(seconds: 3));
 
-      // The blocked imports lead; the stall and TrueNAS's disk alert are the
-      // two things more. Dockge has not said anything yet, and a stopped stack
-      // would not be one of them.
+      // The blocked imports lead; the stall, TrueNAS's disk alert and the
+      // problem reported on Seerr are the three things more. Dockge has not
+      // said anything yet, and a stopped stack would not be one of them.
       expect(
         _inNeedsYou(find.text('18 downloads need a manual import')),
         findsOne,
       );
-      expect(_inNeedsYou(find.text('+2')), findsOne);
+      expect(_inNeedsYou(find.text('+3')), findsOne);
 
       await _advance(tester, const Duration(seconds: 7));
       await harness.settle(tester);
@@ -145,8 +145,9 @@ void main() {
         _inNeedsYou(find.text('18 downloads need a manual import')),
         findsOne,
       );
-      // The stall, TrueNAS's disk alert, and Dockge timing out.
-      expect(_inNeedsYou(find.text('+3')), findsOne);
+      // The stall, TrueNAS's disk alert, the reported problem, and Dockge
+      // timing out.
+      expect(_inNeedsYou(find.text('+4')), findsOne);
       expect(_inNeedsYou(find.textContaining('did not answer')), findsNothing);
 
       await harness.unmount(tester);
@@ -158,13 +159,14 @@ void main() {
       'the other sources only', (tester) async {
     final harness = await _pumpHome(tester, Profiles.p1);
 
-    // `immich` is stopped on P1. A stop is not a fault, so the two things
-    // more are the stall and TrueNAS's disk alert, and nothing names immich.
+    // `immich` is stopped on P1. A stop is not a fault, so the three things
+    // more are the stall, TrueNAS's disk alert and the problem reported on
+    // Seerr, and nothing names immich.
     expect(
       _inNeedsYou(find.text('18 downloads need a manual import')),
       findsOne,
     );
-    expect(_inNeedsYou(find.text('+2')), findsOne);
+    expect(_inNeedsYou(find.text('+3')), findsOne);
     expect(_inNeedsYou(find.textContaining('immich')), findsNothing);
 
     await harness.unmount(tester);

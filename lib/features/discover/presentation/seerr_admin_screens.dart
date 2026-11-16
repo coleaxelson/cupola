@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:cupola/core/providers/async_value_kept.dart';
 
@@ -8,14 +9,20 @@ import 'package:cupola/core/capability/role_gate.dart';
 import 'package:cupola/core/capability/role_gate_copy.dart';
 import 'package:cupola/core/capability/role_gate_provider.dart';
 import 'package:cupola/core/theme.dart';
-import 'package:cupola/core/utils/arr_activity_display.dart';
+import 'package:cupola/core/utils/dot_separator.dart';
+import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/utils/snack_bar_helper.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_grant.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
+import 'package:cupola/features/discover/presentation/seerr_issue_row.dart';
+import 'package:cupola/features/media/domain/media_report.dart';
+import 'package:cupola/features/media/presentation/media_report_provider.dart';
 import 'package:cupola/features/discover/presentation/widgets/seerr_not_set_up.dart';
+import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
 
 class SeerrIssuesScreen extends ConsumerStatefulWidget {
@@ -28,10 +35,9 @@ class SeerrIssuesScreen extends ConsumerStatefulWidget {
 }
 
 class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
-  SeerrIssueFilter _filter = SeerrIssueFilter.open;
-
   @override
   Widget build(BuildContext context) {
+    final filter = ref.watch(seerrIssueFilterProvider);
     // The lens's Seerr, which these pages read: a signed-out one reads signed
     // out before anything is asked of it.
     if (!watchSeerrConfigured(ref)) {
@@ -50,14 +56,30 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
     // (anybody else's issue without MANAGE_ISSUES), Resolve reads dimmed with
     // why, never a tap that fails.
     final gate = ref.watch(roleGateProvider(''));
-    final accountUserId = ref.watch(seerrAccountUserIdProvider(''));
-    final issues = ref.watch(seerrIssuesProvider(_filter));
+    final accountUserId = ref.watch(seerrActingUserIdProvider(''));
+    final issues = ref.watch(seerrIssuesProvider(filter));
     final partial = issues.asData?.value;
-    return ServiceListPage<SeerrIssue>.unsummarised(
+    final lens = ref.watch(
+      activeInstanceProvider(ServiceKey.seerr).select((i) => i?.id),
+    );
+    return ServiceListPage<SeerrIssue>(
       service: ServiceKey.seerr,
       value: issues.whenDataKept((result) => result.items),
       serviceName: 'Seerr issues',
-      onRetry: () => ref.invalidate(seerrIssuesProvider(_filter)),
+      onRetry: () => ref.invalidate(seerrIssuesProvider(filter)),
+      // How many, in which state, and in what order: a list cut short reads
+      // as a floor (`50+`), never as the whole.
+      summary: (items) {
+        final count = partial != null && partial.isPartial
+            ? '${items.length}+'
+            : '${items.length}';
+        final what = switch (filter) {
+          SeerrIssueFilter.open => 'open',
+          SeerrIssueFilter.resolved => 'resolved',
+          SeerrIssueFilter.all => items.length == 1 ? 'issue' : 'issues',
+        };
+        return '$count $what${dotSeparator}the newest change first';
+      },
       emptyIcon: Icons.report_problem_outlined,
       emptyTitle: 'No issues',
       emptyMessage: 'Seerr has no issues in this view.',
@@ -68,9 +90,9 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
         padding: const EdgeInsets.only(top: AppSpacing.md),
         child: SelectionPills<SeerrIssueFilter>(
           values: SeerrIssueFilter.values,
-          selected: _filter,
+          selected: filter,
           labelBuilder: (filter) => filter.label,
-          onSelected: (value) => setState(() => _filter = value),
+          onSelected: ref.read(seerrIssueFilterProvider.notifier).choose,
         ),
       ),
       banner: partial != null && partial.isPartial
@@ -78,11 +100,14 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
               message:
                   'Seerr returned ${partial.items.length} of '
                   '${partial.total} issues; later pages are unavailable.',
-              onRetry: () => ref.invalidate(seerrIssuesProvider(_filter)),
+              onRetry: () => ref.invalidate(seerrIssuesProvider(filter)),
             )
           : null,
-      rowBuilder: (issue) => _IssueCard(
+      rowBuilder: (issue) => SeerrIssueRow(
         issue: issue,
+        connectionId: lens ?? '',
+        onOpen: () =>
+            context.push(ServiceRoutes.seerrIssue(issue.id, instanceId: lens)),
         // The record's own status, not the filter that fetched it: keyed on
         // the filter, the "All" tab offered Resolve on nothing at all, open
         // issues included.
@@ -99,20 +124,8 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
   Future<void> _resolve(SeerrIssue issue) async {
     // Asked first: the check glyph sat at the end of every row and resolved
     // on the tap, closing the issue for whoever reported it. It can be
-    // reopened, but only from Seerr's own web UI, so it is not a free click.
-    final reporter = issue.createdBy?.displayName;
-    final result = await showAppConfirmDialog(
-      context: context,
-      icon: Icons.check_circle_outline_rounded,
-      title: 'Resolve this issue?',
-      message: [
-        '${issue.media?.title ?? 'Unknown media'}\u00A0· ${issue.issueTypeLabel}'
-            '${reporter == null ? '' : ', reported by $reporter'}.',
-        'Seerr marks it resolved; it can be reopened from Seerr.',
-      ].join('\n\n'),
-      confirmLabel: 'Resolve issue',
-      enterConfirms: true,
-    );
+    // reopened from the issue's own page, but it is not a free click.
+    final result = await showResolveIssueConfirm(context, issue);
     if (!result.confirmed || !mounted) return;
 
     // A write, so the failure surfaces. Unguarded, a token that had lost
@@ -121,7 +134,15 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
     // never registered.
     try {
       await ref.read(seerrServiceProvider).resolveIssue(issue.id);
-      ref.invalidate(seerrIssuesProvider(_filter));
+      // Every list and page that speaks of the issue reads it again.
+      final container = ref.container;
+      final connection =
+          ref.read(activeInstanceProvider(ServiceKey.seerr))?.id ?? '';
+      if (mediaKeyOfIssue(issue) case final key?) {
+        readReportsAgain(container, key: key, connectionId: connection);
+      } else {
+        readIssuesAgain(container);
+      }
       if (!mounted) return;
       SnackBarHelper.success(context, 'Issue resolved');
     } catch (error) {
@@ -133,6 +154,29 @@ class _SeerrIssuesScreenState extends ConsumerState<SeerrIssuesScreen> {
       );
     }
   }
+}
+
+/// `Resolve this issue?` for the Issues tab: it names the title and the type,
+/// and says who it closes the issue for and that it can be reopened.
+Future<AppConfirmResult> showResolveIssueConfirm(
+  BuildContext context,
+  SeerrIssue issue, {
+  bool useRootNavigator = true,
+}) {
+  final reporter = issue.createdBy?.displayName;
+  return showAppConfirmDialog(
+    context: context,
+    useRootNavigator: useRootNavigator,
+    icon: Icons.check_circle_outline_rounded,
+    title: 'Resolve this issue?',
+    message: [
+      '${issue.media?.title ?? 'Unknown media'}\u00A0· ${issue.issueTypeLabel}.',
+      'Seerr marks it resolved for ${reporter ?? 'whoever reported it'}. '
+          'It can be reopened.',
+    ].join('\n\n'),
+    confirmLabel: 'Resolve issue',
+    enterConfirms: true,
+  );
 }
 
 class SeerrUsersScreen extends ConsumerWidget {
@@ -223,82 +267,6 @@ class _SeerrBlockedTab extends StatelessWidget {
     ),
     child: AppEmptyState(icon: icon, title: reason),
   );
-}
-
-class _IssueCard extends StatelessWidget {
-  const _IssueCard({
-    required this.issue,
-    this.onResolve,
-    this.resolve = const Live(),
-  });
-
-  final SeerrIssue issue;
-  final VoidCallback? onResolve;
-
-  /// What the role gate says about Resolve on this connection.
-  final GateVerdict resolve;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final title = issue.media?.title ?? 'Unknown media';
-    final reporter = issue.createdBy?.displayName ?? 'Unknown reporter';
-    final status = issue.isResolved ? 'Resolved' : 'Open';
-    return AppCard.outlined(
-      semanticLabel: title,
-      semanticValue: '$status, ${issue.issueTypeLabel}, reported by $reporter',
-      backgroundColor: colorScheme.surfaceContainer,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.report_problem_outlined,
-            color: statusToneColor(
-              colorScheme,
-              issue.tone,
-              surface: colorScheme.surfaceContainer,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.weight(FontWeight.w600),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  joinDisplayParts([
-                    issue.issueTypeLabel,
-                    reporter,
-                    issue.commentCount == 0
-                        ? null
-                        : '${issue.commentCount} comments',
-                  ]),
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-          if (onResolve case final onResolve?)
-            RoleGatedAction.builder(
-              verdict: resolve,
-              onTap: onResolve,
-              builder: (context, onPressed, annotate) => IconButton(
-                tooltip: 'Resolve issue',
-                onPressed: onPressed,
-                icon: annotate(const Icon(Icons.check_circle_outline_rounded)),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 }
 
 class _UserCard extends StatelessWidget {

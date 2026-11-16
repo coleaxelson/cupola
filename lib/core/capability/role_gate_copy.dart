@@ -102,6 +102,7 @@ abstract final class RoleGateCopy {
         SeerrAbility.manageIssues => 'manage issues',
         SeerrAbility.manageUsers => 'manage users',
         SeerrAbility.readSettings => 'read settings',
+        SeerrAbility.reportIssue => 'report problems',
       };
 
   static String _kinds(SeerrMediaKind? kind) => switch (kind) {

@@ -30,6 +30,7 @@ import 'package:cupola/features/shell/presentation/shell_screen.dart';
 import 'package:cupola/features/shell/presentation/unknown_place_screen.dart';
 import 'package:cupola/features/discover/presentation/seerr_overview_screen.dart';
 import 'package:cupola/features/discover/presentation/seerr_admin_screens.dart';
+import 'package:cupola/features/media/presentation/seerr_issue_thread_screen.dart';
 import 'package:cupola/features/activity/domain/service_type.dart';
 import 'package:cupola/features/activity/domain/activity_tab.dart';
 import 'package:cupola/features/activity/domain/request_filters.dart';
@@ -687,6 +688,14 @@ RouteBase _seerrRoutes() => _serviceRoutes(
             _toDiscover(state.uri, ServiceRoutes.seerr),
       ),
   ],
+  // An issue resolves from the path alone, so a notification or a Needs you
+  // card opens it cold. Its number is per Seerr connection: `?i=` names the
+  // one it was read from, and a missing one reads the lens.
+  inside: {
+    ServiceTab.issues: [
+      _issueRoute(':issueId', redirectTo: ServiceRoutes.seerrIssues),
+    ],
+  },
   roots: {
     ServiceTab.overview: (state) =>
         const SeerrOverviewScreen(topPadding: _serviceTabTopPadding),
@@ -699,6 +708,22 @@ RouteBase _seerrRoutes() => _serviceRoutes(
         const SeerrIssuesScreen(topPadding: _serviceTabTopPadding),
     ServiceTab.users: (state) =>
         const SeerrUsersScreen(topPadding: _serviceTabTopPadding),
+  },
+);
+
+/// One issue of Seerr's, at `…/issues/:issueId` (the operator's, inside the
+/// Issues tab) or `/requests/issues/:issueId` (the requester's own report,
+/// under her Requests tab). A number that is not one falls back to
+/// [redirectTo], the list it belongs in.
+GoRoute _issueRoute(String path, {required String redirectTo}) => _page(
+  path,
+  (state) => SeerrIssueThreadScreen(
+    issueId: int.parse(state.pathParameters['issueId']!),
+    connectionId: state.uri.queryParameters['i'] ?? '',
+  ),
+  redirect: (context, state) {
+    final number = int.tryParse(state.pathParameters['issueId'] ?? '');
+    return number == null || number <= 0 ? redirectTo : null;
   },
 );
 
@@ -1949,7 +1974,11 @@ RouteBase _branchRootFor(NavTab tab) => switch (tab) {
   NavTab.requests => GoRoute(
     path: ServiceRoutes.requests,
     pageBuilder: (context, state) => _tabPage(state, const RequestsScreen()),
-    routes: _mediaRoutes(),
+    routes: [
+      // Her own report of a problem, which a row of her title's page opens.
+      _issueRoute('issues/:issueId', redirectTo: ServiceRoutes.requests),
+      ..._mediaRoutes(),
+    ],
   ),
   NavTab.settings => GoRoute(
     path: '/settings',

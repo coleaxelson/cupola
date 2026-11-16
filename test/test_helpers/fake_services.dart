@@ -15,6 +15,7 @@ import 'package:cupola/core/models/media_preview.dart';
 import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_genre.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/seerr_arr_server.dart';
@@ -509,6 +510,29 @@ class FakeSeerrService extends SeerrService {
         )
         .toList();
     return SeerrAdminResult(items: items, total: items.length);
+  }
+
+  /// What the server's count says; null is a count that does not answer.
+  SeerrIssueCount? issueCount;
+
+  /// How many times the count and the newest page were asked.
+  int issueCountReads = 0;
+  int latestIssueReads = 0;
+
+  @override
+  Future<SeerrIssueCount> getIssueCount() async {
+    issueCountReads++;
+    return issueCount ?? (throw Exception('Seerr gave no count'));
+  }
+
+  /// The newest of [issues] the filter asks for, as many as [take].
+  @override
+  Future<List<SeerrIssue>> getLatestIssues({
+    SeerrIssueFilter filter = SeerrIssueFilter.open,
+    int take = 3,
+  }) async {
+    latestIssueReads++;
+    return (await getIssuesResult(filter: filter)).items.take(take).toList();
   }
 
   @override

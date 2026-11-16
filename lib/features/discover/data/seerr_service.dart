@@ -11,6 +11,7 @@ import 'package:cupola/features/discover/domain/catalog_query.dart';
 import 'package:cupola/features/discover/domain/models/person_credits.dart';
 import 'package:cupola/features/discover/domain/models/seerr_genre.dart';
 import 'package:cupola/features/discover/domain/models/seerr_admin_models.dart';
+import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/models/seerr_request.dart';
 import 'package:cupola/features/discover/domain/seerr_arr_server.dart';
 import 'package:cupola/features/discover/domain/seerr_known_arr.dart';
@@ -301,9 +302,59 @@ class SeerrService {
     SeerrIssueFilter filter = SeerrIssueFilter.open,
   }) async {
     final first = await _issuePage(0, filter: filter);
-    return _collect(
+    final all = await _collect(
       first,
       (skip) async => (await _issuePage(skip, filter: filter)).items,
+    );
+    // Seerr's issue rows carry no title, so the names come from the titles'
+    // own pages, once the whole list is in hand so the lanes are shared.
+    return SeerrAdminResult(
+      items: List.unmodifiable(await _hydrateIssues(all.items)),
+      total: all.total,
+      isPartial: all.isPartial,
+    );
+  }
+
+  /// The newest [take] issues of [filter], the first page alone, named from
+  /// their titles' pages like [getIssuesResult]: what a surface that shows a
+  /// few issues reads, where the whole list would be a walk of every page.
+  Future<List<SeerrIssue>> getLatestIssues({
+    SeerrIssueFilter filter = SeerrIssueFilter.open,
+    int take = 3,
+  }) async {
+    final page = await _issuePage(0, filter: filter, take: take);
+    return List.unmodifiable(await _hydrateIssues(page.items));
+  }
+
+  Future<List<SeerrIssue>> _hydrateIssues(List<SeerrIssue> issues) async {
+    if (issues.isEmpty) return issues;
+    final hydrated = await runInLanes(
+      issues.length,
+      _hydrationConcurrency,
+      (index) => _hydrateIssue(issues[index]),
+    );
+    return hydrated.toList(growable: false);
+  }
+
+  /// Reads the title through the same cache and in-flight reads as the
+  /// requests. A title that cannot be read leaves its row as it was.
+  Future<SeerrIssue> _hydrateIssue(SeerrIssue issue) async {
+    final media = issue.media;
+    final tmdbId = media?.tmdbId;
+    if (media == null || tmdbId == null) return issue;
+    final movie = media.mediaType == 'movie';
+    if (!movie && media.mediaType != 'tv') return issue;
+    final key = '${media.mediaType}:$tmdbId';
+    final entry =
+        _mediaCache[key] ??
+        await (_titleReads[key] ??= _readTitle(key, tmdbId, movie: movie));
+    if (entry == null) return issue;
+    return issue.copyWith(
+      media: media.copyWith(
+        title: entry.title,
+        posterPath: entry.posterPath,
+        year: entry.year,
+      ),
     );
   }
 
@@ -348,11 +399,12 @@ class SeerrService {
   Future<({List<SeerrIssue> items, int total})> _issuePage(
     int skip, {
     required SeerrIssueFilter filter,
+    int take = _adminPageSize,
   }) async {
     final response = await _client.get(
       '/api/v1/issue',
       queryParameters: {
-        'take': _adminPageSize,
+        'take': take,
         'skip': skip,
         'sort': 'modified',
         'filter': filter.apiValue,
@@ -375,8 +427,128 @@ class SeerrService {
     return (items: items, total: total);
   }
 
-  Future<void> resolveIssue(int issueId) async {
-    await _client.post('/api/v1/issue/$issueId/resolved');
+  Future<void> resolveIssue(int issueId) =>
+      setIssueStatus(issueId, SeerrIssueStatus.resolved);
+
+  /// Every issue the connection's account may see, newest activity first.
+  ///
+  /// **Not the account's own.** Without MANAGE_ISSUES or VIEW_ISSUES the server
+  /// limits the list to the caller (`issue.ts`, `GET /`), but with VIEW_ISSUES
+  /// it answers everyone's, so a surface that means the caller's reports keeps
+  /// those it reads here by [SeerrIssue.isReportedBy]. Read and hydrated like
+  /// [getIssuesResult].
+  Future<SeerrAdminResult<SeerrIssue>> getOwnIssuesResult() =>
+      getIssuesResult(filter: SeerrIssueFilter.all);
+
+  /// Reports a problem (`POST /issue`), answering the issue the server made.
+  ///
+  /// The caller is the reporter: the body never carries a user. A draft that
+  /// cannot be sent throws a [StateError] before anything leaves the app.
+  Future<SeerrIssue> reportIssue(SeerrIssueDraft draft) async {
+    final response = await _client.post('/api/v1/issue', data: draft.toJson());
+    return SeerrIssue.fromJson(response.data);
+  }
+
+  /// The report [draft] made, if the server already holds it, else null: what
+  /// is read before a report whose outcome is unknown is offered again.
+  ///
+  /// Matches the newest issues of the title that [userId] reported, of the
+  /// draft's type, place and words, and that are not in [known] (the ids the
+  /// title held before the report was sent). Throws [StateError] for the API
+  /// key, which has no user to match: the caller cannot tell.
+  Future<SeerrIssue?> findReportedIssue(
+    SeerrIssueDraft draft, {
+    required int? userId,
+    Set<int> known = const {},
+  }) async {
+    if (userId == null) throw StateError('no account to match a report to');
+    final page = await _issuePage(0, filter: SeerrIssueFilter.all, take: 30);
+    for (final issue in page.items) {
+      if (known.contains(issue.id) ||
+          !issue.isReportedBy(userId) ||
+          issue.media?.id != draft.mediaId ||
+          issue.type != draft.type ||
+          issue.problemSeason != (draft.problemSeason ?? 0) ||
+          issue.problemEpisode != (draft.problemEpisode ?? 0)) {
+        continue;
+      }
+      // The list may send a row without its replies: the words are then read
+      // from the issue itself.
+      final replies = issue.comments.isNotEmpty
+          ? issue.comments
+          : (await getIssue(issue.id)).comments;
+      if (replies.firstOrNull?.message.trim() == draft.message.trim()) {
+        return issue;
+      }
+    }
+    return null;
+  }
+
+  /// Whether [message] is already the newest reply of [issueId], written by
+  /// [userId] and added after the [before] replies the conversation held when
+  /// it was sent: what is read before a reply whose outcome is unknown is
+  /// offered again. Throws [StateError] for the API key.
+  Future<bool> hasSentReply(
+    int issueId,
+    String message, {
+    required int? userId,
+    required int before,
+  }) async {
+    if (userId == null) throw StateError('no account to match a reply to');
+    final replies = (await getIssue(issueId)).comments;
+    final last = replies.lastOrNull;
+    return replies.length > before &&
+        last != null &&
+        last.isBy(userId) &&
+        last.message.trim() == message.trim();
+  }
+
+  /// One issue with its whole conversation, authors included
+  /// (`GET /issue/{id}`), named from its title's page like the list.
+  Future<SeerrIssue> getIssue(int issueId) async {
+    final response = await _client.get('/api/v1/issue/$issueId');
+    final data = response.data;
+    if (data is! Map) throw const FormatException('Seerr sent no issue');
+    return _hydrateIssue(SeerrIssue.fromJson(data));
+  }
+
+  /// Adds a reply (`POST /issue/{id}/comment`).
+  Future<void> commentOnIssue(int issueId, String message) async {
+    await _client.post(
+      '/api/v1/issue/$issueId/comment',
+      data: {'message': message.trim()},
+    );
+  }
+
+  /// Rewrites one reply (`PUT /issueComment/{id}`).
+  Future<void> editComment(int commentId, String message) async {
+    await _client.put(
+      '/api/v1/issueComment/$commentId',
+      data: {'message': message.trim()},
+    );
+  }
+
+  /// Deletes one reply (`DELETE /issueComment/{id}`).
+  Future<void> deleteComment(int commentId) async {
+    await _client.delete('/api/v1/issueComment/$commentId');
+  }
+
+  /// Resolves or reopens an issue (`POST /issue/{id}/open|resolved`).
+  Future<void> setIssueStatus(int issueId, SeerrIssueStatus status) async {
+    await _client.post('/api/v1/issue/$issueId/${status.route}');
+  }
+
+  /// Deletes an issue with its conversation (`DELETE /issue/{id}`).
+  Future<void> deleteIssue(int issueId) async {
+    await _client.delete('/api/v1/issue/$issueId');
+  }
+
+  /// How many issues the server holds (`GET /issue/count`).
+  Future<SeerrIssueCount> getIssueCount() async {
+    final response = await _client.get('/api/v1/issue/count');
+    final data = response.data;
+    if (data is! Map) throw const FormatException('Seerr sent no count');
+    return SeerrIssueCount.fromJson(data);
   }
 
   /// Every user this server holds, with the same partial-page contract as

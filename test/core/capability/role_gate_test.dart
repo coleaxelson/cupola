@@ -58,36 +58,37 @@ RoleGate _requester(SeerrGrant? grant) =>
 ///     request  request4k  autoApproved  autoApproved4k  chooseDestination
 ///     bypassQuota  approve  manageMedia  seeEveryonesRequests
 ///     cancelOwnPending  viewIssues  manageIssues  manageUsers  readSettings
+///     reportIssue
 final _operatorActions = <String, (RoleGate, String)>{
   // The key answers as the app does today: everything live.
-  'operator, the key': (_operator(_key), 'L L L L L L L L L L L L L L'),
+  'operator, the key': (_operator(_key), 'L L L L L L L L L L L L L L L'),
   // A friend's Seerr account beside the operator's own: dimmed, never hidden.
   'operator, a requester account': (
     _operator(_anna),
-    'L D D D D D D D D L D D D D',
+    'L D D D D D D D D L D D D D D',
   ),
   'operator, a manager account': (
     _operator(_manager),
-    'L D L L L L L L L L D D D D',
+    'L D L L L L L L L L D D D D D',
   ),
   'operator, no Seerr on the surface': (
     const RoleGate.operator(),
-    'L L L L L L L L L L L L L L',
+    'L L L L L L L L L L L L L L L',
   ),
   // The requester's own: live or dimmed. The operator's: never drawn.
   'requester, the household default': (
     _requester(_anna),
-    'L D D D A A A A A L A A A A',
+    'L D D D A A A A A L A A A A D',
   ),
   // REQUEST_ADVANCED and REQUEST_VIEW change nothing for the requester: the
   // pickers would read "Radarr 4K", and other people's names stay theirs.
   'requester, who may see and pick more': (
     _requester(_luca),
-    'L D D D A A A A A L A A A A',
+    'L D D D A A A A A L A A A A D',
   ),
   'requester, no Seerr on the surface': (
     _requester(null),
-    'A A A A A A A A A A A A A A',
+    'A A A A A A A A A A A A A A A',
   ),
 };
 
@@ -461,7 +462,19 @@ void main() {
         true,
         const Dimmed("Your account on Seerr can't manage issues."),
       ),
-      ('a requester, own', _requester(reporter), true, const Absent()),
+      ('a requester, own', _requester(reporter), true, const Live()),
+      (
+        'a requester, somebody else\'s',
+        _requester(reporter),
+        false,
+        const Absent(),
+      ),
+      (
+        'a requester without CREATE, own',
+        _requester(_anna),
+        true,
+        const Dimmed("You can't report problems on this server."),
+      ),
       (
         'no Seerr, the operator',
         const RoleGate.operator(),
@@ -472,6 +485,320 @@ void main() {
     for (final (name, gate, own, expected) in rows) {
       test(name, () => expect(gate.resolveIssueAction(own: own), expected));
     }
+  });
+
+  group('reportIssueAction', () {
+    final reporter = SeerrGrant.account(
+      permissions: SeerrPermission.createIssues.value,
+    );
+    final keeper = SeerrGrant.account(
+      permissions: SeerrPermission.manageIssues.value,
+    );
+    final rows = <(String, RoleGate, GateVerdict)>[
+      ('the key', _operator(_key), const Live()),
+      ('no Seerr, the operator', const RoleGate.operator(), const Live()),
+      (
+        'no Seerr, the requester: no row at all',
+        _requester(null),
+        const Absent(),
+      ),
+      ('a requester with CREATE', _requester(reporter), const Live()),
+      ('a requester with MANAGE', _requester(keeper), const Live()),
+      (
+        'a requester without it: dimmed, the reason on tap',
+        _requester(_anna),
+        const Dimmed("You can't report problems on this server."),
+      ),
+      ('an operator account with CREATE', _operator(reporter), const Live()),
+      (
+        'an operator account without it',
+        _operator(_anna),
+        const Dimmed("Your account on Seerr can't report problems."),
+      ),
+    ];
+    for (final (name, gate, expected) in rows) {
+      test(name, () => expect(gate.reportIssueAction(), expected));
+    }
+
+    test('an operator reads which server, by its name', () {
+      final gate = RoleGate(
+        audience: Audience.operator,
+        grant: _anna,
+        server: SeerrServerFacts.fromPublicSettings({
+          ...jsonFixtureMap('seerr/public_settings_seerr_3.5.0.json'),
+          'applicationTitle': 'Casa Requests',
+        }),
+      );
+      expect(
+        gate.reportIssueAction().reason,
+        "Your account on Casa Requests can't report problems.",
+      );
+    });
+  });
+
+  group('the conversation of an issue', () {
+    final viewer = SeerrGrant.account(
+      permissions: SeerrPermission.viewIssues.value,
+    );
+    final reporter = SeerrGrant.account(
+      permissions: SeerrPermission.createIssues.value,
+    );
+    final keeper = SeerrGrant.account(
+      permissions: SeerrPermission.manageIssues.value,
+    );
+    const noManage = Dimmed("Your account on Seerr can't manage issues.");
+    const noReport = Dimmed("You can't report problems on this server.");
+
+    group('comment, resolve and reopen', () {
+      final rows = <(String, RoleGate, bool own, GateVerdict)>[
+        ('the key, anybody\'s', _operator(_key), false, const Live()),
+        (
+          'an operator manager, anybody\'s',
+          _operator(keeper),
+          false,
+          const Live(),
+        ),
+        ('an operator reporter, own', _operator(reporter), true, const Live()),
+        (
+          'an operator reporter, anybody\'s',
+          _operator(reporter),
+          false,
+          noManage,
+        ),
+        ('an operator viewer, own', _operator(viewer), true, noManage),
+        ('a requester reporter, own', _requester(reporter), true, const Live()),
+        (
+          'a requester reporter, anybody\'s',
+          _requester(reporter),
+          false,
+          const Absent(),
+        ),
+        ('a requester without CREATE, own', _requester(_anna), true, noReport),
+        (
+          'a requester without CREATE, anybody\'s',
+          _requester(_anna),
+          false,
+          const Absent(),
+        ),
+        (
+          'a requester manager account, anybody\'s',
+          _requester(keeper),
+          false,
+          const Absent(),
+        ),
+        (
+          'no Seerr, the operator',
+          const RoleGate.operator(),
+          false,
+          const Live(),
+        ),
+        ('no Seerr, the requester', _requester(null), true, const Absent()),
+      ];
+      for (final (name, gate, own, expected) in rows) {
+        test('comment: $name', () {
+          expect(gate.commentOnIssueAction(own: own), expected);
+        });
+        test('resolve: $name', () {
+          expect(gate.resolveIssueAction(own: own), expected);
+        });
+      }
+    });
+
+    group('edit a reply: only its author', () {
+      final rows = <(String, RoleGate, bool own, GateVerdict)>[
+        ('the key', _operator(_key), true, const Live()),
+        (
+          'an operator manager, own reply',
+          _operator(keeper),
+          true,
+          const Live(),
+        ),
+        (
+          'an operator manager, another\'s reply',
+          _operator(keeper),
+          false,
+          noManage,
+        ),
+        (
+          'an operator reporter, own reply',
+          _operator(reporter),
+          true,
+          const Live(),
+        ),
+        (
+          'an operator reporter, another\'s',
+          _operator(reporter),
+          false,
+          noManage,
+        ),
+        (
+          'an operator without CREATE, own reply',
+          _operator(_anna),
+          true,
+          noManage,
+        ),
+        (
+          'a requester reporter, own reply',
+          _requester(reporter),
+          true,
+          const Live(),
+        ),
+        (
+          'a requester reporter, another\'s',
+          _requester(reporter),
+          false,
+          const Absent(),
+        ),
+        (
+          'a requester manager account, another\'s',
+          _requester(keeper),
+          false,
+          const Absent(),
+        ),
+        (
+          'a requester without CREATE, own reply',
+          _requester(_anna),
+          true,
+          noReport,
+        ),
+        ('no Seerr, the requester', _requester(null), true, const Absent()),
+      ];
+      for (final (name, gate, own, expected) in rows) {
+        test(name, () => expect(gate.editReplyAction(own: own), expected));
+      }
+    });
+
+    group('delete a reply: own with CREATE, anybody\'s with MANAGE', () {
+      final rows = <(String, RoleGate, bool own, GateVerdict)>[
+        ('the key', _operator(_key), false, const Live()),
+        (
+          'an operator manager, another\'s reply',
+          _operator(keeper),
+          false,
+          const Live(),
+        ),
+        (
+          'an operator reporter, own reply',
+          _operator(reporter),
+          true,
+          const Live(),
+        ),
+        (
+          'an operator reporter, another\'s',
+          _operator(reporter),
+          false,
+          noManage,
+        ),
+        (
+          'a requester reporter, own reply',
+          _requester(reporter),
+          true,
+          const Live(),
+        ),
+        (
+          'a requester reporter, another\'s',
+          _requester(reporter),
+          false,
+          const Absent(),
+        ),
+        (
+          'a requester without CREATE, own reply',
+          _requester(_anna),
+          true,
+          noReport,
+        ),
+        ('no Seerr, the requester', _requester(null), true, const Absent()),
+      ];
+      for (final (name, gate, own, expected) in rows) {
+        test(name, () => expect(gate.deleteReplyAction(own: own), expected));
+      }
+    });
+
+    group('delete the issue', () {
+      final rows = <(String, RoleGate, bool own, int comments, GateVerdict)>[
+        ('the key, answered', _operator(_key), false, 4, const Live()),
+        (
+          'an operator manager, answered',
+          _operator(keeper),
+          false,
+          4,
+          const Live(),
+        ),
+        (
+          'an operator reporter, own, one comment',
+          _operator(reporter),
+          true,
+          1,
+          const Live(),
+        ),
+        (
+          'an operator reporter, own, two comments',
+          _operator(reporter),
+          true,
+          2,
+          noManage,
+        ),
+        (
+          'an operator reporter, anybody\'s',
+          _operator(reporter),
+          false,
+          1,
+          noManage,
+        ),
+        (
+          'a requester reporter, own, one comment',
+          _requester(reporter),
+          true,
+          1,
+          const Live(),
+        ),
+        (
+          'a requester reporter, own, two comments',
+          _requester(reporter),
+          true,
+          2,
+          noReport,
+        ),
+        (
+          'a requester reporter, anybody\'s',
+          _requester(reporter),
+          false,
+          1,
+          const Absent(),
+        ),
+        (
+          'no Seerr, the operator',
+          const RoleGate.operator(),
+          false,
+          3,
+          const Live(),
+        ),
+        ('no Seerr, the requester', _requester(null), true, 1, const Absent()),
+      ];
+      for (final (name, gate, own, comments, expected) in rows) {
+        test(name, () {
+          expect(
+            gate.deleteIssueAction(own: own, commentCount: comments),
+            expected,
+          );
+        });
+      }
+    });
+
+    test('an operator reads which server, by its name', () {
+      final gate = RoleGate(
+        audience: Audience.operator,
+        grant: reporter,
+        server: SeerrServerFacts.fromPublicSettings({
+          ...jsonFixtureMap('seerr/public_settings_seerr_3.5.0.json'),
+          'applicationTitle': 'Casa Requests',
+        }),
+      );
+      expect(
+        gate.resolveIssueAction(own: false).reason,
+        "Your account on Casa Requests can't manage issues.",
+      );
+    });
   });
 
   group('every reason the gate gives', () {
@@ -497,8 +824,15 @@ void main() {
         for (final own in [true, false])
           for (final waiting in [true, false])
             gate.cancelAction(own: own, waitingForApproval: waiting).reason,
-        for (final own in [true, false])
+        gate.reportIssueAction().reason,
+        for (final own in [true, false]) ...[
           gate.resolveIssueAction(own: own).reason,
+          gate.commentOnIssueAction(own: own).reason,
+          gate.editReplyAction(own: own).reason,
+          gate.deleteReplyAction(own: own).reason,
+          for (final count in [1, 2])
+            gate.deleteIssueAction(own: own, commentCount: count).reason,
+        ],
       ],
     }.whereType<String>().toSet();
 

@@ -193,15 +193,86 @@ final class RoleGate {
     );
   }
 
-  /// Resolve on one issue, [own] when this connection's account reported it.
+  /// Whether this connection's account may list issues at all (view, create
+  /// or manage them): the question every surface that reads Seerr's issues
+  /// asks before it asks the server, which would refuse the rest. False with
+  /// no grant, since a surface with no Seerr has nothing to list.
+  bool get mayListIssues => grant?.may(SeerrAbility.viewIssues) ?? false;
+
+  /// Whether the surfaces over the server's reported problems (Needs you,
+  /// the Overview, the Issues readout) may read them: an account that sees
+  /// everybody's issues (MANAGE or VIEW), or the key. CREATE_ISSUES alone
+  /// lists only one's own, which a requester reads under her requests
+  /// ([mayListIssues]), and the server's count is never hers.
+  bool get mayReviewIssues => grant?.mayReviewIssues ?? false;
+
+  /// Report a problem with a title: the requester's own ability, [Live] with
+  /// CREATE_ISSUES or MANAGE_ISSUES, otherwise [Dimmed] with the reason. For
+  /// the operator the same, so the control is never hidden from them.
+  GateVerdict reportIssueAction() => operatorAction(SeerrAbility.reportIssue);
+
+  /// Comment on one issue, [own] when this connection's account reported it.
+  GateVerdict commentOnIssueAction({required bool own}) => _onIssue(
+    own: own,
+    may: (grant) => grant.mayCommentOnIssue(own: own),
+  );
+
+  /// Edit one reply, [own] when this connection's account wrote it. Nobody
+  /// edits another's reply, a manager included, so there it is [Dimmed] for
+  /// the operator and [Absent] for the requester.
+  GateVerdict editReplyAction({required bool own}) => _onIssue(
+    own: own,
+    may: (grant) => grant.mayEditComment(own: own),
+  );
+
+  /// Delete one reply, [own] when this connection's account wrote it.
+  GateVerdict deleteReplyAction({required bool own}) => _onIssue(
+    own: own,
+    may: (grant) => grant.mayDeleteComment(own: own),
+  );
+
+  /// Resolve or reopen one issue, [own] when this connection's account
+  /// reported it.
   ///
-  /// Not part of the requester's app. The operator's account sees it dimmed
-  /// with the reason where the server would refuse it.
-  GateVerdict resolveIssueAction({required bool own}) {
+  /// The requester has it on their own issue; on somebody else's it is not
+  /// part of their app. The operator's account sees it dimmed with the reason
+  /// where the server would refuse it.
+  GateVerdict resolveIssueAction({required bool own}) => _onIssue(
+    own: own,
+    may: (grant) => grant.mayResolveIssue(own: own),
+  );
+
+  /// Delete one issue, [own] when this connection's account reported it,
+  /// [commentCount] counting the report itself: the reporter may delete it
+  /// only while nobody has answered.
+  GateVerdict deleteIssueAction({
+    required bool own,
+    required int commentCount,
+  }) => _onIssue(
+    own: own,
+    may: (grant) => grant.mayDeleteIssue(own: own, commentCount: commentCount),
+  );
+
+  /// The verdict of one action on an issue.
+  ///
+  /// The requester reaches only their own issues, so on anybody else's every
+  /// action is [Absent]. A refused one is [Dimmed]: for the operator, the
+  /// account cannot manage issues; for the requester, their account cannot
+  /// report problems. The key may do everything.
+  GateVerdict _onIssue({
+    required bool own,
+    required bool Function(SeerrGrant grant) may,
+  }) {
     final grant = this.grant;
-    if (!_operator) return const Absent();
-    if (grant == null || grant.mayResolveIssue(own: own)) return const Live();
-    return Dimmed(_cannot(SeerrAbility.manageIssues, null));
+    if (!_operator && !own) return const Absent();
+    if (grant == null) return _operator ? const Live() : const Absent();
+    if (may(grant)) return const Live();
+    return Dimmed(
+      _cannot(
+        _operator ? SeerrAbility.manageIssues : SeerrAbility.reportIssue,
+        null,
+      ),
+    );
   }
 
   /// Whether the request sheet offers 4K for [kind]: the account may ask for
