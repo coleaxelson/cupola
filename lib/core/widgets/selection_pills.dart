@@ -40,6 +40,10 @@ class SelectionPills<T> extends StatelessWidget {
   final String Function(T value) labelBuilder;
   final ValueChanged<T> onSelected;
 
+  /// What stands behind a pill, after its label in the tertiary ink
+  /// (`Singles 4`); null for a pill with none.
+  final String? Function(T value)? countBuilder;
+
   /// The inset inside the scrolling row.
   ///
   /// The default puts the first pill on the screen gutter while the row itself
@@ -66,6 +70,7 @@ class SelectionPills<T> extends StatelessWidget {
     required this.selected,
     required this.labelBuilder,
     required this.onSelected,
+    this.countBuilder,
     this.padding = gutter,
   }) : _wraps = false;
 
@@ -82,6 +87,7 @@ class SelectionPills<T> extends StatelessWidget {
     required this.selected,
     required this.labelBuilder,
     required this.onSelected,
+    this.countBuilder,
   }) : padding = _wrapPadding,
        _wraps = true;
 
@@ -104,6 +110,7 @@ class SelectionPills<T> extends StatelessWidget {
               IntrinsicWidth(
                 child: SelectionPill(
                   label: labelBuilder(value),
+                  count: countBuilder?.call(value),
                   selected: value == selected,
                   onTap: () => onSelected(value),
                 ),
@@ -124,6 +131,7 @@ class SelectionPills<T> extends StatelessWidget {
                 selected: value == selected,
                 child: SelectionPill(
                   label: labelBuilder(value),
+                  count: countBuilder?.call(value),
                   selected: value == selected,
                   onTap: () => onSelected(value),
                 ),
@@ -221,12 +229,17 @@ class SelectionPill extends StatelessWidget {
   /// A glyph after the label: the chevron of a pill that opens a choice.
   final IconData? trailing;
 
+  /// How many there are behind the pill (`4`), after the label in the
+  /// tertiary ink and read with it (`Singles, 4`).
+  final String? count;
+
   const SelectionPill({
     super.key,
     required this.label,
     required this.selected,
     required this.onTap,
     this.trailing,
+    this.count,
   });
 
   @override
@@ -249,7 +262,7 @@ class SelectionPill extends StatelessWidget {
       container: true,
       button: true,
       selected: selected,
-      label: label,
+      label: count == null ? label : '$label, $count',
       onTap: onTap,
       child: ExcludeSemantics(
         child: PressableScale(
@@ -258,7 +271,13 @@ class SelectionPill extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: _minTouchTarget),
             child: Center(
               heightFactor: 1,
-              child: _pill(theme, background, border, labelColor),
+              child: _pill(
+                theme,
+                background,
+                border,
+                labelColor,
+                room.inkTertiary,
+              ),
             ),
           ),
         ),
@@ -271,6 +290,7 @@ class SelectionPill extends StatelessWidget {
     Color background,
     Color border,
     Color labelColor,
+    Color countColor,
   ) => Container(
     constraints: const BoxConstraints(minHeight: _pillHeight),
     alignment: Alignment.center,
@@ -287,8 +307,19 @@ class SelectionPill extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(
-          child: Text(
-            label,
+          child: Text.rich(
+            TextSpan(
+              text: label,
+              children: [
+                if (count case final count?)
+                  TextSpan(
+                    text: ' $count',
+                    style: theme.textTheme.labelMedium!
+                        .weight(FontWeight.w500)
+                        .copyWith(color: countColor),
+                  ),
+              ],
+            ),
             maxLines: 1,
             style: theme.textTheme.labelMedium!
                 .weight(FontWeight.w600)

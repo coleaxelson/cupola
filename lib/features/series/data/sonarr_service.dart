@@ -3,6 +3,7 @@ import 'dart:isolate';
 import 'package:dio/dio.dart';
 
 import 'package:cupola/core/api/api_client.dart';
+import 'package:cupola/core/api/arr_bulk.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
 import 'package:cupola/core/network/list_mapping.dart';
 import 'package:cupola/features/series/domain/models/sonarr_episode.dart';
@@ -401,6 +402,57 @@ class SonarrService with ArrActivityMixin {
     series['seriesType'] = seriesType;
     await client.put('/api/v3/series/$seriesId', data: series);
   }
+
+  /// The quality profiles, a failed read reaching the caller.
+  Future<List<Map<String, dynamic>>> getQualityProfilesOrThrow() =>
+      fetchQualityProfilesOrThrow();
+
+  /// Sets [edit]'s monitoring, `monitorNewItems` and quality profile on every
+  /// series of [seriesIds]: `PUT /api/v3/series/editor`.
+  ///
+  /// Sonarr's `SeriesEditorController.SaveAll` validates every series before it
+  /// saves any and names none in a refusal, so it is asked and answered as the
+  /// other arrs' editors are ([bulkInOne]). Its editor takes no metadata
+  /// profile, and none is sent.
+  Future<ArrBulkResult> updateSeriesInBulk(
+    List<int> seriesIds,
+    ArrBulkEdit edit,
+  ) {
+    assert(!edit.isEmpty, 'an edit that sets nothing is not sent');
+    assert(edit.metadataProfileId == null, "Sonarr's editor takes none");
+    return bulkInOne(
+      seriesIds,
+      (ids) => client.put(
+        '/api/v3/series/editor',
+        data: {'seriesIds': ids, ...edit.fields},
+      ),
+    );
+  }
+
+  /// Removes every series of [seriesIds]: `DELETE /api/v3/series/editor`, with
+  /// the removal's two choices. Asked as [updateSeriesInBulk] is.
+  Future<ArrBulkResult> removeSeriesInBulk(
+    List<int> seriesIds, {
+    bool deleteFiles = false,
+    bool addImportListExclusion = false,
+  }) {
+    return bulkInOne(
+      seriesIds,
+      (ids) => client.delete(
+        '/api/v3/series/editor',
+        data: {
+          'seriesIds': ids,
+          'deleteFiles': deleteFiles,
+          'addImportListExclusion': addImportListExclusion,
+        },
+      ),
+    );
+  }
+
+  /// Starts a search for every series of [seriesIds]: one `SeriesSearch`
+  /// command each, which takes one series (`SeriesSearchCommand.SeriesId`).
+  Future<ArrBulkResult> searchSeriesInBulk(List<int> seriesIds) =>
+      bulkEachOf(seriesIds, searchSeries);
 
   /// Deletes a series from Sonarr.
   Future<void> deleteSeries(

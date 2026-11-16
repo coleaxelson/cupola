@@ -1,4 +1,5 @@
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
+import 'package:cupola/core/utils/unit_space.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
 
@@ -70,5 +71,6 @@ MediaAvailability lidarrAlbumAvailability(LidarrAlbum album) {
 /// The album's manifest gap in words: `10 of 12 tracks`.
 String? lidarrAlbumSummary(LidarrAlbum album) {
   if (album.trackCount <= 0) return null;
-  return '${album.trackFileCount} of ${album.trackCount} tracks';
+  return '${album.trackFileCount} of ${album.trackCount}$unitSpace'
+      'tracks';
 }

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,8 +19,10 @@ final testSearchQueryProvider = StateProvider<String>((ref) => '');
 final testLibraryProvider = FutureProvider<List<String>>(
   (ref) async => ['Alpha', 'Beta'],
 );
-final testSearchResultsProvider = FutureProvider<List<String>?>(
-  (ref) async => null,
+
+/// What the field finds on these walls: a line that says what it was asked.
+final testFind = MediaFind.libraryOnly(
+  libraryBody: (context, query) => Text('library:$query'),
 );
 
 void main() {
@@ -224,69 +225,6 @@ void main() {
       expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
     });
 
-    testWidgets(
-      'switches from library mode to search results when query becomes non-empty',
-      (tester) async {
-        final searchQueryProvider = StateProvider<String>((ref) => '');
-        final libraryProvider = FutureProvider<List<String>>(
-          (ref) async => ['Library Item'],
-        );
-        final searchResultsProvider = FutureProvider<List<String>?>((
-          ref,
-        ) async {
-          final query = ref.watch(searchQueryProvider);
-          return query.isEmpty ? null : ['Search Result'];
-        });
-        final container = ProviderContainer(
-          overrides: [
-            currentSettingsProvider.overrideWith(
-              (ref) => const SettingsModel(),
-            ),
-          ],
-        );
-        addTearDown(container.dispose);
-
-        String? tappedItem;
-        String? tappedHeroTag;
-
-        await tester.pumpWidget(
-          _buildCustomTestApp(
-            container: container,
-            libraryProvider: libraryProvider,
-            searchQueryProvider: searchQueryProvider,
-            searchResultsProvider: searchResultsProvider,
-            titleExtractor: (item) => item,
-            onItemTap: (_, item, heroTag) {
-              tappedItem = item;
-              tappedHeroTag = heroTag;
-            },
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Library Item'));
-        await tester.pump();
-
-        expect(tappedItem, 'Library Item');
-        expect(tappedHeroTag, contains('test_'));
-
-        container.read(searchQueryProvider.notifier).state = 'matrix';
-        await tester.pump();
-        await tester.pumpAndSettle();
-
-        expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
-
-        tappedItem = null;
-        tappedHeroTag = null;
-
-        await tester.tap(_gridItemGestureDetectorFinder());
-        await tester.pump();
-
-        expect(tappedItem, 'Search Result');
-        expect(tappedHeroTag, contains('test_search_'));
-      },
-    );
-
     testWidgets('filters grouped browse content by availability', (
       tester,
     ) async {
@@ -305,7 +243,6 @@ void main() {
           container: container,
           libraryProvider: libraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           titleExtractor: (item) => item,
           statusExtractor: (item) => switch (item) {
             'Available Item' => const MediaStatusInfo(
@@ -348,7 +285,6 @@ void main() {
           container: container,
           libraryProvider: libraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           titleExtractor: (item) => item,
           statusExtractor: (_) =>
               const MediaStatusInfo(availability: MediaAvailability.available),
@@ -384,7 +320,6 @@ void main() {
           container: container,
           libraryProvider: empty,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           emptyIcon: Icons.menu_book_outlined,
           emptyMessage: 'Items are added in the service itself.',
         ),
@@ -415,7 +350,6 @@ void main() {
           container: container,
           libraryProvider: empty,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
         ),
       );
       await tester.pumpAndSettle();
@@ -448,7 +382,6 @@ void main() {
           container: container,
           libraryProvider: libraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           statusExtractor: _available,
           emptyIcon: Icons.menu_book_outlined,
           emptyMessage: 'Items are added in the service itself.',
@@ -482,7 +415,6 @@ void main() {
           container: container,
           libraryProvider: libraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           titleExtractor: (item) => item,
           statusExtractor: (item) => switch (item) {
             'Available Item' => const MediaStatusInfo(
@@ -527,7 +459,6 @@ void main() {
           container: container,
           libraryProvider: libraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           titleExtractor: (item) => item,
           statusExtractor: (item) => switch (item) {
             'Available Item' => const MediaStatusInfo(
@@ -551,110 +482,6 @@ void main() {
       expect(find.text('Available Item'), findsNothing);
     });
 
-    testWidgets('shows empty search state when search returns no results', (
-      tester,
-    ) async {
-      final searchQueryProvider = StateProvider<String>((ref) => 'query');
-      final libraryProvider = FutureProvider<List<String>>(
-        (ref) async => ['Library Item'],
-      );
-      final searchResultsProvider = FutureProvider<List<String>?>((ref) async {
-        final query = ref.watch(searchQueryProvider);
-        return query.isEmpty ? null : <String>[];
-      });
-      final container = ProviderContainer(
-        overrides: [
-          currentSettingsProvider.overrideWith((ref) => const SettingsModel()),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(
-        _buildCustomTestApp(
-          container: container,
-          libraryProvider: libraryProvider,
-          searchQueryProvider: searchQueryProvider,
-          searchResultsProvider: searchResultsProvider,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('found nothing for'), findsOneWidget);
-      expect(find.byType(MediaGrid<String>), findsNothing);
-    });
-
-    testWidgets('a search that failed says why in plain words, never the '
-        'exception', (tester) async {
-      final searchQueryProvider = StateProvider<String>((ref) => 'query');
-      final libraryProvider = FutureProvider<List<String>>(
-        (ref) async => ['Library Item'],
-      );
-      final searchResultsProvider = FutureProvider<List<String>?>(
-        (ref) async => throw const SocketException('Connection refused'),
-      );
-      final container = ProviderContainer(
-        overrides: [
-          currentSettingsProvider.overrideWith((ref) => const SettingsModel()),
-        ],
-        retry: (_, _) => null,
-      );
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(
-        _buildCustomTestApp(
-          container: container,
-          libraryProvider: libraryProvider,
-          searchQueryProvider: searchQueryProvider,
-          searchResultsProvider: searchResultsProvider,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // It printed `Error: SocketException: Connection refused`.
-      expect(find.textContaining('Error:'), findsNothing);
-      expect(find.textContaining('SocketException'), findsNothing);
-      expect(find.text('The server did not answer'), findsOneWidget);
-      expect(find.textContaining('found nothing for'), findsNothing);
-      expect(find.text('Retry'), findsOneWidget);
-    });
-
-    // Drawn in the theme's `primary`, the search spinner put Seerr's indigo in
-    // Radarr's amber room while every other control there took the accent.
-    testWidgets('the search spinner draws in the service accent', (
-      tester,
-    ) async {
-      final searchQueryProvider = StateProvider<String>((ref) => 'nos');
-      final pending = Completer<List<String>?>();
-      final searchResultsProvider = FutureProvider<List<String>?>(
-        (ref) => pending.future,
-      );
-      final container = ProviderContainer(
-        overrides: [
-          currentSettingsProvider.overrideWith((ref) => const SettingsModel()),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(
-        _buildCustomTestApp(
-          container: container,
-          libraryProvider: testLibraryProvider,
-          searchQueryProvider: searchQueryProvider,
-          searchResultsProvider: searchResultsProvider,
-          accentColor: AppColors.radarr,
-        ),
-      );
-      await tester.pump();
-
-      final spinner = find.byType(CircularProgressIndicator);
-      expect(spinner, findsOneWidget);
-      final surface = Theme.of(tester.element(spinner)).colorScheme.surface;
-      expect(
-        tester.widget<CircularProgressIndicator>(spinner).color,
-        ServiceTheme.onTint(AppColors.radarr, surface: surface, tintAlpha: 0),
-      );
-    });
-
     testWidgets('the library spinner draws in the service accent too', (
       tester,
     ) async {
@@ -674,7 +501,6 @@ void main() {
           container: container,
           libraryProvider: libraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           accentColor: AppColors.radarr,
         ),
       );
@@ -698,12 +524,6 @@ void main() {
           libraryLoadCount++;
           return ['Library $libraryLoadCount'];
         });
-        final searchResultsProvider = FutureProvider<List<String>?>((
-          ref,
-        ) async {
-          final query = ref.watch(searchQueryProvider);
-          return query.isEmpty ? null : ['Search Result'];
-        });
         final container = ProviderContainer(
           overrides: [
             currentSettingsProvider.overrideWith(
@@ -718,7 +538,6 @@ void main() {
             container: container,
             libraryProvider: libraryProvider,
             searchQueryProvider: searchQueryProvider,
-            searchResultsProvider: searchResultsProvider,
           ),
         );
         await tester.pumpAndSettle();
@@ -759,7 +578,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           sorts: [
             MediaBrowseSort<String>(
               label: 'Date added',
@@ -810,7 +628,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           statusExtractor: _available,
         ),
       );
@@ -832,7 +649,6 @@ void main() {
           container: withSource,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           statusExtractor: _available,
           cutoffUnmetIds: {'Alpha'.hashCode},
         ),
@@ -863,7 +679,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
         ),
       );
       await tester.pumpAndSettle();
@@ -896,7 +711,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           sorts: [
             MediaBrowseSort<String>(
               label: 'Reverse',
@@ -920,7 +734,6 @@ void main() {
           container: bare,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
         ),
       );
       await tester.pumpAndSettle();
@@ -943,7 +756,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           cutoffUnmetIds: {'Alpha'.hashCode},
         ),
       );
@@ -972,7 +784,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           sorts: [
             MediaBrowseSort<String>(
               label: 'Date added',
@@ -1019,7 +830,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           subtitleExtractor: (_) => '6 albums\u00A0\u00b7 complete',
           statusExtractor: (_) =>
               const MediaStatusInfo(availability: MediaAvailability.available),
@@ -1049,7 +859,6 @@ void main() {
           container: container,
           libraryProvider: testLibraryProvider,
           searchQueryProvider: testSearchQueryProvider,
-          searchResultsProvider: testSearchResultsProvider,
           statusExtractor: (_) =>
               const MediaStatusInfo(availability: MediaAvailability.available),
         ),
@@ -1120,7 +929,10 @@ void main() {
       await _pumpLargeWall(tester, count: 2000);
 
       // Title A–Z over titles that all start with one letter: one section.
-      expect(find.text('A'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('media-browse-section-A')),
+        findsOneWidget,
+      );
       final lettered = find.byType(ContentCard).evaluate().length;
       expect(lettered, greaterThan(0));
       expect(lettered, lessThan(60));
@@ -1279,10 +1091,9 @@ Future<void> _pumpLargeWall(
               navigationSection: NavigationSection.stack,
               serviceName: 'Test Service',
               heroTagPrefix: 'test',
-              searchHeroTagPrefix: 'test_search',
               libraryProvider: libraryProvider,
               searchQueryProvider: testSearchQueryProvider,
-              searchResultsProvider: testSearchResultsProvider,
+              find: testFind,
               titleExtractor: (item) => item,
               subtitleExtractor: subtitle ?? (_) => '',
               imagesExtractor: (_) => null,
@@ -1328,10 +1139,9 @@ Widget _buildTestScaffold() {
     navigationSection: NavigationSection.stack,
     serviceName: 'Test Service',
     heroTagPrefix: 'test',
-    searchHeroTagPrefix: 'test_search',
     libraryProvider: testLibraryProvider,
     searchQueryProvider: testSearchQueryProvider,
-    searchResultsProvider: testSearchResultsProvider,
+    find: testFind,
     titleExtractor: (item) => item,
     subtitleExtractor: (_) => '',
     imagesExtractor: (_) => null,
@@ -1351,7 +1161,6 @@ Widget _buildCustomTestApp({
   required ProviderContainer container,
   required FutureProvider<List<String>> libraryProvider,
   required StateProvider<String> searchQueryProvider,
-  required FutureProvider<List<String>?> searchResultsProvider,
   String Function(String item)? titleExtractor,
   String Function(String item)? subtitleExtractor,
   StatusExtractor<String>? statusExtractor,
@@ -1373,10 +1182,9 @@ Widget _buildCustomTestApp({
         navigationSection: NavigationSection.stack,
         serviceName: 'Test Service',
         heroTagPrefix: 'test',
-        searchHeroTagPrefix: 'test_search',
         libraryProvider: libraryProvider,
         searchQueryProvider: searchQueryProvider,
-        searchResultsProvider: searchResultsProvider,
+        find: testFind,
         titleExtractor: titleExtractor ?? (item) => item,
         subtitleExtractor: subtitleExtractor ?? (_) => '',
         imagesExtractor: (_) => null,
@@ -1397,15 +1205,6 @@ Widget _buildCustomTestApp({
       ),
     ),
   );
-}
-
-Finder _gridItemGestureDetectorFinder() {
-  return find
-      .descendant(
-        of: find.byType(MediaGrid<String>),
-        matching: find.byType(GestureDetector),
-      )
-      .first;
 }
 
 /// The row of the browse wall a tile was laid out in, keyed by its top edge.
@@ -1447,7 +1246,6 @@ Future<void> _pumpBrowseWall(WidgetTester tester, Size surface) async {
       container: container,
       libraryProvider: libraryProvider,
       searchQueryProvider: testSearchQueryProvider,
-      searchResultsProvider: testSearchResultsProvider,
     ),
   );
   await tester.pumpAndSettle();

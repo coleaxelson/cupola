@@ -23,7 +23,6 @@ import 'package:cupola/features/discover/presentation/discover_details_provider.
 import 'package:cupola/features/discover/presentation/discover_page.dart';
 import 'package:cupola/features/movies/data/radarr_service.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
-import 'package:cupola/features/music/presentation/music_search_provider.dart';
 import 'package:cupola/features/search/presentation/global_search_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 
@@ -394,20 +393,6 @@ void main() {
         findsNothing,
       );
     });
-
-    testWidgets('music is Lidarr\'s own search, for the same word', (
-      tester,
-    ) async {
-      final router = _router(withLidarr: true);
-      await _pumpRouter(tester, router, withLidarr: true);
-
-      await tester.ensureVisible(find.text('Search Lidarr for “dune”'));
-      await tester.tap(find.text('Search Lidarr for “dune”'));
-      await _frames(tester);
-
-      expect(router.state.uri.path, ServiceRoutes.lidarrLibrary);
-      expect(_containerOf(tester).read(musicSearchQueryProvider), 'dune');
-    });
   });
 
   group('without Seerr', () {
@@ -549,7 +534,6 @@ List<Override> _overrides({
   RadarrService? radarr,
   String query = 'dune',
   bool withSeerr = true,
-  bool withLidarr = false,
   SharedPreferences? prefs,
 }) => [
   currentSettingsProvider.overrideWith(
@@ -558,8 +542,6 @@ List<Override> _overrides({
       radarrApiKey: 'key',
       seerrUrl: withSeerr ? 'http://seerr.local:5055' : '',
       seerrApiKey: withSeerr ? 'key' : '',
-      lidarrUrl: withLidarr ? 'http://lidarr.local:8686' : '',
-      lidarrApiKey: withLidarr ? 'key' : '',
     ),
   ),
   if (prefs != null) sharedPreferencesProvider.overrideWithValue(prefs),
@@ -599,7 +581,7 @@ Future<void> _pump(
   if (settle && query.isEmpty) await tester.pumpAndSettle();
 }
 
-GoRouter _router({bool withLidarr = false}) {
+GoRouter _router() {
   final router = GoRouter(
     initialLocation: ServiceRoutes.discover,
     routes: [
@@ -613,27 +595,19 @@ GoRouter _router({bool withLidarr = false}) {
           ),
         ],
       ),
-      GoRoute(
-        path: ServiceRoutes.lidarrLibrary,
-        builder: (context, state) => const Scaffold(body: Text('Lidarr')),
-      ),
     ],
   );
   addTearDown(router.dispose);
   return router;
 }
 
-Future<void> _pumpRouter(
-  WidgetTester tester,
-  GoRouter router, {
-  bool withLidarr = false,
-}) async {
+Future<void> _pumpRouter(WidgetTester tester, GoRouter router) async {
   tester.view.physicalSize = const Size(1170, 2532 * 2);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: _overrides(withLidarr: withLidarr),
+      overrides: _overrides(),
       child: MaterialApp.router(routerConfig: router),
     ),
   );

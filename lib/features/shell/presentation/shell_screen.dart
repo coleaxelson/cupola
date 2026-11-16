@@ -16,6 +16,7 @@ import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/utils/a11y_announce.dart';
 import 'package:cupola/core/widgets/front_room.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
+import 'package:cupola/core/widgets/library_selection.dart';
 import 'package:cupola/core/widgets/ambient_background.dart';
 import 'package:cupola/core/widgets/floating_nav_rail.dart';
 import 'package:cupola/features/release_search/presentation/release_search_lifecycle.dart';
@@ -77,6 +78,11 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
   /// The light of the room in front, which the bar and the rail take a sheen
   /// of (`FrontRoomLight`).
   final _frontRoom = FrontRoomLight();
+
+  /// Whether a library is selecting, for the bar below, the service's band
+  /// above it and anything else that steps aside while one does. The wall
+  /// that selects tells it; nothing here knows which wall that is.
+  final _selection = LibrarySelectionController();
 
   String? _lastLocation;
 
@@ -198,6 +204,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
     _portal.covering.removeListener(_reportBackOwnership);
     _portal.dispose();
     _frontRoom.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
@@ -309,13 +316,17 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
     // so every screen inside it is still the same screen the phone shows.
     if (AppBreakpoints.isDesktopShell(context)) {
       return ReleaseSearchLifecycle(
-        child: DesktopShell(
-          navigationShell: widget.navigationShell,
-          currentTab: currentTab,
-          destinations: destinations,
-          selectedIndex: selectedIndex,
-          onDestinationSelected: select,
-          onSettings: () => _onItemTapped(NavTab.settings, context, currentTab),
+        child: LibrarySelectionScope(
+          controller: _selection,
+          child: DesktopShell(
+            navigationShell: widget.navigationShell,
+            currentTab: currentTab,
+            destinations: destinations,
+            selectedIndex: selectedIndex,
+            onDestinationSelected: select,
+            onSettings: () =>
+                _onItemTapped(NavTab.settings, context, currentTab),
+          ),
         ),
       );
     }
@@ -403,16 +414,20 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
                           ],
                         ),
                       ),
-                  bottomNavigationBar: FloatingBottomNavBar(
-                    selectedIndex: selectedIndex,
-                    onDestinationSelected: select,
-                    destinations: [
-                      for (final (index, destination) in destinations.indexed)
-                        barTabs[index] == NavTab.stack
-                            ? _withPortalAction(destination)
-                            : destination,
-                    ],
-                    verticalDragDelegate: portalOn ? _portal : null,
+                  // Steps down while a library selects, and its own bar takes
+                  // the place: tabs cannot be switched until it is done.
+                  bottomNavigationBar: LibrarySelectionNavSlot(
+                    child: FloatingBottomNavBar(
+                      selectedIndex: selectedIndex,
+                      onDestinationSelected: select,
+                      destinations: [
+                        for (final (index, destination) in destinations.indexed)
+                          barTabs[index] == NavTab.stack
+                              ? _withPortalAction(destination)
+                              : destination,
+                      ],
+                      verticalDragDelegate: portalOn ? _portal : null,
+                    ),
                   ),
                 ),
               ),
@@ -424,9 +439,13 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
     // traffic-light gutter, the caption buttons and the drag region, or on
     // Windows and Linux it can neither be moved nor closed. The drag strip is
     // that something, and renders nothing on a phone.
+    final scoped = LibrarySelectionScope(
+      controller: _selection,
+      child: touchShell,
+    );
     if (!AppBreakpoints.isDesktopPlatform) {
       return ReleaseSearchLifecycle(
-        child: FrontRoomScope(light: _frontRoom, child: touchShell),
+        child: FrontRoomScope(light: _frontRoom, child: scoped),
       );
     }
     return ReleaseSearchLifecycle(
@@ -436,7 +455,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
           children: [
             const WindowDragStrip(trail: [kAppName]),
             Expanded(
-              child: FrontRoomScope(light: _frontRoom, child: touchShell),
+              child: FrontRoomScope(light: _frontRoom, child: scoped),
             ),
           ],
         ),

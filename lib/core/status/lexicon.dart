@@ -66,6 +66,12 @@ enum StateWord {
   /// The backlog: a film not out yet.
   notOutYet('Not out yet', StatusTone.neutral),
 
+  /// A search result the library already holds, in a find that looks beyond
+  /// the library (Lidarr's catalog): green, where the rows that are not held
+  /// carry the add control instead. What a held one holds is its own state
+  /// word on the page it opens.
+  inYourLibrary('In your library', StatusTone.success),
+
   /// A request nobody has approved yet.
   waitingForApproval('Waiting for approval', StatusTone.info),
 

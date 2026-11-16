@@ -5,6 +5,7 @@ import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/utils/duration_format.dart';
 import 'package:cupola/core/utils/unit_space.dart';
 import 'package:cupola/core/widgets/media_child_list.dart';
+import 'package:cupola/features/music/domain/album_kind.dart';
 import 'package:cupola/features/music/domain/lidarr_status.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 
@@ -41,8 +42,8 @@ class ArtistShelf {
       }
     }
     int newestFirst(LidarrAlbum a, LidarrAlbum b) =>
-        _releaseOf(b).compareTo(_releaseOf(a));
-    coming.sort((a, b) => _releaseOf(a).compareTo(_releaseOf(b)));
+        albumReleasedOn(b).compareTo(albumReleasedOn(a));
+    coming.sort((a, b) => albumReleasedOn(a).compareTo(albumReleasedOn(b)));
     wanted.sort(newestFirst);
     onDisk.sort(newestFirst);
     unmonitored.sort(newestFirst);
@@ -102,21 +103,46 @@ bool albumIsComing(LidarrAlbum album, {required DateTime now}) {
   return date != null && date.isAfter(now);
 }
 
-DateTime _releaseOf(LidarrAlbum album) =>
+/// The day [album] came out or will; the earliest moment for one with no date
+/// Lidarr can read, so that it sorts last among the newest first.
+DateTime albumReleasedOn(LidarrAlbum album) =>
     DateTime.tryParse(album.releaseDate ?? '') ?? DateTime(0);
 
 String _albums(int count) =>
     '$count$unitSpace${count == 1 ? 'album' : 'albums'}';
 
+/// The count a place's heading carries: `3 albums` over every kind, or
+/// `2 singles` while one kind is chosen.
+String albumCountWords(int count, {AlbumKind? kind}) =>
+    kind == null ? _albums(count) : kind.count(count);
+
+/// The line that stands for the albums Lidarr leaves alone while they are
+/// folded away: `3 unmonitored albums`, `1 unmonitored single`.
+String unmonitoredWords(int count, {AlbumKind? kind}) => kind == null
+    ? '$count${unitSpace}unmonitored ${count == 1 ? 'album' : 'albums'}'
+    : kind.countUnmonitored(count);
+
+/// [albums] of the one [kind] only, in their order; all of them without one.
+List<LidarrAlbum> albumsOfKind(List<LidarrAlbum> albums, AlbumKind? kind) =>
+    kind == null
+    ? albums
+    : [
+        for (final album in albums)
+          if (AlbumKind.of(album) == kind) album,
+      ];
+
 /// `5 tracks`, or null when Lidarr does not say.
 String? albumTrackCount(LidarrAlbum album) => album.trackCount <= 0
     ? null
-    : '${album.trackCount} ${album.trackCount == 1 ? 'track' : 'tracks'}';
+    : '${album.trackCount}$unitSpace'
+          '${album.trackCount == 1 ? 'track' : 'tracks'}';
 
 /// What a row says about [album] under its title: `2010 · 5 tracks ·
-/// 21 min`.
-List<String> albumFacts(LidarrAlbum album) => [
+/// 21 min`; with [withKind], the kind after the year (`2010 · Single · 1 track`),
+/// for an artist whose albums are of more than one kind.
+List<String> albumFacts(LidarrAlbum album, {bool withKind = false}) => [
   if (album.year.isNotEmpty) album.year,
+  if (withKind) AlbumKind.of(album).fact,
   ?albumTrackCount(album),
   if (album.duration > 0)
     formatTimeSpan(Duration(milliseconds: album.duration)),
@@ -124,8 +150,9 @@ List<String> albumFacts(LidarrAlbum album) => [
 
 /// The same facts as a screen reader hears them: `2010, 5 tracks,
 /// 21 minutes`.
-List<String> albumSpokenFacts(LidarrAlbum album) => [
+List<String> albumSpokenFacts(LidarrAlbum album, {bool withKind = false}) => [
   if (album.year.isNotEmpty) album.year,
+  if (withKind) AlbumKind.of(album).fact,
   ?albumTrackCount(album),
   if (album.duration > 0) _spokenSpan(Duration(milliseconds: album.duration)),
 ];
@@ -143,6 +170,10 @@ String _spokenSpan(Duration span) {
 /// Where one album stands, as its row's state line says it: the word, its
 /// tone, and whether it is the backlog's ring rather than a dot.
 typedef AlbumState = ({String word, StatusTone tone, bool hollow});
+
+/// The word of an album nothing is looking for: out, nothing on disk, not
+/// monitored. What a find offers to monitor and search.
+const albumUnmonitoredWord = 'Unmonitored';
 
 /// The state line of [album]'s row, or null while the queue it depends on is
 /// still being read (`badgeOverQueue`).
@@ -187,7 +218,7 @@ AlbumState? albumState(
     );
   }
   if (!album.monitored) {
-    return (word: 'Unmonitored', tone: StatusTone.neutral, hollow: true);
+    return (word: albumUnmonitoredWord, tone: StatusTone.neutral, hollow: true);
   }
   // Nothing on disk and nothing in a queue read whole: it may be downloading
   // right now, so the word waits for the queue, and says it does not know

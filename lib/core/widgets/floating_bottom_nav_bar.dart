@@ -366,21 +366,11 @@ class _FloatingBottomNavBarState extends State<FloatingBottomNavBar>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     // Aspect-scoped for the same reason as
     // [FloatingNavBarMetrics.getScrollViewBottomPadding]: the bar is on screen
     // on every tab, so an unscoped subscription rebuilds it on every keyboard
     // frame.
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
-    final barHeight = FloatingNavBarMetrics.barHeightFor(context);
-    final isDark = colorScheme.brightness == Brightness.dark;
-    final glassColor =
-        theme.extension<CupolaThemeColors>()?.glassSurface ??
-        colorScheme.surfaceContainer.withValues(alpha: isDark ? 0.72 : 0.55);
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : colorScheme.outline.withValues(alpha: 0.85);
     final count = widget.destinations.length;
     final selected = widget.selectedIndex >= 0 && widget.selectedIndex < count
         ? widget.selectedIndex
@@ -402,94 +392,129 @@ class _FloatingBottomNavBarState extends State<FloatingBottomNavBar>
           top: FloatingNavBarMetrics.topPadding,
         ),
         child: _dragTransform(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: AppRadius.borderRadiusFull,
-              boxShadow: AppElevation.glass(colorScheme),
-            ),
-            child: ClipRRect(
-              borderRadius: AppRadius.borderRadiusFull,
-              // Lit enamel: a sheen of the room in front at its top, gone by
-              // 70% of its height, and its pill tinted by the same light
-              // ([RoomSheen]).
-              child: RoomSheen(
-                builder: (context, sheen, pill) => Container(
-                  key: const ValueKey('floating-nav-surface'),
-                  height: barHeight,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        sheen.withValues(alpha: glassColor.a),
-                        glassColor,
-                      ],
-                      stops: const [0, 0.7],
-                    ),
-                    borderRadius: AppRadius.borderRadiusFull,
-                    border: Border.all(color: borderColor),
-                  ),
-                  padding: const EdgeInsets.all(_barPadding),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      // Four columns of one width: every destination says its
-                      // name, and the lit one is the pill that fills its column.
-                      final column = count == 0
-                          ? 0.0
-                          : constraints.maxWidth / count;
-                      return Stack(
-                        children: [
-                          if (selected != null)
-                            AnimatedPositioned(
-                              duration: AppAnimation.durationSm,
-                              curve: AppAnimation.emphasizedCurve,
-                              left: column * selected,
-                              top: 0,
-                              width: column,
-                              height: constraints.maxHeight,
-                              child: IgnorePointer(
-                                child: DecoratedBox(
-                                  key: const ValueKey('floating-nav-indicator'),
-                                  // The room's strong fill, tinted by the light
-                                  // of the room in front, and no edge: the pill
-                                  // says "you are here" and nothing about which
-                                  // section "here" is.
-                                  decoration: BoxDecoration(
-                                    color: pill,
-                                    borderRadius: AppRadius.borderRadiusFull,
-                                  ),
-                                ),
-                              ),
+          child: FloatingBarSurface(
+            surfaceKey: const ValueKey('floating-nav-surface'),
+            builder: (context, pill) => LayoutBuilder(
+              builder: (context, constraints) {
+                // Four columns of one width: every destination says its
+                // name, and the lit one is the pill that fills its column.
+                final column = count == 0 ? 0.0 : constraints.maxWidth / count;
+                return Stack(
+                  children: [
+                    if (selected != null)
+                      AnimatedPositioned(
+                        duration: AppAnimation.durationSm,
+                        curve: AppAnimation.emphasizedCurve,
+                        left: column * selected,
+                        top: 0,
+                        width: column,
+                        height: constraints.maxHeight,
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            key: const ValueKey('floating-nav-indicator'),
+                            // The room's strong fill, tinted by the light
+                            // of the room in front, and no edge: the pill
+                            // says "you are here" and nothing about which
+                            // section "here" is.
+                            decoration: BoxDecoration(
+                              color: pill,
+                              borderRadius: AppRadius.borderRadiusFull,
                             ),
-                          Row(
-                            children: [
-                              for (var index = 0; index < count; index++)
-                                Expanded(
-                                  child: _NavBarItem(
-                                    destination: widget.destinations[index],
-                                    isSelected: index == selected,
-                                    index: index,
-                                    destinationCount: count,
-                                    onTap: () => _handleDestinationTap(index),
-                                  ),
-                                ),
-                            ],
                           ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
+                        ),
+                      ),
+                    Row(
+                      children: [
+                        for (var index = 0; index < count; index++)
+                          Expanded(
+                            child: _NavBarItem(
+                              destination: widget.destinations[index],
+                              isSelected: index == selected,
+                              index: index,
+                              destinationCount: count,
+                              onTap: () => _handleDestinationTap(index),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  /// Between the glass's edge and the pill.
-  static const double _barPadding = FloatingNavBarMetrics.surfacePadding;
+/// The glass the floating bars are made of: a stadium of the room's glass
+/// with the light of the room in front on its top, [FloatingNavBarMetrics.barHeightFor]
+/// tall, with [FloatingNavBarMetrics.surfacePadding] between its edge and what
+/// it holds.
+///
+/// One surface for the navigation bar and the library's selection bar, so the
+/// one that takes the other's place has its shape and its position, and a
+/// change to the glass reaches both. [builder] is handed the pill's tint, the
+/// light of the room in front ([RoomSheen]).
+///
+/// Glass is a semi-opaque tint, deliberately not a backdrop blur: see
+/// [FloatingBottomNavBar].
+class FloatingBarSurface extends StatelessWidget {
+  const FloatingBarSurface({super.key, this.surfaceKey, required this.builder});
+
+  /// The key of the surface itself, for a test to measure it.
+  final Key? surfaceKey;
+
+  final Widget Function(BuildContext context, Color pill) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final barHeight = FloatingNavBarMetrics.barHeightFor(context);
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final glassColor =
+        theme.extension<CupolaThemeColors>()?.glassSurface ??
+        colorScheme.surfaceContainer.withValues(alpha: isDark ? 0.72 : 0.55);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : colorScheme.outline.withValues(alpha: 0.85);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.borderRadiusFull,
+        boxShadow: AppElevation.glass(colorScheme),
+      ),
+      child: ClipRRect(
+        borderRadius: AppRadius.borderRadiusFull,
+        // Lit enamel: a sheen of the room in front at its top, gone by
+        // 70% of its height, and its pill tinted by the same light
+        // ([RoomSheen]).
+        child: RoomSheen(
+          builder: (context, sheen, pill) => Container(
+            key: surfaceKey,
+            height: barHeight,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  sheen.withValues(alpha: glassColor.a),
+                  glassColor,
+                ],
+                stops: const [0, 0.7],
+              ),
+              borderRadius: AppRadius.borderRadiusFull,
+              border: Border.all(color: borderColor),
+            ),
+            padding: const EdgeInsets.all(FloatingNavBarMetrics.surfacePadding),
+            child: builder(context, pill),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _NavBarItem extends StatelessWidget {

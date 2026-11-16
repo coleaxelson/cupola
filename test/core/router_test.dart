@@ -42,6 +42,7 @@ import 'package:cupola/features/pairing/data/pair_session.dart';
 import 'package:cupola/features/pairing/presentation/pair_offer_screen.dart';
 import 'package:cupola/features/pairing/presentation/pair_receive_screen.dart';
 import 'package:cupola/features/discover/presentation/discover_page.dart';
+import 'package:cupola/features/discover/presentation/more_from_your_artists_page.dart';
 import 'package:cupola/features/series/data/sonarr_service.dart';
 import 'package:cupola/features/series/presentation/sonarr_overview_screen.dart';
 import 'package:cupola/features/activity/domain/activity_tab.dart';
@@ -579,6 +580,90 @@ void main() {
       expect(find.byType(ArrTitleOpener), findsNothing);
     });
 
+    testWidgets('an artist Lidarr does not hold has no page: ids of zero and '
+        'below go back to the library, and what that draws is the library', (
+      tester,
+    ) async {
+      // A lookup row has id 0. Its page would read and write `/artist/0` and
+      // say things about an artist nobody added: the add sheet is the way to
+      // such a row, never this route.
+      final container = await _pumpRouter(tester);
+      final router = container.read(routerProvider);
+
+      for (final id in [0, -4]) {
+        router.go(ServiceRoutes.lidarrArtist(id, heroTag: 'artist_$id'));
+        await tester.pumpAndSettle();
+
+        expect(
+          router.state.uri.toString(),
+          ServiceRoutes.lidarrLibrary,
+          reason: 'id $id',
+        );
+        expect(find.byType(MusicScreen), findsOneWidget, reason: 'id $id');
+        expect(find.byType(ArtistPage), findsNothing, reason: 'id $id');
+      }
+
+      // A real id still opens its page.
+      router.go(ServiceRoutes.lidarrArtist(9));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ArtistPage>(find.byType(ArtistPage)).artistId, 9);
+    });
+
+    testWidgets('an artist opened on an album says so in the link, which a '
+        'deep link carries without an extra', (tester) async {
+      final container = await _pumpRouter(tester);
+      final router = container.read(routerProvider);
+
+      router.go(ServiceRoutes.lidarrArtist(9, albumId: 12));
+      await tester.pumpAndSettle();
+      expect(
+        router.state.uri.toString(),
+        '${ServiceRoutes.lidarrArtistBase}/9?album=12',
+      );
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).openAlbumId,
+        12,
+      );
+
+      // A link with no album, or a word where the id goes, opens none.
+      router.go(ServiceRoutes.lidarrArtist(9));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).openAlbumId,
+        isNull,
+      );
+      router.go('${ServiceRoutes.lidarrArtistBase}/9?album=nope');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).openAlbumId,
+        isNull,
+      );
+    });
+
+    testWidgets('an artist opened right after the add says so in the link, '
+        'which a deep link carries without an extra', (tester) async {
+      final container = await _pumpRouter(tester);
+      final router = container.read(routerProvider);
+
+      router.go(ServiceRoutes.lidarrArtist(9, justAdded: true));
+      await tester.pumpAndSettle();
+      expect(
+        router.state.uri.toString(),
+        '${ServiceRoutes.lidarrArtistBase}/9?added=1',
+      );
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).justAdded,
+        isTrue,
+      );
+
+      router.go(ServiceRoutes.lidarrArtist(9));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<ArtistPage>(find.byType(ArtistPage)).justAdded,
+        isFalse,
+      );
+    });
+
     testWidgets(
       'library detail routes ignore wrong-type and mismatched extras instead of redirecting',
       (tester) async {
@@ -675,6 +760,25 @@ void main() {
       expect(find.byType(SettingsConnectionsScreen), findsOneWidget);
       expect(router.state.uri.toString(), '/settings/connections');
     });
+
+    testWidgets(
+      'the shelf of albums from the library\u2019s artists has a page '
+      'of its own under Discover, which Lidarr not being set up leaves '
+      'as the way to set it up',
+      (tester) async {
+        final container = await _pumpRouter(tester);
+        final router = container.read(routerProvider);
+
+        router.go(ServiceRoutes.discoverMoreFromYourArtists);
+        await tester.pumpAndSettle();
+
+        expect(
+          router.state.uri.toString(),
+          ServiceRoutes.discoverMoreFromYourArtists,
+        );
+        expect(find.byType(MoreFromYourArtistsPage), findsOneWidget);
+      },
+    );
 
     testWidgets('Discover is a tab, and the Search tab it replaced lands '
         'on it', (tester) async {

@@ -26,11 +26,16 @@ class MediaDetailValueOption<T> {
   /// (`41 or more requests` for `41+`). Null reads [meta].
   final String? spokenMeta;
 
+  /// What choosing it means, under the label (`Lists the artist and looks for
+  /// nothing`). Null for a choice that explains itself.
+  final String? detail;
+
   const MediaDetailValueOption({
     required this.value,
     required this.label,
     this.meta,
     this.spokenMeta,
+    this.detail,
   });
 }
 
@@ -78,6 +83,7 @@ Future<MediaDetailValueOption<T>?> showMediaValueSheet<T>(
         label: option.label,
         meta: option.meta,
         spokenMeta: option.spokenMeta,
+        detail: option.detail,
         isSelected: option.value == value,
         accent: accent,
         onTap: () =>
@@ -222,6 +228,9 @@ class MediaValueOptionRow extends StatelessWidget {
 
   /// See [MediaDetailValueOption.spokenMeta].
   final String? spokenMeta;
+
+  /// What the choice means, under the label; see [MediaDetailValueOption.detail].
+  final String? detail;
   final bool isSelected;
   final Color? accent;
   final VoidCallback onTap;
@@ -231,6 +240,7 @@ class MediaValueOptionRow extends StatelessWidget {
     required this.label,
     this.meta,
     this.spokenMeta,
+    this.detail,
     required this.isSelected,
     required this.accent,
     required this.onTap,
@@ -253,7 +263,7 @@ class MediaValueOptionRow extends StatelessWidget {
 
     return PressableScale(
       onTap: onTap,
-      semanticLabel: [label, ?(spokenMeta ?? meta)].join(', '),
+      semanticLabel: [label, ?detail, ?(spokenMeta ?? meta)].join(', '),
       semanticValue: isSelected ? 'Selected' : null,
       excludeChildSemantics: true,
       child: ConstrainedBox(
@@ -267,13 +277,26 @@ class MediaValueOptionRow extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: Text(
-                label,
-                style: isSelected
-                    ? theme.textTheme.bodyLarge!
-                          .weight(FontWeight.w600)
-                          .copyWith(color: selectedInk)
-                    : theme.textTheme.bodyLarge!.weight(FontWeight.w500),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: isSelected
+                        ? theme.textTheme.bodyLarge!
+                              .weight(FontWeight.w600)
+                              .copyWith(color: selectedInk)
+                        : theme.textTheme.bodyLarge!.weight(FontWeight.w500),
+                  ),
+                  if (detail case final detail?)
+                    Text(
+                      detail,
+                      style: theme.textTheme.bodySmall!.copyWith(
+                        color: CupolaThemeColors.of(context).dimText,
+                      ),
+                    ),
+                ],
               ),
             ),
             if (meta case final meta?) ...[

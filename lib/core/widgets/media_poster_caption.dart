@@ -42,11 +42,10 @@ class MediaPosterCaption extends StatelessWidget {
       .labelSmall!
       .copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
 
-  /// How tall [gap] and both lines are at the context's reading size,
-  /// measured: what a grid of fixed cells adds under a poster so the caption
-  /// is never clipped, however large the text is set. Whole points, rounded
-  /// up.
-  static double heightOf(BuildContext context) {
+  /// How tall each of the two lines is at the context's reading size,
+  /// measured and not rounded: what a row of tiles adds under its artwork
+  /// (the title always, the subtitle when a tile of the row has one).
+  static ({double title, double subtitle}) lineHeightsOf(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
     double line(TextStyle style) {
@@ -61,8 +60,19 @@ class MediaPosterCaption extends StatelessWidget {
       return height;
     }
 
-    return (gap + line(_titleStyle(context)) + line(_subtitleStyle(context)))
-        .ceilToDouble();
+    return (
+      title: line(_titleStyle(context)),
+      subtitle: line(_subtitleStyle(context)),
+    );
+  }
+
+  /// How tall [gap] and both lines are at the context's reading size,
+  /// measured: what a grid of fixed cells adds under a poster so the caption
+  /// is never clipped, however large the text is set. Whole points, rounded
+  /// up.
+  static double heightOf(BuildContext context) {
+    final lines = lineHeightsOf(context);
+    return (gap + lines.title + lines.subtitle).ceilToDouble();
   }
 
   /// A grid of captioned 2 : 3 posters, [columns] across [width]: each cell

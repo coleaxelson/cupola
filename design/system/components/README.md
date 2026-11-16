@@ -70,9 +70,10 @@ cards live in [`../motion/`](../motion/).
 | Media | [CollectionTally](CollectionTally/README.md) | `lib/features/discover/presentation/widgets/collection_tally.dart` |
 | Media | [HideOwnedSwitch](HideOwnedSwitch/README.md) | `lib/features/discover/presentation/widgets/hide_owned_switch.dart` |
 | Media | [DiscoverDoor](DiscoverDoor/README.md) | `lib/features/discover/presentation/widgets/discover_door.dart` |
+| Media | [DiscoverMusic](DiscoverMusic/README.md) | `lib/features/discover/presentation/widgets/more_from_your_artists_shelf.dart`, `lib/features/discover/presentation/more_from_your_artists_page.dart`, `lib/features/discover/presentation/widgets/discover_music_section.dart`, `lib/features/music/presentation/music_hit_row.dart` |
 | Media | [SearchRow](SearchRow/README.md) | `lib/features/discover/presentation/widgets/search_row.dart` |
 | Media | [ContentCard](ContentCard/README.md) | `lib/core/widgets/content_card.dart` |
-| Media | [MediaBrowseScaffold](MediaBrowseScaffold/README.md) | `lib/core/widgets/media_browse_scaffold.dart`, `lib/core/widgets/search_bar_header.dart` |
+| Media | [MediaBrowseScaffold](MediaBrowseScaffold/README.md) | `lib/core/widgets/media_browse_scaffold.dart`, `lib/core/widgets/search_bar_header.dart`, `lib/core/widgets/media_find.dart` |
 | Media | [MediaPosterCard](MediaPosterCard/README.md) | `lib/core/widgets/media_poster_card.dart`, `lib/core/widgets/media_grid.dart` |
 | Media | [StreamLibrary](StreamLibrary/README.md) | `lib/features/stream/presentation/stream_library_screen.dart`, `lib/features/stream/presentation/widgets/stream_poster_tile.dart` |
 | Media | [StreamWatching](StreamWatching/README.md) | `lib/features/stream/presentation/stream_watching.dart` |

@@ -21,8 +21,11 @@ class ReadarrAuthor {
     this.path,
     this.images = const [],
     this.qualityProfileId,
+    this.metadataProfileId,
+    this.monitorNewItems,
     this.titleSlug,
     this.sizeOnDisk = 0,
+    this.hasStatistics = true,
     this.added,
   });
 
@@ -47,11 +50,21 @@ class ReadarrAuthor {
 
   final int? qualityProfileId;
 
+  /// Which books Readarr keeps of the author, and what it does with books it
+  /// learns of later (`all`, `none`, or `new`). Null on a record that does
+  /// not say.
+  final int? metadataProfileId;
+  final String? monitorNewItems;
+
   /// The author's address in Readarr's own web app: `/author/<titleSlug>`.
   final String? titleSlug;
 
   /// What the author's files take on disk, in bytes.
   final int sizeOnDisk;
+
+  /// Readarr sent the author's statistics: without them the size on disk is
+  /// not zero, it is not known.
+  final bool hasStatistics;
 
   /// When the author joined the library, as Readarr writes it (an ISO
   /// string), or null when it does not say.
@@ -81,8 +94,11 @@ class ReadarrAuthor {
       path: json['path']?.toString(),
       images: json['images'] is List ? json['images'] as List : const [],
       qualityProfileId: intOrNull(json['qualityProfileId']),
+      metadataProfileId: intOrNull(json['metadataProfileId']),
+      monitorNewItems: json['monitorNewItems']?.toString(),
       titleSlug: json['titleSlug']?.toString(),
       sizeOnDisk: intOrNull(statsMap['sizeOnDisk']) ?? 0,
+      hasStatistics: stats is Map<String, dynamic>,
       added: json['added']?.toString(),
     );
   }

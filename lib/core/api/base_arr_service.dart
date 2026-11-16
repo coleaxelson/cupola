@@ -581,11 +581,24 @@ mixin ArrActivityMixin {
   Future<List<dynamic>> getAllMissing({
     Map<String, dynamic>? queryParameters,
   }) async {
-    final result = await _fetchAllPages(
+    final result = await getAllMissingPage(queryParameters: queryParameters);
+    return result.records;
+  }
+
+  /// [getAllMissing] with the walk's own account of itself: the envelope's
+  /// total and whether it stopped before the end ([ArrRecordPage.cutShort]).
+  ///
+  /// For a caller that *counts* what it read: a walk that gave up after its
+  /// last page has only a floor, and a figure taken from the rows alone would
+  /// state it as the whole. Throws when the server does not answer, as
+  /// [getAllMissing] does.
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return _fetchAllPages(
       'wanted/missing',
       extraParams: {..._wantedParams(), ...?queryParameters},
     );
-    return result.records;
   }
 
   /// Fetches one page of cutoff-unmet items, **with the envelope's total**.
@@ -680,10 +693,12 @@ mixin ArrActivityMixin {
   /// two differ in exactly one thing, which is whether the failure survives.
   Future<List<T>> fetchAllItemsOrThrow<T>(
     String endpoint,
-    T Function(Map<String, dynamic>) fromJson,
-  ) async {
+    T Function(Map<String, dynamic>) fromJson, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
     final response = await client.getMappedList(
       '/api/${config.apiVersion}/$endpoint',
+      queryParameters: queryParameters,
       mapList: _listMapperOf(fromJson),
     );
     return _recordsOf(response.data, fromJson);
@@ -869,6 +884,20 @@ mixin ArrActivityMixin {
     } catch (_) {
       return [];
     }
+  }
+
+  /// The quality profiles, with a failed read allowed to reach the caller: a
+  /// sheet that offers them must not read a server that did not answer as one
+  /// with none to offer.
+  Future<List<Map<String, dynamic>>> fetchQualityProfilesOrThrow() async {
+    final response = await client.get(
+      '/api/${config.apiVersion}/qualityprofile',
+    );
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('The server answered without its profiles');
+    }
+    return data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
   /// Fetches the root folders this server is configured to file media under.

@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:cupola/core/providers/provider_retry.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/widgets.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
+import 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 import 'package:cupola/features/music/domain/lidarr_status.dart';
+import 'package:cupola/features/music/domain/lidarr_wanted.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/presentation/lidarr_bulk.dart';
+import 'package:cupola/features/music/presentation/music_find.dart';
 import 'package:cupola/features/music/presentation/music_provider.dart';
 import 'package:cupola/features/music/presentation/music_search_provider.dart';
 import 'package:cupola/features/services/presentation/service_kpi_provider.dart';
@@ -16,6 +21,8 @@ import 'package:cupola/features/services/presentation/services_provider.dart';
 import 'package:cupola/features/settings/data/connection_reach_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
+
+export 'package:cupola/features/music/domain/lidarr_artist_caption.dart';
 
 /// The artist ids Lidarr reports under `wanted/cutoff`.
 ///
@@ -42,38 +49,30 @@ final lidarrCutoffUnmetArtistIdsProvider = FutureProvider.autoDispose<Set<int>>(
   },
 );
 
-/// `6 albums · complete` / `9 albums · 34 tracks missing`: the caption the
-/// circular artist tile carries instead of a status dot.
+/// The artists Lidarr reports under `wanted/missing`, each with how many of
+/// its albums are wanted: released, monitored, nothing on disk.
 ///
-/// Top-level and pure so the wording is assertable without a pumped wall.
+/// The question the Wanted chip asks, and the reason it replaces Missing here:
+/// Missing finds the artists with *no* track on disk, so an artist short of 30
+/// of its 31 albums sits under Available. Lidarr answers with *albums*, so the
+/// fold is over `artistId` (see [lidarrWantedFrom]); the album count is kept
+/// because the chip's tiles say it (`3 albums wanted`).
 ///
-/// Three honest answers, and the third is why this is not a one-liner:
-/// * Lidarr omits `statistics` entirely on an artist it has not scanned. That
-///   is not "0 albums", it is *no answer*, and it reads as an em dash.
-/// * With tracks counted, the shortfall is stated **in tracks**, because tracks
-///   are what Lidarr counts. The board writes `9 albums · 1 missing`, but the
-///   artist payload carries no per-album file state, so saying "1 missing"
-///   beside an album count would be a number in the wrong unit.
-/// * An artist with albums but no tracks counted gets the album count alone
-///   rather than a completeness claim nothing supports.
-String lidarrArtistCaption(LidarrArtist artist) {
-  if (artist.statistics == null) return '\u2014';
-
-  final albums = artist.albumCount;
-  final albumTerm = albums > 0
-      ? '$albums album${albums == 1 ? '' : 's'}'
-      : null;
-
-  final tracks = artist.trackCount;
-  if (tracks <= 0) return albumTerm ?? '\u2014';
-
-  final missing = tracks - artist.trackFileCount;
-  final completeness = missing <= 0
-      ? 'complete'
-      : '$missing track${missing == 1 ? '' : 's'} missing';
-
-  return albumTerm == null ? completeness : '$albumTerm\u00A0· $completeness';
-}
+/// Unlike its cutoff sibling this one **throws** when Lidarr does not answer:
+/// an empty set would say that no artist has a wanted album, which nobody
+/// found out. The wall reads the throw as the chip's own failure line. The
+/// walk is capped; when it stops short the set is a floor
+/// (`MediaBrowseWantedSet.isFloor`), and the figures drawn from it read `50+`.
+///
+/// Only the ids are read, so the walk does not ask Lidarr to embed the artist
+/// in every album. Not retried on its own, as every Lidarr read.
+final lidarrWantedArtistIdsProvider =
+    FutureProvider.autoDispose<MediaBrowseWantedSet>((ref) async {
+      final page = await ref
+          .watch(lidarrServiceProvider)
+          .getAllMissingPage(queryParameters: const {'includeArtist': false});
+      return lidarrWantedFrom(page);
+    }, retry: noProviderRetry);
 
 class MusicScreen extends ConsumerWidget {
   final bool showAppBar;
@@ -91,20 +90,58 @@ class MusicScreen extends ConsumerWidget {
     // Which of its addresses the lens's connection is reached at: the
     // posters go where the library is read from.
     final route = ref.watch(connectionRouteProvider(lens));
+    // Checked before the read is watched: a throwing provider retries.
+    final configured = ref.watch(
+      currentSettingsProvider.select(
+        (s) => s.isServiceConfigured(ServiceKey.lidarr),
+      ),
+    );
+
+    // The connection as a sentence says it: the bar's toasts and the
+    // confirmation name it.
+    final connectionName = ref.watch(
+      currentSettingsProvider.select(
+        (s) => s.connectionTitle(lens, ServiceKey.lidarr),
+      ),
+    );
 
     return MediaBrowseScaffold<LidarrArtist>(
       title: 'Music',
-      searchHint: 'Search artists',
+      searchHint: 'Artists and albums',
       activityRoute: '${ServiceRoutes.lidarr}/queue',
       navigationSection: NavigationSection.stack,
       serviceName: 'Lidarr',
       service: ServiceKey.lidarr,
       accentColor: ServiceKey.lidarr.accent,
       heroTagPrefix: 'artist',
-      searchHeroTagPrefix: 'artist_search',
       libraryProvider: musicProvider,
       searchQueryProvider: musicSearchQueryProvider,
-      searchResultsProvider: musicSearchResultsProvider,
+      find: MediaFind(
+        scopeProvider: musicFindScopeProvider,
+        serviceLabel: connectionName,
+        libraryBody: (context, query) => MusicFindLibrary(
+          query: query,
+          onAskLidarr: () => ref.read(musicFindScopeProvider.notifier).state =
+              MediaFindScope.service,
+        ),
+        serviceBody: (context, query) => MusicFindLidarr(query: query),
+      ),
+      // Search, Monitor, Profile and Remove on the artists selected.
+      bulk: lidarrBulk(
+        ref: ref,
+        instanceId: lens,
+        name: connectionName,
+        onChanged: (ref) {
+          // What an action changed: the library, what is read from it, and
+          // what each artist is wanted for.
+          ref.invalidate(musicProvider);
+          ref.invalidate(musicForProvider);
+          ref.invalidate(musicAlbumsProvider);
+          ref.invalidate(lidarrWantedArtistIdsProvider);
+          ref.invalidate(lidarrCutoffUnmetArtistIdsProvider);
+          ref.invalidate(lidarrKpiLibraryProvider);
+        },
+      ),
       titleExtractor: (artist) => artist.artistName,
       subtitleExtractor: lidarrArtistCaption,
       sortTitleExtractor: (artist) => artist.artistName,
@@ -125,6 +162,7 @@ class MusicScreen extends ConsumerWidget {
         ref.invalidate(lidarrQueueSnapshotsForProvider);
         // The rail's own non-swallowing read. See `movies_screen.dart`.
         ref.invalidate(lidarrKpiLibraryProvider);
+        ref.invalidate(lidarrWantedArtistIdsProvider);
       },
       // The lens's connection, never the first one's: see `movies_screen.dart`.
       settingsSelector: (settings) => settings.artworkKeyOf(lens, route),
@@ -156,6 +194,18 @@ class MusicScreen extends ConsumerWidget {
       cutoffUnmetIds: ref
           .watch(lidarrCutoffUnmetArtistIdsProvider)
           .maybeWhen(data: (ids) => ids, orElse: () => null),
+      // Wanted in place of Missing: see `lidarrWantedArtistIdsProvider`.
+      wanted: MediaBrowseWanted(
+        answer: configured
+            ? ref.watch(lidarrWantedArtistIdsProvider)
+            : const AsyncLoading<MediaBrowseWantedSet>(),
+        service: ServiceKey.lidarr,
+        instanceId: lens,
+        failureConsequence: 'the artists with a wanted album are not shown',
+        onRetry: () => ref.invalidate(lidarrWantedArtistIdsProvider),
+        captionOf: lidarrWantedCaption,
+        summaryOf: lidarrWantedSummary,
+      ),
       kpiPeek: ServiceKpiPeek(
         kpis: ref.watch(serviceKpiProvider(ServiceKey.lidarr)),
         service: ServiceKey.lidarr,

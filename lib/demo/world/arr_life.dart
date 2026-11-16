@@ -61,6 +61,61 @@ class LiveSeries {
   DateTime? arrived;
 }
 
+/// One artist added to a Lidarr in the demo. The world's own artist is
+/// `LidarrFake`'s; only what the demo adds is kept here.
+class LiveArtist {
+  LiveArtist({
+    required this.id,
+    required this.name,
+    required this.foreignArtistId,
+    required this.added,
+    this.monitored = true,
+    this.readsAlbums = true,
+  });
+
+  final int id;
+  final String name;
+  final String foreignArtistId;
+  final DateTime added;
+  bool monitored;
+
+  /// Whether Lidarr reads the artist's albums after the add: not for an
+  /// artist that came in with one album, whose only album is that one.
+  final bool readsAlbums;
+}
+
+/// What the demo changed on an artist of a Lidarr by the editor: only what
+/// was set, the rest is the artist's own. Kept by id, so it holds for the
+/// world's artists and the shelf's as it does for those the demo added.
+class LiveArtistEdit {
+  bool? monitored;
+  String? monitorNewItems;
+  int? qualityProfileId;
+  int? metadataProfileId;
+}
+
+/// One album added to a Lidarr in the demo, under the world's artist (id 1)
+/// or one the demo added.
+class LiveAlbum {
+  LiveAlbum({
+    required this.id,
+    required this.artistId,
+    required this.title,
+    required this.foreignAlbumId,
+    required this.albumType,
+    required this.releaseDate,
+    this.monitored = true,
+  });
+
+  final int id;
+  final int artistId;
+  final String title;
+  final String foreignAlbumId;
+  final String albumType;
+  final String releaseDate;
+  bool monitored;
+}
+
 /// The arrs' libraries once the world lives: a film added, monitored or let
 /// go, a search that grabs, a download that arrives.
 ///
@@ -76,6 +131,12 @@ class ArrLife {
 
   final Map<String, List<LiveMovie>> _movies = {};
   final Map<String, List<LiveSeries>> _series = {};
+  final Map<String, List<LiveArtist>> _artists = {};
+  final Map<String, Map<int, LiveArtistEdit>> _artistEdits = {};
+  final Map<String, Set<int>> _removedArtists = {};
+  final Map<String, List<LiveAlbum>> _albums = {};
+  final Map<String, Set<int>> _removedAuthors = {};
+  final Map<String, Map<int, bool>> _authorMonitored = {};
   int _grabs = 0;
 
   /// How long a grab takes to come down, so a title asked for arrives in
@@ -156,6 +217,118 @@ class ArrLife {
       usenet: is4k,
       size: is4k ? 8800000000 : 2200000000,
     );
+  }
+
+  // === Readarr =============================================================
+
+  /// The authors removed from Readarr [serverId] in the demo. The world's own
+  /// author is Readarr's, so what is kept here is what was done to it.
+  Set<int> removedAuthors(String serverId) =>
+      _removedAuthors.putIfAbsent(serverId, () => {});
+
+  /// Whether the demo set author [id] monitored or not, or null for one it has
+  /// left as it was.
+  bool? authorMonitored(String serverId, int id) =>
+      _authorMonitored[serverId]?[id];
+
+  void monitorAuthor(String serverId, int id, {required bool monitored}) =>
+      _authorMonitored.putIfAbsent(serverId, () => {})[id] = monitored;
+
+  // === Lidarr ==============================================================
+
+  /// The artists added to Lidarr [serverId] in the demo, after the world's
+  /// own (id 1).
+  List<LiveArtist> artists(String serverId) =>
+      _artists.putIfAbsent(serverId, () => []);
+
+  LiveArtist? artist(String serverId, int id) =>
+      artists(serverId).where((a) => a.id == id).firstOrNull;
+
+  /// What the demo changed on artist [id] of Lidarr [serverId], or null for an
+  /// artist it has left as it was.
+  LiveArtistEdit? artistEdit(String serverId, int id) =>
+      _artistEdits[serverId]?[id];
+
+  /// Sets what is given of artist [id]'s settings on Lidarr [serverId].
+  void editArtist(
+    String serverId,
+    int id, {
+    bool? monitored,
+    String? monitorNewItems,
+    int? qualityProfileId,
+    int? metadataProfileId,
+  }) {
+    final edit = (_artistEdits.putIfAbsent(serverId, () => {})[id] ??=
+        LiveArtistEdit());
+    if (monitored != null) edit.monitored = monitored;
+    if (monitorNewItems != null) edit.monitorNewItems = monitorNewItems;
+    if (qualityProfileId != null) edit.qualityProfileId = qualityProfileId;
+    if (metadataProfileId != null) edit.metadataProfileId = metadataProfileId;
+  }
+
+  /// The artists removed from Lidarr [serverId] in the demo.
+  Set<int> removedArtists(String serverId) =>
+      _removedArtists.putIfAbsent(serverId, () => {});
+
+  /// Adds the artist [name] to Lidarr [serverId], or finds it there.
+  LiveArtist addArtist(
+    String serverId,
+    String name, {
+    required String foreignArtistId,
+    bool monitored = true,
+    bool readsAlbums = true,
+  }) {
+    final held = artists(
+      serverId,
+    ).where((a) => a.foreignArtistId == foreignArtistId).firstOrNull;
+    if (held != null) return held;
+    final top = artists(
+      serverId,
+    ).fold<int>(1, (top, a) => a.id > top ? a.id : top);
+    final artist = LiveArtist(
+      id: top + 1,
+      name: name,
+      foreignArtistId: foreignArtistId,
+      added: _now,
+      monitored: monitored,
+      readsAlbums: readsAlbums,
+    );
+    artists(serverId).add(artist);
+    return artist;
+  }
+
+  /// The albums added to Lidarr [serverId] in the demo, after the world's own
+  /// (ids 1 to 4), from id 200.
+  List<LiveAlbum> albums(String serverId) =>
+      _albums.putIfAbsent(serverId, () => []);
+
+  /// Adds the album [title] under [artistId] to Lidarr [serverId], or finds
+  /// it there.
+  LiveAlbum addAlbum(
+    String serverId, {
+    required int artistId,
+    required String title,
+    required String foreignAlbumId,
+    required String albumType,
+    required String releaseDate,
+  }) {
+    final held = albums(
+      serverId,
+    ).where((a) => a.foreignAlbumId == foreignAlbumId).firstOrNull;
+    if (held != null) return held;
+    final top = albums(
+      serverId,
+    ).fold<int>(199, (top, a) => a.id > top ? a.id : top);
+    final album = LiveAlbum(
+      id: top + 1,
+      artistId: artistId,
+      title: title,
+      foreignAlbumId: foreignAlbumId,
+      albumType: albumType,
+      releaseDate: releaseDate,
+    );
+    albums(serverId).add(album);
+    return album;
   }
 
   // === Sonarr ==============================================================

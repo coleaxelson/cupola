@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import 'package:cupola/core/api/quality_profile_mixin.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/generated/design_tokens.g.dart';
+import 'package:cupola/core/lifecycle/gated_poll.dart';
 import 'package:cupola/core/status/arr_queue_snapshot.dart';
 import 'package:cupola/core/status/lexicon.dart';
 import 'package:cupola/core/theme.dart';
@@ -24,11 +26,15 @@ import 'package:cupola/features/media/domain/media_removal.dart';
 import 'package:cupola/features/media/presentation/media_parts.dart';
 import 'package:cupola/features/media/presentation/shelf_page.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
+import 'package:cupola/features/music/domain/album_kind.dart';
 import 'package:cupola/features/music/domain/artist_shelf.dart';
 import 'package:cupola/features/music/domain/lidarr_queue_snapshots.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/music/presentation/artist_page_providers.dart';
+import 'package:cupola/features/music/presentation/artist_track_finder.dart';
+import 'package:cupola/features/music/presentation/artist_type_pills.dart';
 import 'package:cupola/features/music/presentation/music_provider.dart';
 import 'package:cupola/features/release_search/domain/release_search_target.dart';
 import 'package:cupola/features/release_search/presentation/release_search_entry.dart';
@@ -43,8 +49,11 @@ import 'package:cupola/features/settings/domain/service_key.dart';
 /// on its way, and what Lidarr does for them.
 ///
 /// Under the name, the albums in the four places they can be ([ArtistShelf]):
-/// announced, wanted, on disk, left alone. Each album opens on its tracks.
-/// Then the artist's settings on that Lidarr, and the way to it.
+/// announced, wanted, on disk, left alone. Each album opens on its tracks. An
+/// artist with albums of several kinds ([AlbumKind]) gets a pill per kind to
+/// show one at a time, and any artist a way to find a track among their
+/// albums ([ArtistTrackFinder]). Then the artist's settings on that Lidarr,
+/// and the way to it.
 class ArtistPage extends ConsumerStatefulWidget {
   const ArtistPage({
     super.key,
@@ -52,9 +61,22 @@ class ArtistPage extends ConsumerStatefulWidget {
     this.instanceId,
     this.initialArtist,
     this.heroTag,
+    this.justAdded = false,
+    this.openAlbumId,
   });
 
   final int artistId;
+
+  /// The album the page opens on (the route's `?album=`): once the albums are
+  /// read it scrolls to that one and opens it on its tracks, as a found track
+  /// does. An id the artist has no album under is no landing.
+  final int? openAlbumId;
+
+  /// Whether Lidarr took this artist a moment ago (the route's `?added=1`):
+  /// its albums are not read yet, and the page says so and reads them again
+  /// every [artistReadEvery] until some arrive, for at most [artistReadFor],
+  /// instead of calling the artist empty.
+  final bool justAdded;
 
   /// The connection this page belongs to, from the route's `?i=`; null
   /// falls through to the lens. Every read and every write on the page goes
@@ -71,6 +93,22 @@ class ArtistPage extends ConsumerStatefulWidget {
   ConsumerState<ArtistPage> createState() => _ArtistPageState();
 }
 
+/// How often a page opened right after the add reads the albums again, while
+/// Lidarr is still reading them.
+const artistReadEvery = Duration(seconds: 3);
+
+/// How long it keeps asking before it says what an artist with no albums says.
+const artistReadFor = Duration(seconds: 60);
+
+/// A place's heading and an album's row, as tall as they usually are: where a
+/// row that is not built yet is expected to be.
+const double _headingExtent = 56;
+const double _rowExtent = 89;
+
+/// How many rounds the page spends reaching a row that is not built, a
+/// viewport or an estimate at a time.
+const int _landingAttempts = 40;
+
 class _ArtistPageState extends ConsumerState<ArtistPage>
     with QualityProfileMixin<ArtistPage>, ArrDetailActionsMixin<ArtistPage> {
   /// Where Manage scrolls to.
@@ -86,6 +124,33 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
   /// Whether the albums Lidarr leaves alone are shown.
   var _showUnmonitored = false;
 
+  /// The kind of album the page shows; null for all of them. Lives while the
+  /// page does.
+  AlbumKind? _kind;
+
+  /// Whether the track finder stands where the albums do.
+  var _finding = false;
+
+  /// Keeps the artist's tracks, once the finder has read them, for as long as
+  /// the page lives: closing and opening the finder asks Lidarr nothing more.
+  ProviderSubscription<AsyncValue<List<LidarrTrack>>>? _tracksHold;
+
+  /// The album a found track sent the page to: its row opens on its tracks,
+  /// under [_landingKey] so the page can scroll to it.
+  int? _landingId;
+  var _landingKey = GlobalKey();
+
+  /// Whether the album the route named has been landed on: once, when the
+  /// albums first arrive.
+  var _openedRouteAlbum = false;
+
+  /// Where each album's row stands among the places, as the last build laid
+  /// them out: the heading of its place and its place in the group. A row
+  /// that is not built yet (rows are built as they scroll in) is reached
+  /// through this.
+  final _sites = <int, ({GlobalKey heading, int index})>{};
+  final _headings = <String, GlobalKey>{};
+
   /// What the switches were just set to, standing until the artist is read
   /// again: [_setOn] is the record they were set over.
   bool? _monitoredSet;
@@ -97,6 +162,28 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
   /// a write after an await goes to the connection the page showed even if
   /// the lens moved meanwhile.
   String _instanceId = '';
+
+  /// How many times the albums were read again while Lidarr was reading them,
+  /// and whether the wait is over: the albums arrived, or [artistReadFor]
+  /// passed.
+  var _readerTicks = 0;
+  var _waitOver = false;
+
+  /// One round of the wait: stops when albums are there or the time is up,
+  /// reads them again otherwise. Ticks only while the page is on screen
+  /// ([VisibilityPoller]), so a page left under another one asks no server.
+  void _readAlbums() {
+    _readerTicks++;
+    final albums = ref.read(lidarrArtistAlbumsProvider(_record)).value;
+    final arrived = albums != null && albums.isNotEmpty;
+    final gaveUp = artistReadEvery * _readerTicks >= artistReadFor;
+    if (arrived || gaveUp) {
+      // The page draws what it holds: the albums, or the empty copy.
+      if (mounted) setState(() => _waitOver = true);
+      return;
+    }
+    ref.invalidate(lidarrArtistAlbumsProvider(_record));
+  }
 
   LidarrService get _lidarr => _instanceId.isEmpty
       ? ref.read(lidarrServiceProvider)
@@ -113,7 +200,114 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
     });
   }
 
+  @override
+  void dispose() {
+    _tracksHold?.close();
+    super.dispose();
+  }
+
+  void _openFinder() {
+    // Read once, held until the page goes.
+    _tracksHold ??= ref.listenManual(
+      lidarrArtistTracksProvider(_record),
+      (_, _) {},
+    );
+    setState(() => _finding = true);
+  }
+
+  void _closeFinder() {
+    if (_finding && mounted) setState(() => _finding = false);
+  }
+
+  /// A found track's album: the finder closes, a kind that would hide the
+  /// album is cleared, and the page scrolls to the album's row and opens it
+  /// on its tracks.
+  void _landOn(LidarrAlbum album) {
+    setState(() {
+      _finding = false;
+      if (_kind != null && AlbumKind.of(album) != _kind) _kind = null;
+      if (ArtistShelf.of([album], now: DateTime.now()).unmonitored.isNotEmpty) {
+        _showUnmonitored = true;
+      }
+      _landingId = album.id;
+      _landingKey = GlobalKey();
+    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollToAlbum(album.id),
+    );
+  }
+
+  /// Brings the album's row into view. Rows are built as they scroll in, so
+  /// one far down may not exist yet: the page goes to its place's heading and
+  /// a row's height per row before it, which builds the row, and the next
+  /// round finds it.
+  void _scrollToAlbum(int id, [int attempt = 0]) {
+    if (!mounted || _landingId != id) return;
+    final animate = !MediaQuery.disableAnimationsOf(context);
+    final row = _landingKey.currentContext;
+    if (row != null) {
+      Scrollable.ensureVisible(
+        row,
+        alignment: 0.12,
+        duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    final site = _sites[id];
+    if (site == null || attempt >= _landingAttempts) return;
+    final heading = site.heading.currentContext;
+    final box = heading?.findRenderObject();
+    final viewport = box == null ? null : RenderAbstractViewport.maybeOf(box);
+    final position = _scrollPosition();
+    if (position == null) return;
+    if (box == null || viewport == null) {
+      // Neither the row nor its place's heading is built: the page steps
+      // toward the album a viewport at a time, which builds what it lands on.
+      final built = _headingOrder(onlyBuilt: true).firstOrNull;
+      final target = _headingOrder().indexOf(site.heading);
+      final down = built == null
+          ? position.pixels < position.maxScrollExtent - 1
+          : _headingOrder().indexOf(built) <= target;
+      final step = position.viewportDimension * (down ? 1 : -1);
+      position.jumpTo(
+        (position.pixels + step).clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+      );
+    } else {
+      final estimate =
+          viewport.getOffsetToReveal(box, 0).offset +
+          _headingExtent +
+          site.index * _rowExtent;
+      position.jumpTo(
+        estimate.clamp(position.minScrollExtent, position.maxScrollExtent),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollToAlbum(id, attempt + 1),
+    );
+  }
+
+  /// The places' headings in the order the page lays them out, optionally
+  /// only those that are built now.
+  List<GlobalKey> _headingOrder({bool onlyBuilt = false}) => [
+    for (final key in _headings.values)
+      if (!onlyBuilt || key.currentContext != null) key,
+  ];
+
+  /// The page's scroll position, from whatever of the page is built.
+  ScrollPosition? _scrollPosition() {
+    for (final key in [..._headings.values, _detailsKey, _landingKey]) {
+      final at = key.currentContext;
+      if (at != null) return Scrollable.maybeOf(at)?.position;
+    }
+    return null;
+  }
+
   void _readAgain() {
+    ref.invalidate(lidarrArtistTracksProvider(_record));
     ref.invalidate(lidarrArtistProvider(_record));
     ref.invalidate(lidarrArtistAlbumsProvider(_record));
     ref.invalidate(lidarrQueueSnapshotsForProvider(_instanceId));
@@ -182,7 +376,34 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
     final now = DateTime.now();
     final albumsAsync = ref.watch(lidarrArtistAlbumsProvider(_record));
     final albums = albumsAsync.value;
-    final shelf = albums == null ? null : ArtistShelf.of(albums, now: now);
+    // The artist's whole, for the summary and the covers; the places show one
+    // kind when one is chosen.
+    final whole = albums == null ? null : ArtistShelf.of(albums, now: now);
+    final kinds = albums == null
+        ? const <AlbumKindCount>[]
+        : albumKindsOf(albums);
+    // A kind the albums no longer have (read again) is no filter.
+    final kind = kinds.any((entry) => entry.kind == _kind) ? _kind : null;
+    final hasKinds = kinds.length > 1;
+    final shelf = albums == null
+        ? null
+        : ArtistShelf.of(albumsOfKind(albums, kind), now: now);
+    // The album a link named, once the albums are here: opened the way a found
+    // track's album is, after this frame (it settles the page's own state).
+    if (!_openedRouteAlbum && widget.openAlbumId != null && albums != null) {
+      final named = albums
+          .where((album) => album.id == widget.openAlbumId)
+          .firstOrNull;
+      if (named != null) {
+        _openedRouteAlbum = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _landOn(named);
+        });
+      }
+    }
+    // Lidarr took the artist a moment ago and has no albums to show yet.
+    final waiting = widget.justAdded && !_waitOver;
+    final reading = waiting && albums != null && albums.isEmpty;
     // The page's own connection's queue: the ids in it are that server's.
     final queues = lidarrQueueSnapshotsOf(
       ref.watch(lidarrQueueSnapshotsForProvider(_instanceId)),
@@ -202,7 +423,7 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
     ShelfArt? coverOf(LidarrAlbum album) => artOf(album.images, ['cover']);
     final photo = artOf(artist.images, ['poster']);
     final covers = [
-      for (final album in shelf?.covers ?? const <LidarrAlbum>[])
+      for (final album in whole?.covers ?? const <LidarrAlbum>[])
         if (coverOf(album) case final art?) (album: album, art: art),
     ];
     // The room is lit by the first cover the page has drawn, else the photo.
@@ -216,10 +437,15 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
     final monitored = _monitoredSet ?? artist.monitored;
 
     final room = CupolaRoom.of(context);
-    Widget section(String title, {String? trailing}) =>
-        SliverToBoxAdapter(child: MediaHeading(title, trailing: trailing));
+    _sites.clear();
+    Widget section(String title, {String? trailing, GlobalKey? key}) =>
+        SliverToBoxAdapter(
+          child: MediaHeading(title, trailing: trailing, key: key),
+        );
     Widget row(LidarrAlbum album) => _AlbumRow(
-      key: ValueKey(('album', album.id)),
+      key: album.id == _landingId ? _landingKey : ValueKey(('album', album.id)),
+      initiallyOpen: album.id == _landingId,
+      withKind: hasKinds,
       album: album,
       cover: coverOf(album),
       light: light,
@@ -237,14 +463,30 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
           : () => _searchReleases(album, artist: artist),
       now: now,
     );
-    Widget group(List<LidarrAlbum> albums) => ShelfSliverGroup(
-      itemCount: albums.length,
-      itemBuilder: (context, index) => row(albums[index]),
-    );
+    // A place: its heading, kept so that a row far down can be scrolled to,
+    // and its rows.
+    List<Widget> place(
+      String title,
+      List<LidarrAlbum> albums, {
+      String? count,
+      bool folded = false,
+    }) {
+      final heading = _headings.putIfAbsent(title, GlobalKey.new);
+      for (final (index, album) in albums.indexed) {
+        _sites[album.id] = (heading: heading, index: index);
+      }
+      return [
+        section(title, trailing: count, key: heading),
+        ShelfSliverGroup(
+          itemCount: albums.length,
+          itemBuilder: (context, index) => row(albums[index]),
+        ),
+      ];
+    }
 
-    return ShelfPage(
+    final page = ShelfPage(
       name: artist.artistName,
-      summary: shelf?.summary ?? '',
+      summary: reading ? 'Added just now' : whole?.summary ?? '',
       photo: photo,
       light: light,
       heroTag: widget.heroTag,
@@ -252,7 +494,7 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
       onMore: (plate) => _more(artist, name: name, plate: plate),
       onRefresh: () async => _readAgain(),
       slivers: [
-        if (covers.isNotEmpty)
+        if (covers.isNotEmpty && !_finding)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.only(top: AppSpacing.xl),
@@ -265,21 +507,23 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
               ),
             ),
           ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.lg),
-            child: _Actions(
-              searching: isAutoSearching,
-              onSearch: () => triggerSearch(
-                context: context,
-                serviceName: name,
-                successMessage: '$name is searching for every monitored album',
-                search: () => _lidarr.searchArtist(widget.artistId),
+        if (!_finding)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.lg),
+              child: _Actions(
+                searching: isAutoSearching,
+                onSearch: () => triggerSearch(
+                  context: context,
+                  serviceName: name,
+                  successMessage:
+                      '$name is searching for every monitored album',
+                  search: () => _lidarr.searchArtist(widget.artistId),
+                ),
+                onManage: _toDetails,
               ),
-              onManage: _toDetails,
             ),
           ),
-        ),
         if (_staleQueueLine(queues, name, artist: artist, albums: albums)
             case final line?)
           SliverToBoxAdapter(
@@ -307,6 +551,20 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
               child: ShimmerList(itemCount: 3, itemHeight: 64),
             ),
           ],
+          _ when reading => [
+            section('Albums'),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Text(
+                  '$name is reading ${artist.artistName}\u2019s albums. '
+                  'They appear here in a moment.',
+                  style: AppType.meta.copyWith(color: room.inkSecondary),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: _ReadingAlbums()),
+          ],
           _ when albums!.isEmpty => [
             section('Albums'),
             SliverToBoxAdapter(
@@ -318,40 +576,70 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
             ),
           ],
           _ => [
-            if (shelf.coming.isNotEmpty) ...[
-              section('Coming'),
-              group(shelf.coming),
-            ],
-            if (shelf.wanted.isNotEmpty) ...[
-              section(
-                StateWord.wanted.label,
-                trailing: _albumCount(shelf.wanted.length),
+            if (_finding)
+              ArtistTrackFinder(
+                artistName: artist.artistName,
+                record: _record,
+                albums: albums,
+                queue: queues.byAlbum,
+                now: now,
+                coverOf: (album) => coverOf(album),
+                onOpenAlbum: _landOn,
+                onClose: _closeFinder,
+              )
+            else ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.lg),
+                  child: hasKinds
+                      ? ArtistTypePills(
+                          kinds: kinds,
+                          total: albums.length,
+                          selected: kind,
+                          onSelected: (picked) =>
+                              setState(() => _kind = picked),
+                          onFindTrack: _openFinder,
+                          artistName: artist.artistName,
+                        )
+                      : ArtistFindTrackButton(onTap: _openFinder),
+                ),
               ),
-              group(shelf.wanted),
-            ],
-            if (shelf.onDisk.isNotEmpty) ...[
-              section('On disk', trailing: _albumCount(shelf.onDisk.length)),
-              group(shelf.onDisk),
-            ],
-            if (shelf.unmonitored.isNotEmpty) ...[
-              section(
-                'Unmonitored',
-                trailing: _albumCount(shelf.unmonitored.length),
-              ),
-              if (_showUnmonitored)
-                group(shelf.unmonitored)
-              else
-                SliverToBoxAdapter(
-                  child: MediaGroup(
-                    children: [
-                      MediaLinkRow(
-                        label: 'Show them',
-                        detail: '$name is not looking for these',
+              if (shelf.coming.isNotEmpty) ...place('Coming', shelf.coming),
+              if (shelf.wanted.isNotEmpty)
+                ...place(
+                  StateWord.wanted.label,
+                  shelf.wanted,
+                  count: albumCountWords(shelf.wanted.length, kind: kind),
+                ),
+              if (shelf.onDisk.isNotEmpty)
+                ...place(
+                  'On disk',
+                  shelf.onDisk,
+                  count: albumCountWords(shelf.onDisk.length, kind: kind),
+                ),
+              if (shelf.unmonitored.isNotEmpty)
+                if (_showUnmonitored)
+                  ...place(
+                    'Unmonitored',
+                    shelf.unmonitored,
+                    count: albumCountWords(
+                      shelf.unmonitored.length,
+                      kind: kind,
+                    ),
+                  )
+                else
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.md),
+                      child: _UnmonitoredLine(
+                        words: unmonitoredWords(
+                          shelf.unmonitored.length,
+                          kind: kind,
+                        ),
                         onTap: () => setState(() => _showUnmonitored = true),
                       ),
-                    ],
+                    ),
                   ),
-                ),
             ],
           ],
         },
@@ -407,10 +695,17 @@ class _ArtistPageState extends ConsumerState<ArtistPage>
           ),
       ],
     );
+    if (!widget.justAdded) return page;
+    return VisibilityPoller(
+      id: 'music.artist.albums.$_instanceId.${widget.artistId}',
+      interval: artistReadEvery,
+      // Albums that arrived end the wait on the next round: the page has
+      // nothing left to ask for.
+      enabled: waiting && !(albums?.isNotEmpty ?? false),
+      onTick: _readAlbums,
+      child: page,
+    );
   }
-
-  static String _albumCount(int count) =>
-      '$count ${count == 1 ? 'album' : 'albums'}';
 
   void _toDetails() {
     final target = _detailsKey.currentContext;
@@ -743,6 +1038,112 @@ class _Actions extends StatelessWidget {
   }
 }
 
+/// The albums Lidarr leaves alone, folded away: how many, in the words of the
+/// kind chosen (`1 unmonitored single`), and `Show them` at the end. One line,
+/// one button.
+class _UnmonitoredLine extends StatelessWidget {
+  const _UnmonitoredLine({required this.words, required this.onTap});
+
+  final String words;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final room = CupolaRoom.of(context);
+    final style = AppType.label.copyWith(color: room.inkSecondary);
+    final show = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Show them', style: style),
+        const SizedBox(width: AppSpacing.xs),
+        Icon(Icons.expand_more_rounded, size: 18, color: room.inkSecondary),
+      ],
+    );
+    // At a large reading size the two do not fit on one line without
+    // breaking a word: the way in goes under the count, at the end.
+    final stacked = MediaQuery.textScalerOf(context).scale(14) > 14 * 1.4;
+    return Semantics(
+      button: true,
+      label: '$words, show them',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: DesignTokens.sizeTouch),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(words, style: style),
+                    const SizedBox(height: AppSpacing.xs),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: show,
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: Text(words, style: style)),
+                    const SizedBox(width: AppSpacing.sm),
+                    show,
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Three album rows that are not there yet: the cover and two lines, as the
+/// rows will be drawn.
+class _ReadingAlbums extends StatelessWidget {
+  const _ReadingAlbums();
+
+  static const double _cover = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: MediaGroup(
+        children: [
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.row),
+              child: Row(
+                children: [
+                  ShimmerPlaceholder(
+                    width: _cover,
+                    height: _cover,
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FractionallySizedBox(
+                          widthFactor: 0.55,
+                          child: ShimmerPlaceholder.text(),
+                        ),
+                        const SizedBox(height: AppSpacing.s),
+                        FractionallySizedBox(
+                          widthFactor: 0.35,
+                          child: ShimmerPlaceholder.text(height: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The page while it reads the artist: the disc's place and two lines.
 class _Waiting extends StatelessWidget {
   const _Waiting();
@@ -834,7 +1235,16 @@ class _AlbumRow extends StatelessWidget {
     required this.onSearch,
     required this.onSearchReleases,
     required this.now,
+    required this.withKind,
+    required this.initiallyOpen,
   });
+
+  /// Whether the row says what kind of album it is: only for an artist whose
+  /// albums are of several kinds.
+  final bool withKind;
+
+  /// Opens on its tracks as it is built: the album a found track is on.
+  final bool initiallyOpen;
 
   final LidarrAlbum album;
   final ShelfArt? cover;
@@ -862,12 +1272,15 @@ class _AlbumRow extends StatelessWidget {
       title: album.title,
       // An album not out yet says when, and nothing else: its tracks and
       // length are Lidarr's guess.
-      facts: coming ? null : albumFacts(album).join(dotSeparator),
+      facts: coming
+          ? null
+          : albumFacts(album, withKind: withKind).join(dotSeparator),
+      initiallyOpen: initiallyOpen,
       state: state,
       detail: detail,
       spoken: [
         album.title,
-        if (!coming) ...albumSpokenFacts(album),
+        if (!coming) ...albumSpokenFacts(album, withKind: withKind),
         ?state?.word,
         ?detail,
       ].join(', '),

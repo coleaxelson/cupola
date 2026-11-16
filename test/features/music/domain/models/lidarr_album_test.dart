@@ -31,6 +31,35 @@ void main() {
         expect(album.completionPercent, closeTo(0.75, 0.0001));
       });
 
+      test('reads the secondary types as Lidarr sends them: strings', () {
+        final album = LidarrAlbum.fromJson({
+          'id': 1,
+          'albumType': 'Album',
+          'secondaryTypes': ['Live', ' Compilation ', '', 3],
+        });
+
+        expect(album.albumType, 'Album');
+        expect(album.secondaryTypes, ['Live', 'Compilation']);
+      });
+
+      test('reads a secondary type sent as a record with a name', () {
+        final album = LidarrAlbum.fromJson({
+          'secondaryTypes': [
+            {'id': 1, 'name': 'Soundtrack'},
+          ],
+        });
+
+        expect(album.secondaryTypes, ['Soundtrack']);
+      });
+
+      test('has no secondary types when Lidarr sends none', () {
+        expect(LidarrAlbum.fromJson({'id': 1}).secondaryTypes, isEmpty);
+        expect(
+          LidarrAlbum.fromJson({'secondaryTypes': null}).secondaryTypes,
+          isEmpty,
+        );
+      });
+
       test('handles missing values with safe defaults', () {
         final album = LidarrAlbum.fromJson(<String, dynamic>{});
 

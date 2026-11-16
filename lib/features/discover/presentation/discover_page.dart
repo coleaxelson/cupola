@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,7 +26,6 @@ import 'package:cupola/core/widgets/glass_app_bar.dart';
 import 'package:cupola/core/widgets/not_configured_placeholder.dart';
 import 'package:cupola/core/widgets/pressable_scale.dart';
 import 'package:cupola/core/widgets/search_bar_header.dart';
-import 'package:cupola/core/widgets/shimmer_placeholder.dart';
 import 'package:cupola/core/widgets/status_badge.dart';
 import 'package:cupola/features/discover/domain/seerr_numbering.dart';
 import 'package:cupola/features/discover/domain/seerr_status.dart';
@@ -37,13 +34,16 @@ import 'package:cupola/features/discover/presentation/discover_calendar_band.dar
 import 'package:cupola/features/discover/presentation/discover_details_provider.dart';
 import 'package:cupola/features/discover/presentation/discover_room_light.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_region_chip.dart';
+import 'package:cupola/features/discover/presentation/widgets/discover_music_section.dart';
+import 'package:cupola/features/discover/presentation/widgets/more_from_your_artists_shelf.dart';
 import 'package:cupola/features/discover/presentation/widgets/search_row.dart';
 import 'package:cupola/features/discover/presentation/widgets/seerr_not_set_up.dart';
 import 'package:cupola/features/media/presentation/media_add_sheet.dart';
 import 'package:cupola/features/media/presentation/open_media.dart';
-import 'package:cupola/features/music/presentation/music_search_provider.dart';
+import 'package:cupola/features/music/presentation/more_from_your_artists_provider.dart';
 import 'package:cupola/features/search/domain/global_search_result.dart';
 import 'package:cupola/features/search/domain/search_sections.dart';
+import 'package:cupola/features/search/presentation/discover_music_provider.dart';
 import 'package:cupola/features/search/presentation/global_search_provider.dart';
 import 'package:cupola/features/search/presentation/recent_searches_provider.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
@@ -55,7 +55,7 @@ import 'package:cupola/core/widgets/screen_title.dart';
 /// The Discover tab: at rest it browses Seerr's catalogue (the atrium);
 /// focused and empty, it offers the recent searches; typing, it searches
 /// everywhere and lays the answer out by kind: On your server,
-/// Movies, Series, People, then Lidarr's own search for the word.
+/// Movies, Series, Music (the operator's music source), People.
 class DiscoverPage extends ConsumerStatefulWidget {
   const DiscoverPage({super.key});
 
@@ -147,10 +147,15 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     final seerr = watchSeerrConfigured(ref);
     final requester = ref.watch(audienceProvider) == Audience.requester;
 
-    // People come from Seerr: without it the field finds titles alone.
-    final hint = seerr || requester
-        ? 'Movies, series, people'
-        : 'Movies and series';
+    // People come from Seerr: without it the field finds titles alone. Music
+    // comes from the operator's music source, which a requester has none of.
+    final music = ref.watch(hasMusicSourceProvider);
+    final hint = switch ((seerr || requester, music)) {
+      (true, true) => 'Movies, series, people, music',
+      (true, false) => 'Movies, series, people',
+      (false, true) => 'Movies, series, music',
+      (false, false) => 'Movies and series',
+    };
     final field = KeyedSubtree(
       key: _fieldKey,
       child: SearchBarHeader(
@@ -226,7 +231,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                 SizedBox(height: MediaQuery.paddingOf(context).top),
                 LayoutBuilder(
                   builder: (context, box) => Padding(
-                    padding: EdgeInsets.only(right: _rowsInset(box.maxWidth)),
+                    padding: EdgeInsets.only(
+                      right: searchRowsInset(box.maxWidth),
+                    ),
                     child: field,
                   ),
                 ),
@@ -292,12 +299,12 @@ class _Recents extends ConsumerWidget {
     return TextFieldTapRegion(
       child: LayoutBuilder(
         builder: (context, box) => ListView(
-          padding: _rowsPadding(box.maxWidth, bottom: bottomPadding),
+          padding: searchRowsPadding(box.maxWidth, bottom: bottomPadding),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             Row(
               children: [
-                Expanded(child: _Heading('Recent searches', top: 0)),
+                Expanded(child: SearchHeading('Recent searches', top: 0)),
                 TextButton(
                   onPressed: notifier.clear,
                   style: TextButton.styleFrom(
@@ -369,45 +376,6 @@ class _Recents extends ConsumerWidget {
   }
 }
 
-/// A list of rows at the head of the tab, never wider than a page of one
-/// column ([AppBreakpoints.readingWell]): a title's row and its add, a
-/// recent search and its remove, are read across, and stretched over a
-/// tablet on its side the control stops belonging to its row. The list still
-/// scrolls the whole width, and on a phone this is the gutter alone.
-EdgeInsets _rowsPadding(double width, {required double bottom}) =>
-    EdgeInsets.fromLTRB(
-      AppSpacing.lg,
-      0,
-      AppSpacing.lg + _rowsInset(width),
-      bottom,
-    );
-
-/// How much of [width] lies right of the rows' column, past its gutter.
-double _rowsInset(double width) =>
-    math.max(0, width - 2 * AppSpacing.lg - AppBreakpoints.readingWell);
-
-/// A section's name, in the secondary ink.
-class _Heading extends StatelessWidget {
-  const _Heading(this.text, {this.top = AppSpacing.md});
-
-  final String text;
-  final double top;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(top: top, bottom: AppSpacing.xxs),
-    child: Semantics(
-      header: true,
-      child: Text(
-        text,
-        style: AppType.label.copyWith(
-          color: CupolaRoom.of(context).inkSecondary,
-        ),
-      ),
-    ),
-  );
-}
-
 /// What a search found, by kind.
 class _Results extends ConsumerWidget {
   const _Results({required this.query, required this.bottomPadding});
@@ -418,24 +386,23 @@ class _Results extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lanes = ref.watch(globalSearchLanesProvider);
-    final requester = ref.watch(audienceProvider) == Audience.requester;
     final sections = searchSections(
       lanes,
       numbering: ref.watch(seerrNumberingProvider).value,
     );
+    final music = ref.watch(discoverMusicProvider);
     final room = CupolaRoom.of(context);
     final dim = room.inkSecondary;
-    final lidarr =
-        !requester &&
-        ref.watch(
-          currentSettingsProvider.select(
-            (settings) => settings.isServiceConfigured(ServiceKey.lidarr),
-          ),
-        );
+
+    // How many sources were asked and how many stopped short: "nothing
+    // called" is said only when one of them answered.
+    final asked = lanes.length + (music is DiscoverMusicOff ? 0 : 1);
+    final silent =
+        sections.silent.length + (music is DiscoverMusicFault ? 1 : 0);
 
     final people = <Widget>[
       if (sections.people.isNotEmpty || sections.peopleAsked) ...[
-        const _Heading('People'),
+        const SearchHeading('People'),
         if (sections.people.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.s),
@@ -460,34 +427,51 @@ class _Results extends ConsumerWidget {
     final children = <Widget>[
       // What is missing first: it qualifies everything under it.
       for (final lane in sections.silent) _SilentSource(lane: lane),
-      if (sections.isEmpty && sections.searching)
-        const _Searching()
-      else if (sections.isEmpty) ...[
-        if (sections.silent.length < lanes.length) _Nothing(query: query),
+      if (music case DiscoverMusicFault(
+        :final lane,
+        :final sentence,
+        :final readsLibrary,
+      ))
+        _SilentSource(
+          lane: lane,
+          message: sentence,
+          onRetry: () => retryDiscoverMusic(ref, readsLibrary: readsLibrary),
+        ),
+      if (sections.isEmpty && music is! DiscoverMusicFound) ...[
+        if (sections.searching)
+          const SearchRowsPending(label: 'Searching')
+        else if (music is DiscoverMusicAsking)
+          // The others answered with nothing: the music source is what is
+          // left.
+          DiscoverMusicSection(query: query)
+        else if (silent < asked)
+          _Nothing(query: query, music: music is DiscoverMusicNothing),
       ] else ...[
         if (sections.onServer.isNotEmpty) ...[
-          const _Heading('On your server', top: AppSpacing.xs),
+          const SearchHeading('On your server', top: AppSpacing.xs),
           for (final title in sections.onServer) _TitleRow(title: title),
         ],
         // A word that names someone leads with them; else the titles do.
         if (sections.peopleFirst) ...people,
         if (sections.movies.isNotEmpty) ...[
-          const _Heading('Movies'),
+          const SearchHeading('Movies'),
           for (final title in sections.movies) _TitleRow(title: title),
         ],
         if (sections.series.isNotEmpty) ...[
-          const _Heading('Series'),
+          const SearchHeading('Series'),
           for (final title in sections.series) _TitleRow(title: title),
         ],
+        // Music after the titles, where there is a music source to ask.
+        DiscoverMusicSection(query: query),
         if (!sections.peopleFirst) ...people,
-        if (sections.searching) const _Searching(rows: 1),
+        if (sections.searching)
+          const SearchRowsPending(label: 'Searching', rows: 1),
       ],
-      if (lidarr && sections.settled) _LidarrLink(query: query),
     ];
 
     return LayoutBuilder(
       builder: (context, box) => ListView(
-        padding: _rowsPadding(
+        padding: searchRowsPadding(
           box.maxWidth,
           bottom: AppSpacing.xl + bottomPadding,
         ),
@@ -601,14 +585,29 @@ class _TitleRow extends ConsumerWidget {
 /// with the remedy its cause names and Retry where asking again can help.
 /// The requester reads one line, never the cause.
 class _SilentSource extends ConsumerWidget {
-  const _SilentSource({required this.lane});
+  const _SilentSource({required this.lane, this.message, this.onRetry});
 
   final GlobalSearchServiceResults lane;
+
+  /// What the line says in place of the lane's own, where its cause is not
+  /// the whole story.
+  final String? message;
+
+  /// Asks the source again, when it is not one of the search's own lanes.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gate = ref.watch(roleGateOfProvider(lane.instanceId));
-    void retry() => ref.invalidate(globalSearchLegProvider(lane.leg));
+    void retry() {
+      final again = onRetry;
+      if (again != null) {
+        again();
+      } else {
+        ref.invalidate(globalSearchLegProvider(lane.leg));
+      }
+    }
+
     if (!gate.namesService(lane.service)) {
       return Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -643,7 +642,7 @@ class _SilentSource extends ConsumerWidget {
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Text(
-            lane.faultSentence,
+            message ?? lane.faultSentence,
             style: AppType.meta.copyWith(
               color: CupolaRoom.of(context).inkSecondary,
             ),
@@ -688,152 +687,22 @@ class _SilentSource extends ConsumerWidget {
   };
 }
 
-/// Rows still on their way: plates at a row's size.
-class _Searching extends StatelessWidget {
-  const _Searching({this.rows = 3});
-
-  final int rows;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    label: 'Searching',
-    child: Column(
-      children: [
-        for (var i = 0; i < rows; i++)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-            child: Row(
-              children: [
-                ShimmerPlaceholder(
-                  width: 44,
-                  height: 66,
-                  borderRadius: BorderRadius.circular(AppRadius.thumb),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ShimmerPlaceholder(
-                        height: 14,
-                        width: 160,
-                        borderRadius: AppRadius.borderRadiusXs,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      ShimmerPlaceholder(
-                        height: 12,
-                        width: 100,
-                        borderRadius: AppRadius.borderRadiusXs,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
-/// Nothing anywhere, once every source has answered.
+/// Nothing anywhere, once every source has answered. [music] says the music
+/// source was asked, so that it is named with the rest.
 class _Nothing extends StatelessWidget {
-  const _Nothing({required this.query});
+  const _Nothing({required this.query, required this.music});
 
   final String query;
+  final bool music;
 
   @override
-  Widget build(BuildContext context) {
-    final room = CupolaRoom.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xl),
-      child: Column(
-        children: [
-          Text(
-            'Nothing called “$query”',
-            textAlign: TextAlign.center,
-            style: AppType.section.copyWith(color: room.ink),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'No movie, series or person by that name. A release name is '
-            'often not the title: try the name of the series.',
-            textAlign: TextAlign.center,
-            style: AppType.meta.copyWith(color: room.inkSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Lidarr's own search for the word: music is not in the catalogue.
-class _LidarrLink extends ConsumerWidget {
-  const _LidarrLink({required this.query});
-
-  final String query;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final room = CupolaRoom.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg),
-      child: PressableScale(
-        onTap: () {
-          ref.read(musicSearchQueryProvider.notifier).state = query;
-          context.go(ServiceRoutes.lidarrLibrary);
-        },
-        semanticLabel: 'Search Lidarr for $query',
-        semanticHint: 'Music is not in the movie and series catalog',
-        excludeChildSemantics: true,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 60),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
-          decoration: BoxDecoration(
-            color: room.door,
-            borderRadius: BorderRadius.circular(AppRadius.door),
-            border: Border.all(color: room.hair),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: room.fillQuiet,
-                  borderRadius: AppRadius.borderRadiusMd,
-                  border: Border.all(color: room.hair),
-                ),
-                child: Icon(ServiceKey.lidarr.icon, size: 19, color: room.ink),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Search Lidarr for “$query”',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.row.copyWith(color: room.ink),
-                    ),
-                    Text(
-                      'Artists and albums aren’t in the movie catalog',
-                      style: AppType.meta.copyWith(color: room.inkSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: room.inkSecondary),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SearchNothing(
+    title: 'Nothing called “$query”',
+    message:
+        'No ${music ? 'movie, series, person or music' : 'movie, series or person'} '
+        'by that name. A release name is often not the title: try the name of '
+        'the series.',
+  );
 }
 
 /// At rest with no Seerr: the catalogue's place, and what the field can
@@ -853,8 +722,11 @@ class _WithoutSeerr extends ConsumerWidget {
     final searchable = globalSearchServices
         .where(settings.isServiceConfigured)
         .toList(growable: false);
+    // Music is searched too, where there is a source for it: that is a way in
+    // all the same.
+    final music = ref.watch(hasMusicSourceProvider);
 
-    if (searchable.isEmpty) {
+    if (searchable.isEmpty && !music) {
       final notSetUp = globalSearchServices
           .where((service) => !settings.hasServiceConnection(service))
           .toList(growable: false);
@@ -899,6 +771,9 @@ class _WithoutSeerr extends ConsumerWidget {
       children: [
         // The calendar comes from the arrs, and needs no Seerr.
         const DiscoverCalendarBand(),
+        // Albums the library's artists made and nothing looks for: Lidarr's,
+        // and no Seerr needed.
+        const MoreFromYourArtistsShelf(),
         // A paragraph: never a line longer than a page of one column.
         Container(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -926,7 +801,7 @@ class _WithoutSeerr extends ConsumerWidget {
                 Text(
                   'Set up Seerr to browse movies and series by genre, network '
                   'and studio, and see what is coming. The field above '
-                  'searches ${_serviceList(searchable)}.',
+                  'searches ${_serviceList([...searchable, if (music) ServiceKey.lidarr])}.',
                   style: AppType.meta.copyWith(color: room.inkSecondary),
                 ),
                 const SizedBox(height: AppSpacing.lg),

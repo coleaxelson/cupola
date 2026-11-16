@@ -62,6 +62,10 @@ class AppAnimation {
   /// 520ms - An entrance: rise and fade.
   static const Duration enter = DesignTokens.motionEnterDuration;
 
+  /// 150ms - What a bar that would have slid, or a state that would have
+  /// eased, does under Reduce Motion: a fade of this length.
+  static const Duration reducedFade = Duration(milliseconds: 150);
+
   /// 450ms - The poster → Media flight.
   static const Duration shared = DesignTokens.motionSharedDuration;
 

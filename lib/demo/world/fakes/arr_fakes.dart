@@ -582,6 +582,31 @@ class RadarrFake extends ArrFake {
 
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    // The editor, as Radarr's own front end sets or removes several movies:
+    // the ones it names. A living world keeps the monitoring and the removal;
+    // a profile is accepted and not kept.
+    if (r.method == 'PUT' && r.path == '/api/v3/movie/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['movieIds'] : null;
+      if (c.life != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          final movie = c.life!.arrs.movie(c.server.id, id);
+          if (movie != null && body['monitored'] is bool) {
+            movie.monitored = body['monitored'] as bool;
+          }
+        }
+      }
+      return const NetworkReply(200, body: '[]');
+    }
+    if (r.method == 'DELETE' && r.path == '/api/v3/movie/editor') {
+      final ids = (r.json is Map) ? (r.json as Map)['movieIds'] : null;
+      if (ids is List) {
+        for (final id in ids.whereType<int>()) {
+          c.life?.arrs.deleteMovie(c.server.id, id);
+        }
+      }
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method == 'GET' && r.path == '/api/v3/collection') {
       // Every Blender film belongs to one collection; Radarr lists it once
       // it holds one of them.
@@ -1169,6 +1194,29 @@ class SonarrFake extends ArrFake {
 
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    // The editor: see Radarr's.
+    if (r.method == 'PUT' && r.path == '/api/v3/series/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['seriesIds'] : null;
+      if (c.life != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          final live = _live(c, id);
+          if (live != null && body['monitored'] is bool) {
+            live.monitored = body['monitored'] as bool;
+          }
+        }
+      }
+      return const NetworkReply(202, body: '[]');
+    }
+    if (r.method == 'DELETE' && r.path == '/api/v3/series/editor') {
+      final ids = (r.json is Map) ? (r.json as Map)['seriesIds'] : null;
+      if (ids is List) {
+        for (final id in ids.whereType<int>()) {
+          c.life?.arrs.deleteSeries(c.server.id, id);
+        }
+      }
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method == 'GET' && r.path == '/api/v3/series') {
       // `?tvdbId=` filters, as Sonarr's own route does.
       final tvdb = r.query['tvdbId'];
@@ -1400,6 +1448,305 @@ class LidarrFake extends ArrFake {
     },
   };
 
+  /// The rest of the library: made-up groups, so that the wall has a few
+  /// screens of artists to scroll and letters to jump to (it grows its A–Z
+  /// strip at forty), with some of them short of albums Lidarr still wants.
+  /// Every letter but Q, U, X and Z has one, so the strip shows dimmed
+  /// letters too. Their ids start at [_shelfFirstId], well clear of the world's
+  /// own (1) and of the artists the demo adds, which count up from 2.
+  static const _shelfNames = [
+    'Alder Quartet',
+    'Amber Static',
+    'Aurelia Row',
+    'Birch & Hollow',
+    'Brass Lantern',
+    'Blue Harbor Choir',
+    'Cobalt Meadow',
+    'Copper Tide',
+    'Cedar Lines',
+    'Dune Orchestra',
+    'Dust Cathedral',
+    'Echo Parade',
+    'Elm Street Brass',
+    'Fable Hours',
+    'Fern & Flint',
+    'Garden Machine',
+    'Glass Orchard',
+    'Harbor Lights Trio',
+    'Hollow Pines',
+    'Indigo Ferry',
+    'Juniper Wire',
+    'Jade Cassette',
+    'Kestrel Union',
+    'Lantern Society',
+    'Low Tide Radio',
+    'Lumen Choir',
+    'Marble Valley',
+    'Moss Telegraph',
+    'Midnight Orchard',
+    'Night Ferry',
+    'North Pier',
+    'Oak Frequency',
+    'Opal Room',
+    'Paper Cranes',
+    'Pale Harbor',
+    'Rivet Sky',
+    'Rust Garden',
+    'Slate Meadow',
+    'Soft Engines',
+    'Salt Flats Ensemble',
+    'Tin Orchard',
+    'Tidal Archive',
+    'Tundra Mail',
+    'Velvet Static',
+    'Willow Machine',
+    'Winter Dock',
+    'Yarrow Lines',
+    '1000 Paper Boats',
+  ];
+
+  /// How many artists the shelf holds, beside the world's own.
+  static int get shelfCount => _shelfNames.length;
+
+  static const _shelfFirstId = 1001;
+  static const _shelfTracksPerAlbum = 10;
+
+  /// Albums the shelf artist at [index] holds: three to ten.
+  static int _shelfAlbumCount(int index) => 3 + (index * 5) % 8;
+
+  /// Albums of the artist at [index] that Lidarr wants (released, monitored,
+  /// nothing on disk): one artist in five has one to three.
+  static int _shelfWantedCount(int index) => index % 5 == 1 ? 1 + index % 3 : 0;
+
+  /// Tracks short on an album that is otherwise there: now and then.
+  static int _shelfTracksShort(int index) => index % 7 == 3 ? 3 : 0;
+
+  /// The artist at [index] of [_shelfNames], as `GET /api/v1/artist` sends it.
+  JsonMap _shelfArtist(ServerContext c, int index) {
+    final albums = _shelfAlbumCount(index);
+    final tracks = albums * _shelfTracksPerAlbum;
+    final onDisk =
+        (albums - _shelfWantedCount(index)) * _shelfTracksPerAlbum -
+        _shelfTracksShort(index);
+    final name = _shelfNames[index];
+    return {
+      'id': _shelfFirstId + index,
+      'artistName': name,
+      'sortName': name.toLowerCase(),
+      'foreignArtistId': 'artist-shelf-${_shelfFirstId + index}',
+      'status': 'continuing',
+      'monitored': true,
+      'monitorNewItems': 'all',
+      'path': '${rootFolder(c)}/$name',
+      'qualityProfileId': 1,
+      'metadataProfileId': 1,
+      'added': c.ago(Duration(days: 30 + index * 7)),
+      'images': const <Object?>[],
+      'statistics': {
+        'albumCount': albums,
+        'trackFileCount': onDisk,
+        'trackCount': tracks,
+        'totalTrackCount': tracks,
+        'sizeOnDisk': onDisk * 30000000,
+        'percentOfTracks': 100.0 * onDisk / tracks,
+      },
+    };
+  }
+
+  /// [artist] with what the demo changed on it by the editor: what was set,
+  /// and nothing else.
+  JsonMap _edited(ServerContext c, JsonMap artist) {
+    final edit = c.life?.arrs.artistEdit(c.server.id, artist['id'] as int);
+    if (edit == null) return artist;
+    return {
+      ...artist,
+      'monitored': ?edit.monitored,
+      'monitorNewItems': ?edit.monitorNewItems,
+      'qualityProfileId': ?edit.qualityProfileId,
+      'metadataProfileId': ?edit.metadataProfileId,
+    };
+  }
+
+  /// The albums of the artist at [index], as `GET /api/v1/album` sends them:
+  /// the wanted ones with no file, then the ones left alone.
+  List<JsonMap> _shelfAlbums(ServerContext c, int index) {
+    final artist = _shelfArtist(c, index);
+    final count = _shelfAlbumCount(index);
+    final wanted = _shelfWantedCount(index);
+    return [
+      for (var n = 0; n < count; n++)
+        {
+          'id': (_shelfFirstId + index) * 100 + n,
+          'artistId': _shelfFirstId + index,
+          'title': 'Record ${n + 1}',
+          'foreignAlbumId': 'album-shelf-${_shelfFirstId + index}-$n',
+          'albumType': _shelfAlbumType(n),
+          'secondaryTypes': _shelfSecondaryTypes(n),
+          'monitored': true,
+          'releaseDate': '${1996 + (index + n * 3) % 28}-06-01T00:00:00Z',
+          'images': const <Object?>[],
+          'artist': artist,
+          'statistics': {
+            'trackFileCount': n >= count - wanted
+                ? 0
+                : (n == 0
+                      ? _shelfTracksPerAlbum - _shelfTracksShort(index)
+                      : _shelfTracksPerAlbum),
+            'trackCount': _shelfTracksPerAlbum,
+            'totalTrackCount': _shelfTracksPerAlbum,
+          },
+        },
+      ..._shelfLeftAlone(c, index, artist),
+    ];
+  }
+
+  /// How many albums of the artist at [index] Lidarr holds and was told to
+  /// leave alone: out already, nothing on disk. One artist in three has one or
+  /// two, which is what Discover's `More from your artists` is made of.
+  static int _shelfLeftAloneCount(int index) =>
+      index % 3 == 2 ? 1 + index % 2 : 0;
+
+  /// What those albums are called, in the order a shelf artist takes them.
+  static const _leftAloneTitles = [
+    'Demos and Rarities',
+    'Radio Sessions',
+    'B-Sides',
+    'Sketches',
+    'Winter Tapes',
+    'Remixes',
+  ];
+
+  /// An album the library holds and Lidarr leaves alone: out, nothing on
+  /// disk, not monitored. [artist] is the record it embeds.
+  JsonMap _leftAlone(
+    int id, {
+    required int artistId,
+    required JsonMap artist,
+    required String title,
+    required String type,
+    required String releaseDate,
+  }) => {
+    'id': id,
+    'artistId': artistId,
+    'title': title,
+    'foreignAlbumId': 'album-left-alone-$id',
+    'albumType': type,
+    'monitored': false,
+    'releaseDate': releaseDate,
+    'images': const <Object?>[],
+    'artist': artist,
+    'statistics': {'trackFileCount': 0, 'trackCount': 5, 'totalTrackCount': 5},
+  };
+
+  /// The shelf artist [index]'s albums left alone, as `GET /api/v1/album`
+  /// sends them. Ids after the monitored ones' (their ten at most).
+  List<JsonMap> _shelfLeftAlone(ServerContext c, int index, JsonMap artist) => [
+    for (var k = 0; k < _shelfLeftAloneCount(index); k++)
+      _leftAlone(
+        (_shelfFirstId + index) * 100 + 50 + k,
+        artistId: _shelfFirstId + index,
+        artist: artist,
+        title: _leftAloneTitles[(index + k) % _leftAloneTitles.length],
+        type: const ['EP', 'Single', 'Album'][(index + k) % 3],
+        releaseDate:
+            '${2003 + (index * 3 + k * 5) % 22}-0${1 + (index + k) % 9}-15'
+            'T00:00:00Z',
+      ),
+  ];
+
+  /// The world's own artist's albums left alone, the board's three: an EP and
+  /// two singles, out and unmonitored. The demo's alone, like the shelf: a
+  /// profile read as written holds the four albums it always held.
+  List<JsonMap> _worldLeftAlone(ServerContext c) => c.life == null
+      ? const []
+      : [
+          for (final (id, title, type, date) in const [
+            (11, 'Big Buck Bunny Suite', 'EP', '2008-05-10T00:00:00Z'),
+            (12, 'The Dragon', 'Single', '2010-09-27T00:00:00Z'),
+            (13, 'Snow', 'Single', '2010-10-01T00:00:00Z'),
+          ])
+            _leftAlone(
+              id,
+              artistId: 1,
+              artist: _artist(c),
+              title: title,
+              type: type,
+              releaseDate: date,
+            ),
+        ];
+
+  /// The kinds the shelf's albums come in, so that an artist with four albums
+  /// or more has more than one and the page offers them by kind: every fourth
+  /// is a single, every fifth an EP, and every sixth, from the second, a live
+  /// album (a secondary type, as MusicBrainz has it over the primary one).
+  static String _shelfAlbumType(int n) => switch (n % 5) {
+    3 => 'Single',
+    4 => 'EP',
+    _ => 'Album',
+  };
+
+  static List<String> _shelfSecondaryTypes(int n) => [
+    if (n % 6 == 1) 'Live',
+    if (n % 6 == 2) 'Studio',
+  ];
+
+  /// Titles the shelf's tracks are drawn from: a few shared between albums,
+  /// as songs are, and one with an accent for the finder to be blind to.
+  static const _shelfTrackTitles = [
+    'Low Tide',
+    'Paper Lantern',
+    'The Long Way Round',
+    'Static Bloom',
+    'Caf\u00E9 Lumi\u00E8re',
+    'Copper Sky',
+    'Slow Harbor',
+    'Glass Orchard',
+    'Winter Dock',
+    'The Dragon',
+  ];
+
+  /// The tracks of the shelf artist at [index], as `GET /api/v1/track` sends
+  /// them: each album's, the ones on disk first as the album's statistics say.
+  List<JsonMap> _shelfTracks(ServerContext c, int index) => [
+    for (final album in _shelfAlbums(c, index))
+      for (
+        var t = 0;
+        t < ((album['statistics'] as JsonMap)['totalTrackCount'] as int);
+        t++
+      )
+        {
+          'id': (album['id'] as int) * 100 + t,
+          'albumId': album['id'],
+          'artistId': _shelfFirstId + index,
+          'mediumNumber': 1,
+          'trackNumber': '${t + 1}',
+          'title':
+              _shelfTrackTitles[((album['id'] as int) * 3 + t) %
+                  _shelfTrackTitles.length],
+          'duration': 150000 + t * 19000 + (album['id'] as int) % 7 * 4000,
+          'hasFile':
+              t < ((album['statistics'] as JsonMap)['trackFileCount'] as int),
+        },
+  ];
+
+  /// Every album of the shelf artists, for the routes that list them all.
+  List<JsonMap> _allShelfAlbums(ServerContext c) => [
+    for (var i = 0; i < _shelfSize(c); i++) ..._shelfAlbums(c, i),
+  ];
+
+  /// How many shelf artists this world holds: the shelf is the demo's alone,
+  /// served only once the world lives. A profile read as written (the tests',
+  /// the testlab's) has the world's own artist and nothing else, as it had
+  /// before the shelf.
+  static int _shelfSize(ServerContext c) =>
+      c.life == null ? 0 : _shelfNames.length;
+
+  /// The index in [_shelfNames] of the artist with library id [id], or null.
+  static int? _shelfIndexOf(ServerContext c, int id) {
+    final index = id - _shelfFirstId;
+    return index >= 0 && index < _shelfSize(c) ? index : null;
+  }
+
   /// Sintel's five tracks, as `GET /api/v1/track?albumId=3` sends them; the
   /// other albums list none.
   static const _sintelTracks = [
@@ -1410,8 +1757,51 @@ class LidarrFake extends ArrFake {
     (5, 'Finale', 270000),
   ];
 
-  List<JsonMap> _tracks(NetworkRequest r) => [
-    if (r.uri.queryParameters['albumId'] == '3')
+  /// The tracks of the world's own artist's albums left alone: five each, none
+  /// on disk, as the albums' statistics say. The demo's alone, with the albums.
+  List<JsonMap> _worldLeftAloneTracks(ServerContext c) => [
+    for (final album in _worldLeftAlone(c))
+      for (var t = 0; t < 5; t++)
+        {
+          'id': (album['id'] as int) * 100 + t,
+          'albumId': album['id'],
+          'artistId': 1,
+          'mediumNumber': 1,
+          'trackNumber': '${t + 1}',
+          'title':
+              _shelfTrackTitles[((album['id'] as int) * 3 + t) %
+                  _shelfTrackTitles.length],
+          'duration': 160000 + t * 21000 + (album['id'] as int) % 7 * 3000,
+          'hasFile': false,
+        },
+  ];
+
+  /// Asked for an artist's, the world's own has Sintel's (and the ones of the
+  /// albums left alone) and a shelf artist every album's; asked for an
+  /// album's, that album's: a shelf artist's, one left alone, or Sintel's.
+  List<JsonMap> _tracks(ServerContext c, NetworkRequest r) {
+    final artist = int.tryParse(r.query['artistId'] ?? '');
+    final album = int.tryParse(r.query['albumId'] ?? '');
+    final shelved = artist != null
+        ? _shelfIndexOf(c, artist)
+        : album == null
+        ? null
+        : _shelfIndexOf(c, album ~/ 100);
+    if (shelved != null) {
+      return [
+        for (final track in _shelfTracks(c, shelved))
+          if (album == null || track['albumId'] == album) track,
+      ];
+    }
+    return [
+      ..._sintelTrackList(withSintel: artist == 1 || album == 3),
+      for (final track in _worldLeftAloneTracks(c))
+        if (artist == 1 || track['albumId'] == album) track,
+    ];
+  }
+
+  List<JsonMap> _sintelTrackList({required bool withSintel}) => [
+    if (withSintel)
       for (final (number, title, duration) in _sintelTracks)
         {
           'id': 300 + number,
@@ -1460,12 +1850,15 @@ class LidarrFake extends ArrFake {
       if (album['id'] == 4) album,
   ];
 
-  /// The wishlist: the albums Lidarr monitors and holds no file of, which
-  /// in this library is the anniversary edition alone.
+  /// The wishlist: the albums Lidarr monitors and holds no file of: the
+  /// anniversary edition, and the ones the shelf's artists are short of. Not
+  /// the ones it was told to leave alone.
   @override
   List<JsonMap> missing(ServerContext c) => [
-    for (final album in _albums(c))
-      if ((album['statistics'] as JsonMap)['trackFileCount'] == 0) album,
+    for (final album in [..._albums(c), ..._allShelfAlbums(c)])
+      if ((album['statistics'] as JsonMap)['trackFileCount'] == 0 &&
+          album['monitored'] == true)
+        album,
   ];
 
   /// What Lidarr's history holds, newest first: Sintel's tags rewritten
@@ -1579,20 +1972,386 @@ class LidarrFake extends ArrFake {
       ? _sintelTracks[n - 1].$2
       : 'Track ${n.toString().padLeft(2, '0')}';
 
+  /// How long Lidarr takes to read the albums of an artist the demo adds.
+  static const _readingAlbums = Duration(seconds: 6);
+
+  /// An artist the demo added, as `GET /api/v1/artist` sends it: the lookup
+  /// row's identity under the library's id.
+  JsonMap _added(ServerContext c, LiveArtist artist) => {
+    'id': artist.id,
+    'artistName': artist.name,
+    'sortName': artist.name.toLowerCase(),
+    'foreignArtistId': artist.foreignArtistId,
+    'status': 'continuing',
+    'monitored': artist.monitored,
+    'monitorNewItems': 'all',
+    'path': '${rootFolder(c)}/${artist.name}',
+    'qualityProfileId': 1,
+    'metadataProfileId': 1,
+    'added': artist.added.toUtc().toIso8601String(),
+    'images': const <Object?>[],
+  };
+
+  /// An album added in the demo, as `GET /api/v1/album` sends it: nothing on
+  /// disk yet, monitored as it was asked.
+  JsonMap _live(LiveAlbum album, JsonMap artist) => {
+    'id': album.id,
+    'artistId': album.artistId,
+    'title': album.title,
+    'foreignAlbumId': album.foreignAlbumId,
+    'albumType': album.albumType,
+    'monitored': album.monitored,
+    'releaseDate': album.releaseDate,
+    'images': const <Object?>[],
+    'artist': artist,
+    'statistics': const {
+      'trackFileCount': 0,
+      'trackCount': 5,
+      'totalTrackCount': 5,
+    },
+  };
+
+  /// The artist a live album is under: the world's, or one the demo added.
+  JsonMap _artistOf(ServerContext c, int artistId) {
+    final added = c.life?.arrs.artist(c.server.id, artistId);
+    return added == null ? _artist(c) : _added(c, added);
+  }
+
+  /// The albums the demo added to Lidarr, under [artistId] only when asked.
+  List<JsonMap> _liveAlbums(ServerContext c, {int? artistId}) => [
+    for (final album in c.life?.arrs.albums(c.server.id) ?? const <LiveAlbum>[])
+      if (artistId == null || album.artistId == artistId)
+        _live(album, _artistOf(c, album.artistId)),
+  ];
+
+  /// The albums Lidarr reads for an artist the demo added, once it has: one,
+  /// and those added by hand under it.
+  List<JsonMap> _addedAlbums(ServerContext c, LiveArtist artist) => [
+    if (artist.readsAlbums && c.now.difference(artist.added) >= _readingAlbums)
+      {
+        'id': 100 + artist.id,
+        'artistId': artist.id,
+        'title': 'Debut',
+        'foreignAlbumId': 'album-${artist.foreignArtistId}',
+        'albumType': 'Album',
+        'monitored': artist.monitored,
+        'releaseDate': '2012-01-01T00:00:00Z',
+        'images': const <Object?>[],
+        'statistics': const {
+          'trackFileCount': 0,
+          'trackCount': 5,
+          'totalTrackCount': 5,
+        },
+      },
+    ..._liveAlbums(c, artistId: artist.id),
+  ];
+
+  /// What Lidarr's search answers for [term]: the world's artist and albums
+  /// that it names, as the library holds them, and for a word the library
+  /// holds none of one artist and one album by them that it does not (no id),
+  /// as the catalog answers a name this library has never held.
+  List<JsonMap> _search(ServerContext c, String term) {
+    final wanted = term.trim().toLowerCase();
+    if (wanted.isEmpty) return const [];
+    bool names(String name) => name.toLowerCase().contains(wanted);
+    final world = _artist(c);
+    final held = <JsonMap>[
+      if (names('${world['artistName']}'))
+        {'id': 1, 'foreignId': world['foreignArtistId'], 'artist': world},
+      for (final album in [
+        ..._albums(c),
+        ..._worldLeftAlone(c),
+        ..._liveAlbums(c, artistId: 1),
+      ])
+        if (names('${album['title']}'))
+          {'foreignId': album['foreignAlbumId'], 'album': album},
+    ];
+    if (held.isNotEmpty) return held;
+    final slug = wanted.replaceAll(RegExp(r'\W+'), '-');
+    final name = [
+      for (final word in term.trim().split(RegExp(r'\s+')))
+        word[0].toUpperCase() + word.substring(1),
+    ].join(' ');
+    final foreignArtistId = 'lookup-$slug';
+    final added = c.life?.arrs
+        .artists(c.server.id)
+        .where((a) => a.foreignArtistId == foreignArtistId)
+        .firstOrNull;
+    final artist = <String, Object?>{
+      'id': added?.id ?? 0,
+      'artistName': name,
+      'sortName': wanted,
+      'foreignArtistId': foreignArtistId,
+      'status': 'continuing',
+      'artistType': 'Group',
+      'monitored': added?.monitored ?? false,
+      'images': const <Object?>[],
+    };
+    return [
+      {'id': 1, 'foreignId': foreignArtistId, 'artist': artist},
+      {
+        'id': 2,
+        'foreignId': 'lookup-album-$slug',
+        'album': {
+          'id': 0,
+          'title': name,
+          'foreignAlbumId': 'lookup-album-$slug',
+          'albumType': 'Album',
+          'releaseDate': '2003-04-14T00:00:00Z',
+          'monitored': false,
+          'images': const <Object?>[],
+          'artist': artist,
+        },
+      },
+    ];
+  }
+
+  /// The body of an add: the album's artist, as the front end sends it.
+  JsonMap _album(ServerContext c, LiveAlbum album) =>
+      _live(album, _artistOf(c, album.artistId));
+
+  /// What the lookup answers for [term]: the world's artist for its own name,
+  /// and for any other name one artist the library does not hold (no id), as
+  /// Lidarr's catalog answers a name this library has never held.
+  List<JsonMap> _lookup(ServerContext c, String term) {
+    final wanted = term.trim().toLowerCase();
+    if (wanted.isEmpty ||
+        wanted.contains('morgenstern') ||
+        'jan morgenstern'.contains(wanted)) {
+      return [_artist(c)];
+    }
+    final name = [
+      for (final word in term.trim().split(RegExp(r'\s+')))
+        word[0].toUpperCase() + word.substring(1),
+    ].join(' ');
+    return [
+      {
+        'artistName': name,
+        'sortName': wanted,
+        'foreignArtistId': 'lookup-${wanted.replaceAll(RegExp(r'\W+'), '-')}',
+        'status': 'continuing',
+        'artistType': 'Group',
+        'monitored': false,
+        'images': const <Object?>[],
+      },
+    ];
+  }
+
+  /// Lidarr's root folder as it sends its defaults: the profiles a new artist
+  /// is given, what it monitors, and whether it monitors the albums to come.
+  @override
+  NetworkReply? answer(NetworkRequest r, ServerContext c) {
+    if (r.method == 'GET' && r.path == '/api/v1/rootfolder') {
+      return NetworkReply.json([
+        {
+          'id': 1,
+          'path': rootFolder(c),
+          'accessible': true,
+          'freeSpace': 12400000000000,
+          'defaultQualityProfileId': 1,
+          'defaultMetadataProfileId': 1,
+          'defaultMonitorOption': 'all',
+          'defaultNewItemMonitorOption': 'all',
+        },
+      ]);
+    }
+    return super.answer(r, c);
+  }
+
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    final arrs = c.life?.arrs;
+    // An add: Lidarr answers with the new artist, whose albums it reads a
+    // moment later. A living world keeps it.
+    if (r.method == 'POST' && r.path == '/api/v1/artist') {
+      final body = r.json;
+      final foreignId = body is Map ? body['foreignArtistId'] : null;
+      if (arrs != null &&
+          body is Map &&
+          foreignId is String &&
+          foreignId.isNotEmpty) {
+        final artist = arrs.addArtist(
+          c.server.id,
+          '${body['artistName']}',
+          foreignArtistId: foreignId,
+          monitored: body['monitored'] != false,
+        );
+        return NetworkReply.json(_added(c, artist), status: 201);
+      }
+      return NetworkReply.json({
+        if (body is Map) ...body.cast<String, Object?>(),
+        'id': 100,
+      }, status: 201);
+    }
+    // An album added: the artist comes in with it when the library has not
+    // got them, and the album is the only one it holds of theirs.
+    if (r.method == 'POST' && r.path == '/api/v1/album') {
+      final body = r.json;
+      final artist = body is Map ? body['artist'] : null;
+      final foreignAlbumId = body is Map ? body['foreignAlbumId'] : null;
+      if (arrs != null &&
+          body is Map &&
+          artist is Map &&
+          foreignAlbumId is String &&
+          foreignAlbumId.isNotEmpty) {
+        final world = _artist(c);
+        final artistId = artist['foreignArtistId'] == world['foreignArtistId']
+            ? 1
+            : arrs
+                  .addArtist(
+                    c.server.id,
+                    '${artist['artistName']}',
+                    foreignArtistId: '${artist['foreignArtistId']}',
+                    readsAlbums: false,
+                  )
+                  .id;
+        final album = arrs.addAlbum(
+          c.server.id,
+          artistId: artistId,
+          title: '${body['title']}',
+          foreignAlbumId: foreignAlbumId,
+          albumType: '${body['albumType'] ?? 'Album'}',
+          releaseDate: '${body['releaseDate'] ?? '2003-04-14T00:00:00Z'}',
+        );
+        return NetworkReply.json(_album(c, album), status: 201);
+      }
+      return NetworkReply.json({
+        if (body is Map) ...body.cast<String, Object?>(),
+        'id': 200,
+        // A world that does not live keeps nothing: the artist is the one
+        // the post named, under id 100 as an artist add answers.
+        if (artist is Map)
+          'artist': {...artist.cast<String, Object?>(), 'id': 100},
+      }, status: 201);
+    }
+    // The editor, as Lidarr's own front end sets or removes several artists:
+    // the ones it names, what was sent and nothing else. An id Lidarr does
+    // not hold is skipped, as it does.
+    if (r.method == 'PUT' && r.path == '/api/v1/artist/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['artistIds'] : null;
+      if (arrs != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          arrs.editArtist(
+            c.server.id,
+            id,
+            monitored: body['monitored'] as bool?,
+            monitorNewItems: body['monitorNewItems'] as String?,
+            qualityProfileId: body['qualityProfileId'] as int?,
+            metadataProfileId: body['metadataProfileId'] as int?,
+          );
+        }
+      }
+      return const NetworkReply(202);
+    }
+    if (r.method == 'DELETE' && r.path == '/api/v1/artist/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['artistIds'] : null;
+      if (arrs != null && ids is List) {
+        arrs.removedArtists(c.server.id).addAll(ids.whereType<int>());
+      }
+      return NetworkReply.json(const <String, Object?>{});
+    }
+    if (r.method == 'PUT' && r.path == '/api/v1/album/monitor') {
+      final body = r.json;
+      if (arrs != null && body is Map && body['monitored'] is bool) {
+        final ids = body['albumIds'];
+        for (final album in arrs.albums(c.server.id)) {
+          if (ids is List && ids.contains(album.id)) {
+            album.monitored = body['monitored'] as bool;
+          }
+        }
+      }
+      return const NetworkReply(202);
+    }
     if (r.method != 'GET') return null;
+    final one = RegExp(r'^/api/v1/artist/(\d+)$').firstMatch(r.path);
+    final addedOne = one == null
+        ? null
+        : arrs?.artist(c.server.id, int.parse(one.group(1)!));
+    if (addedOne != null) {
+      return NetworkReply.json(_edited(c, _added(c, addedOne)));
+    }
+    final shelved = one == null
+        ? null
+        : _shelfIndexOf(c, int.parse(one.group(1)!));
+    if (shelved != null) {
+      return NetworkReply.json(_edited(c, _shelfArtist(c, shelved)));
+    }
+    if (r.path == '/api/v1/album') {
+      final asked = int.tryParse(r.query['artistId'] ?? '');
+      final added = asked == null ? null : arrs?.artist(c.server.id, asked);
+      if (added != null) return NetworkReply.json(_addedAlbums(c, added));
+      final onShelf = asked == null ? null : _shelfIndexOf(c, asked);
+      if (onShelf != null) return NetworkReply.json(_shelfAlbums(c, onShelf));
+    }
     return switch (r.path) {
-      '/api/v1/artist' => NetworkReply.json([_artist(c)]),
-      '/api/v1/artist/1' => NetworkReply.json(_artist(c)),
-      // The search route, as Radarr's and Sonarr's fakes answer theirs: the
-      // world's artist, with its library id, whatever the term.
-      '/api/v1/artist/lookup' => NetworkReply.json([_artist(c)]),
-      '/api/v1/album' => NetworkReply.json(_albums(c)),
-      '/api/v1/metadataprofile' => NetworkReply.json([
-        {'id': 1, 'name': 'Standard'},
+      '/api/v1/artist' => NetworkReply.json([
+        for (final artist in [
+          _artist(c),
+          for (var i = 0; i < _shelfSize(c); i++) _shelfArtist(c, i),
+          for (final artist
+              in arrs?.artists(c.server.id) ?? const <LiveArtist>[])
+            _added(c, artist),
+        ])
+          if (!(arrs?.removedArtists(c.server.id).contains(artist['id']) ??
+              false))
+            _edited(c, artist),
       ]),
-      '/api/v1/track' => NetworkReply.json(_tracks(r)),
+      '/api/v1/artist/1' => NetworkReply.json(_edited(c, _artist(c))),
+      // The search route, as Radarr's and Sonarr's fakes answer theirs.
+      '/api/v1/artist/lookup' => NetworkReply.json(
+        _lookup(c, r.query['term'] ?? ''),
+      ),
+      // Asked for an artist's albums, it is the world's: the ones added under
+      // the artists the demo added are answered above.
+      '/api/v1/album' => NetworkReply.json([
+        ..._albums(c),
+        ..._worldLeftAlone(c),
+        // Asked for one artist's albums it is the world's, as above.
+        if (!r.query.containsKey('artistId')) ..._allShelfAlbums(c),
+        ..._liveAlbums(c, artistId: r.query.containsKey('artistId') ? 1 : null),
+      ]),
+      '/api/v1/search' => NetworkReply.json(_search(c, r.query['term'] ?? '')),
+      '/api/v1/metadataprofile' => NetworkReply.json([
+        {
+          'id': 1,
+          'name': 'Standard',
+          'primaryAlbumTypes': [
+            for (final (id, name, allowed) in const [
+              (1, 'Album', true),
+              (2, 'EP', true),
+              (3, 'Single', false),
+              (4, 'Broadcast', false),
+              (5, 'Other', false),
+            ])
+              {
+                'albumType': {'id': id, 'name': name},
+                'allowed': allowed,
+              },
+          ],
+        },
+        // Lidarr's own: it keeps no release type, so an artist added for one
+        // album holds that album alone.
+        {
+          'id': 2,
+          'name': 'None',
+          'primaryAlbumTypes': [
+            for (final (id, name) in const [
+              (1, 'Album'),
+              (2, 'EP'),
+              (3, 'Single'),
+              (4, 'Broadcast'),
+              (5, 'Other'),
+            ])
+              {
+                'albumType': {'id': id, 'name': name},
+                'allowed': false,
+              },
+          ],
+        },
+      ]),
+      '/api/v1/track' => NetworkReply.json(_tracks(c, r)),
       '/api/v1/trackfile' => NetworkReply.json(const <Object?>[]),
       _ => null,
     };
@@ -1632,6 +2391,14 @@ class ReadarrFake extends ArrFake {
       'sizeOnDisk': 42000000,
     },
   };
+
+  /// The author with what the demo set on him by the editor.
+  JsonMap _editedAuthor(ServerContext c) {
+    final monitored = c.life?.arrs.authorMonitored(c.server.id, 1);
+    return monitored == null
+        ? _author(c)
+        : {..._author(c), 'monitored': monitored};
+  }
 
   /// His books; Five Weeks in a Balloon is wanted.
   static const _books = [
@@ -1782,10 +2549,40 @@ class ReadarrFake extends ArrFake {
 
   @override
   NetworkReply? own(NetworkRequest r, ServerContext c) {
+    final arrs = c.life?.arrs;
+    // The editor sets what it was sent on the authors it names; a living world
+    // keeps the monitoring. Its delete is not used (it ignores what it is
+    // asked): an author is removed by its own route.
+    if (r.method == 'PUT' && r.path == '/api/v1/author/editor') {
+      final body = r.json;
+      final ids = body is Map ? body['authorIds'] : null;
+      if (arrs != null && body is Map && ids is List) {
+        for (final id in ids.whereType<int>()) {
+          if (body['monitored'] is bool) {
+            arrs.monitorAuthor(
+              c.server.id,
+              id,
+              monitored: body['monitored'] as bool,
+            );
+          }
+        }
+      }
+      return const NetworkReply(202, body: '[]');
+    }
+    if (r.method == 'DELETE' &&
+        RegExp(r'^/api/v1/author/\d+$').hasMatch(r.path)) {
+      arrs?.removedAuthors(c.server.id).add(int.parse(r.path.split('/').last));
+      return NetworkReply.json(const <String, Object?>{});
+    }
     if (r.method != 'GET') return null;
+    final removed = arrs?.removedAuthors(c.server.id).contains(1) ?? false;
     return switch (r.path) {
-      '/api/v1/author' => NetworkReply.json([_author(c)]),
-      '/api/v1/author/1' => NetworkReply.json(_author(c)),
+      '/api/v1/metadataprofile' => NetworkReply.json(const [
+        {'id': 1, 'name': 'Standard'},
+        {'id': 2, 'name': 'Fiction only'},
+      ]),
+      '/api/v1/author' => NetworkReply.json([if (!removed) _editedAuthor(c)]),
+      '/api/v1/author/1' => NetworkReply.json(_editedAuthor(c)),
       '/api/v1/book' => NetworkReply.json([
         if (r.query['authorId'] case null || '1')
           for (final entry in _books) _book(c, entry, withAuthor: false),

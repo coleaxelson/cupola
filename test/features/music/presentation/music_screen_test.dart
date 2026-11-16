@@ -36,7 +36,7 @@ void main() {
             },
           ),
         ),
-        '6 albums\u00A0· complete',
+        '6\u00A0albums\u00A0· complete',
       );
     });
 
@@ -55,7 +55,7 @@ void main() {
             },
           ),
         ),
-        '9 albums\u00A0· 1 track missing',
+        '9\u00A0albums\u00A0· 1\u00A0track missing',
       );
     });
 
@@ -64,7 +64,7 @@ void main() {
         lidarrArtistCaption(
           _artist(statistics: const {'albumCount': 1, 'trackCount': 0}),
         ),
-        '1 album',
+        '1\u00A0album',
       );
     });
   });

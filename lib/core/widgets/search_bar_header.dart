@@ -16,6 +16,12 @@ class SearchBarHeader extends StatefulWidget {
   /// Callback when the search query changes (debounced).
   final ValueChanged<String> onQueryChanged;
 
+  /// Told of every change to the text, at once and trimmed, ahead of the
+  /// debounce that holds [onQueryChanged]: for a screen that answers from
+  /// what it already holds, where waiting would only be slower. Null for a
+  /// screen that asks a server and has no use for the keystroke.
+  final ValueChanged<String>? onTextChanged;
+
   /// Placeholder text for the search bar.
   final String hintText;
 
@@ -38,15 +44,37 @@ class SearchBarHeader extends StatefulWidget {
   /// for no `Cancel`, as on a library, where the field is part of the page.
   final VoidCallback? onCancel;
 
+  /// What the button that calls [onCancel] says: `Cancel` for a search that
+  /// is abandoned, `Done` for a field that was opened to find one thing and
+  /// closes.
+  final String cancelLabel;
+
+  /// The field's name to a screen reader, before its hint: `Search`, or what
+  /// it finds when that is narrower (`Find a track by Jan Morgenstern`).
+  final String label;
+
+  /// The room around the field. The default is a screen's: the gutter at
+  /// both sides. A field inside a page's own column takes none at the sides.
+  final EdgeInsetsGeometry padding;
+
   const SearchBarHeader({
     super.key,
     required this.onQueryChanged,
+    this.onTextChanged,
     this.hintText = 'Search',
     this.initialQuery,
     this.debounceDuration = const Duration(milliseconds: 400),
     this.autofocus = false,
     this.focusNode,
     this.onCancel,
+    this.cancelLabel = 'Cancel',
+    this.label = 'Search',
+    this.padding = const EdgeInsets.fromLTRB(
+      AppSpacing.lg,
+      AppSpacing.sm,
+      AppSpacing.lg,
+      AppSpacing.lg,
+    ),
   });
 
   @override
@@ -125,6 +153,7 @@ class _SearchBarHeaderState extends State<SearchBarHeader> {
     if (hasText != _hasText) {
       setState(() => _hasText = hasText);
     }
+    widget.onTextChanged?.call(_controller.text.trim());
 
     _debounceTimer?.cancel();
     _debounceTimer = Timer(widget.debounceDuration, () {
@@ -148,15 +177,10 @@ class _SearchBarHeaderState extends State<SearchBarHeader> {
     final glyph = colorScheme.onSurfaceVariant;
 
     final field = Semantics(
-      label: 'Search',
+      label: widget.label,
       hint: 'Type ${widget.hintText}',
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.lg,
-        ),
+        padding: widget.padding,
         child: _withCancel(
           SearchBar(
             controller: _controller,
@@ -242,7 +266,7 @@ class _SearchBarHeaderState extends State<SearchBarHeader> {
               foregroundColor: Theme.of(context).colorScheme.onSurface,
               textStyle: AppType.button,
             ),
-            child: const Text('Cancel'),
+            child: Text(widget.cancelLabel),
           ),
         ],
       ],

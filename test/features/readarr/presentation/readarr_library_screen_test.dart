@@ -8,6 +8,7 @@ import 'package:cupola/core/theme.dart';
 import 'package:cupola/core/utils/dot_separator.dart';
 import 'package:cupola/core/utils/service_routes.dart';
 import 'package:cupola/core/widgets/widgets.dart';
+import 'package:cupola/features/discover/presentation/widgets/search_row.dart';
 import 'package:cupola/features/readarr/data/readarr_service.dart';
 import 'package:cupola/features/readarr/domain/models/readarr_models.dart';
 import 'package:cupola/features/readarr/presentation/readarr_library_screen.dart';
@@ -128,17 +129,17 @@ void main() {
     test('says how many books are on disk, and how many are missing', () {
       expect(
         readarrAuthorCaption(author(12, 3)),
-        '3/12 books${dotSeparator}9 missing',
+        '3/12\u00A0books${dotSeparator}9 missing',
       );
     });
 
     test('leaves the missing part out when nothing is', () {
-      expect(readarrAuthorCaption(author(10, 10)), '10/10 books');
+      expect(readarrAuthorCaption(author(10, 10)), '10/10\u00A0books');
     });
 
     test('an author with no book counted is an em dash, not 0/0', () {
       // Readarr omits `statistics` on an author it has not scanned, and the
-      // model reads an absent count as zero: `0/0 books` would assert a
+      // model reads an absent count as zero: `0/0\u00A0books` would assert a
       // fact nobody reported.
       expect(readarrAuthorCaption(author(0, 0)), '—');
     });
@@ -153,9 +154,15 @@ void main() {
       for (final name in [_mccaffrey, _sanderson, _tolkien, _leGuin]) {
         expect(find.text(name), findsOneWidget, reason: name);
       }
-      expect(find.text('15/20 books${dotSeparator}5 missing'), findsOneWidget);
-      expect(find.text('10/10 books'), findsOneWidget);
-      expect(find.text('3/12 books${dotSeparator}9 missing'), findsOneWidget);
+      expect(
+        find.text('15/20\u00A0books${dotSeparator}5 missing'),
+        findsOneWidget,
+      );
+      expect(find.text('10/10\u00A0books'), findsOneWidget);
+      expect(
+        find.text('3/12\u00A0books${dotSeparator}9 missing'),
+        findsOneWidget,
+      );
       // The unscanned author's caption is the figure that did not answer.
       expect(find.text('—'), findsOneWidget);
       // Four portraits: a person is not a poster.
@@ -247,31 +254,36 @@ void main() {
       final tile = find.bySemanticsLabel(_sanderson);
       expect(tile, findsOneWidget);
       final node = tester.getSemantics(tile);
-      expect(node.value, '15/20 books${dotSeparator}5 missing');
+      expect(node.value, '15/20\u00A0books${dotSeparator}5 missing');
       // The caption beneath is not read a second time.
-      expect(find.bySemanticsLabel(RegExp('15/20 books')), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('15/20\u00A0books')), findsNothing);
       semantics.dispose();
     });
 
-    testWidgets('searches the library it holds, whatever the case and the '
-        'order of the words', (tester) async {
-      final semantics = tester.ensureSemantics();
+    testWidgets('finds in the library it holds, whatever the case, the '
+        'accents and the order of the words, with no second scope', (
+      tester,
+    ) async {
       await _pump(tester, FakeApiClient()..getResponseData = _library());
 
+      // The field's hint says what is found, and there is nothing to ask a
+      // service: no control, a library only.
       await tester.enterText(find.byType(TextField), 'tolkien j.r.r.');
-      await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle();
 
-      expect(find.byType(MediaGrid<ReadarrAuthor>), findsOneWidget);
-      expect(find.bySemanticsLabel(_tolkien), findsOneWidget);
-      expect(find.bySemanticsLabel(_sanderson), findsNothing);
+      expect(find.text('1\u00A0author'), findsOneWidget);
+      expect(find.byType(SearchRow), findsOneWidget);
+      expect(find.text(_tolkien), findsOneWidget);
+      expect(find.text(_sanderson), findsNothing);
+      expect(find.byType(MediaFindScopeControl), findsNothing);
 
       await tester.enterText(find.byType(TextField), 'zzz');
-      await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle();
 
-      expect(find.text('Readarr found nothing for “zzz”'), findsOneWidget);
-      semantics.dispose();
+      expect(find.text('Nothing in your library called “zzz”'), findsOneWidget);
+      // No lookup to offer, so no button and no "can look further".
+      expect(find.byType(OutlinedButton), findsNothing);
+      expect(find.textContaining('can look further'), findsNothing);
     });
 
     testWidgets('a Readarr that does not answer says so instead of claiming '
@@ -355,7 +367,10 @@ void main() {
       await harness.settle(tester);
 
       // What the profile's own client read: six of seven on disk.
-      expect(find.text('6/7 books${dotSeparator}1 missing'), findsOneWidget);
+      expect(
+        find.text('6/7\u00A0books${dotSeparator}1 missing'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('Jules Verne'));
       await tester.pumpAndSettle();
@@ -371,5 +386,64 @@ void main() {
 
       await harness.unmount(tester);
     });
+
+    testWidgets(
+      'an author found opens the same page, on the same connection, with '
+      'the same extra',
+      (tester) async {
+        final harness = await ProfileHarness.start(
+          Profiles.p1.withConnection(WorldConnections.readarr),
+        );
+        harness.network.followFakeTime(tester.binding);
+        Uri? opened;
+        Object? extra;
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => const ReadarrLibraryScreen(),
+            ),
+            GoRoute(
+              path: '${ServiceRoutes.readarrAuthorBase}/:id',
+              builder: (context, state) {
+                opened = state.uri;
+                extra = state.extra;
+                return const Scaffold(body: Text('the author'));
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: harness.overrides,
+            child: MaterialApp.router(
+              theme: AppTheme.darkTheme(),
+              routerConfig: router,
+            ),
+          ),
+        );
+        await harness.settle(tester);
+
+        await tester.enterText(find.byType(TextField), 'verne');
+        await harness.settle(tester);
+        expect(find.text('1\u00A0author'), findsOneWidget);
+
+        await tester.tap(find.text('Jules Verne'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('the author'), findsOneWidget);
+        expect(opened?.path, '${ServiceRoutes.readarrAuthorBase}/1');
+        // The connection's id rides in the query, as every link to a page
+        // under a lens does: the page reads this Readarr's copy.
+        expect(opened?.queryParameters['i'], 'readarr');
+        expect(opened?.queryParameters['heroTag'], startsWith('author_1_'));
+        expect(extra, isA<ReadarrAuthor>());
+        expect((extra! as ReadarrAuthor).authorName, 'Jules Verne');
+
+        await harness.unmount(tester);
+      },
+    );
   });
 }

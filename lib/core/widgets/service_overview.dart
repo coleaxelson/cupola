@@ -1616,10 +1616,15 @@ class ServicePosterRail<T> extends ConsumerWidget {
     required this.imagesOf,
     required this.captionOf,
     required this.onTap,
+    this.fallbackIcon = Icons.movie_outlined,
   });
 
   final ServiceKey service;
   final List<T> items;
+
+  /// What a poster with no artwork draws: the movie's for the video arrs, the
+  /// person's for Lidarr's artists (the glyph its wall's circles carry).
+  final IconData fallbackIcon;
   final int Function(T item) idOf;
   final String Function(T item) titleOf;
   final List<dynamic> Function(T item) imagesOf;
@@ -1662,6 +1667,7 @@ class ServicePosterRail<T> extends ConsumerWidget {
                 baseUrl: reachedAt,
                 apiKey: instance?.credential ?? '',
               ),
+              fallbackIcon: fallbackIcon,
               onTap: () => onTap(context, item, heroTag),
             );
           },
@@ -1677,9 +1683,11 @@ class _PosterTile extends StatelessWidget {
     required this.caption,
     required this.heroTag,
     required this.poster,
+    required this.fallbackIcon,
     required this.onTap,
   });
 
+  final IconData fallbackIcon;
   final String title;
   final String? caption;
   final String heroTag;
@@ -1710,6 +1718,7 @@ class _PosterTile extends StatelessWidget {
                 heroTag: heroTag,
                 imageUrl: poster.url,
                 imageHeaders: poster.headers,
+                fallbackIcon: fallbackIcon,
               ),
             ),
             const SizedBox(height: AppSpacing.xs),

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'package:cupola/core/api/api_client.dart';
+import 'package:cupola/core/api/arr_bulk.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
 import 'package:cupola/features/movies/domain/models/radarr_collection.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
@@ -338,6 +339,68 @@ class RadarrService with ArrActivityMixin {
   /// Updates a movie's monitored state.
   Future<void> updateMovieMonitored(int movieId, bool monitored) async {
     await updateItemMonitored('movie', movieId, monitored);
+  }
+
+  /// The quality profiles, a failed read reaching the caller.
+  Future<List<Map<String, dynamic>>> getQualityProfilesOrThrow() =>
+      fetchQualityProfilesOrThrow();
+
+  /// Sets [edit]'s monitoring and quality profile on every movie of
+  /// [movieIds]: `PUT /api/v3/movie/editor`.
+  ///
+  /// Radarr's `MovieEditorController.SaveAll` validates every movie before it
+  /// saves any, throws one `ValidationException` for the lot and names no movie
+  /// in it, so it is asked and answered as the other arrs' editors are
+  /// ([bulkInOne]): the set first, and a 400, 409 or 422 followed by one
+  /// request per movie. Radarr's editor takes no `monitorNewItems` and no
+  /// metadata profile, and none is sent.
+  Future<ArrBulkResult> updateMoviesInBulk(
+    List<int> movieIds,
+    ArrBulkEdit edit,
+  ) {
+    assert(!edit.isEmpty, 'an edit that sets nothing is not sent');
+    assert(
+      edit.monitorNewItems == null && edit.metadataProfileId == null,
+      "Radarr's editor takes neither",
+    );
+    return bulkInOne(
+      movieIds,
+      (ids) => client.put(
+        '/api/v3/movie/editor',
+        data: {'movieIds': ids, ...edit.fields},
+      ),
+    );
+  }
+
+  /// Removes every movie of [movieIds]: `DELETE /api/v3/movie/editor`, with
+  /// the removal's two choices. Asked as [updateMoviesInBulk] is.
+  Future<ArrBulkResult> removeMoviesInBulk(
+    List<int> movieIds, {
+    bool deleteFiles = false,
+    bool addImportExclusion = false,
+  }) {
+    return bulkInOne(
+      movieIds,
+      (ids) => client.delete(
+        '/api/v3/movie/editor',
+        data: {
+          'movieIds': ids,
+          'deleteFiles': deleteFiles,
+          'addImportExclusion': addImportExclusion,
+        },
+      ),
+    );
+  }
+
+  /// Starts a search for every movie of [movieIds]: one `MoviesSearch`
+  /// command, which takes the list (`MoviesSearchCommand.MovieIds`). One
+  /// request is all-or-nothing, and a refusal of it is thrown.
+  Future<ArrBulkResult> searchMoviesInBulk(List<int> movieIds) async {
+    await client.post(
+      '/api/v3/command',
+      data: {'name': 'MoviesSearch', 'movieIds': movieIds},
+    );
+    return ArrBulkResult(done: movieIds);
   }
 
   /// Deletes a movie from Radarr.

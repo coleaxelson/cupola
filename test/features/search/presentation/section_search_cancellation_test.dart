@@ -9,7 +9,7 @@ import 'package:cupola/features/movies/data/radarr_service.dart';
 import 'package:cupola/features/movies/domain/models/radarr_movie.dart';
 import 'package:cupola/features/movies/presentation/movies_search_provider.dart';
 import 'package:cupola/features/music/data/lidarr_service.dart';
-import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
 import 'package:cupola/features/music/presentation/music_search_provider.dart';
 import 'package:cupola/features/series/data/sonarr_service.dart';
 import 'package:cupola/features/series/domain/models/sonarr_series.dart';
@@ -259,17 +259,14 @@ class _GateLidarrService extends FakeLidarrService {
   final List<CancelToken?> tokens = [];
 
   @override
-  Future<List<LidarrArtist>> lookupArtists(
+  Future<List<LidarrSearchHit>> search(
     String term, {
     CancelToken? cancelToken,
-    bool reportFailure = false,
   }) async {
     tokens.add(cancelToken);
     await gate?.future;
-    // The real service's contract: a failure travels only when asked.
-    if (fails && reportFailure) {
-      throw const SocketException('Connection refused');
-    }
+    // The real service's contract: a failure always travels.
+    if (fails) throw const SocketException('Connection refused');
     return const [];
   }
 }

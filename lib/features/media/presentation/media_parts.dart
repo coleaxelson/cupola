@@ -214,6 +214,44 @@ class MediaValueRow extends StatelessWidget {
   }
 }
 
+/// A choice and what it means, right-aligned in its row: `Future episodes`,
+/// `Only the ones that air from now` under it. The value of a [MediaValueRow].
+/// Where the row stacks ([mediaStacked]) the value sits under its label and
+/// starts where the label does.
+class MediaChoiceValue extends StatelessWidget {
+  const MediaChoiceValue({super.key, required this.label, this.meaning});
+
+  final String label;
+
+  /// Under the label; none when the choice has nothing to add.
+  final String? meaning;
+
+  @override
+  Widget build(BuildContext context) {
+    final room = CupolaRoom.of(context);
+    final stacked = mediaStacked(context);
+    final align = stacked ? TextAlign.start : TextAlign.end;
+    return Column(
+      crossAxisAlignment: stacked
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.end,
+      children: [
+        Text(
+          label,
+          textAlign: align,
+          style: AppType.meta.copyWith(color: room.inkSecondary),
+        ),
+        if (meaning case final meaning?)
+          Text(
+            meaning,
+            textAlign: align,
+            style: AppType.caption.copyWith(color: room.inkTertiary),
+          ),
+      ],
+    );
+  }
+}
+
 /// A setting that is on or off, with what that means under it.
 class MediaSwitchRow extends StatelessWidget {
   const MediaSwitchRow({

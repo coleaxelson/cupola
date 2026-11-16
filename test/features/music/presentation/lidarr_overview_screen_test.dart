@@ -209,6 +209,19 @@ void main() {
     );
   });
 
+  testWidgets('an artist with no picture on the rail wears the person glyph, '
+      'never the movie’s', (tester) async {
+    await _pump(
+      tester,
+      service: _scripted(
+        artists: [_artist(id: 7, name: 'Alvvays', added: today)],
+      ),
+    );
+
+    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.movie_outlined), findsNothing);
+  });
+
   testWidgets('an artist whose statistics never arrived is not "0 albums"', (
     tester,
   ) async {

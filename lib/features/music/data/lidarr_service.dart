@@ -2,8 +2,14 @@ import 'package:dio/dio.dart';
 
 import 'package:cupola/core/api/api_client.dart';
 import 'package:cupola/core/api/base_arr_service.dart';
+import 'package:cupola/core/api/arr_bulk.dart';
+import 'package:cupola/features/music/domain/lidarr_bulk.dart';
+import 'package:cupola/features/music/domain/lidarr_add_options.dart';
+import 'package:cupola/features/music/domain/lidarr_catalog_unavailable.dart';
 import 'package:cupola/features/music/domain/models/lidarr_album.dart';
 import 'package:cupola/features/music/domain/models/lidarr_artist.dart';
+import 'package:cupola/features/music/domain/models/lidarr_metadata_profile.dart';
+import 'package:cupola/features/music/domain/models/lidarr_search_hit.dart';
 import 'package:cupola/features/music/domain/models/lidarr_track.dart';
 import 'package:cupola/features/settings/data/connection_providers.dart';
 import 'package:cupola/features/settings/domain/service_key.dart';
@@ -128,6 +134,17 @@ class LidarrService with ArrActivityMixin {
     );
   }
 
+  /// As [getAllMissing], for the caller that needs to know whether the walk
+  /// reached the end.
+  @override
+  Future<ArrRecordPage> getAllMissingPage({
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return super.getAllMissingPage(
+      queryParameters: {'includeArtist': true, ...?queryParameters},
+    );
+  }
+
   @override
   Future<List<dynamic>> getAllCutoff({Map<String, dynamic>? queryParameters}) {
     return super.getAllCutoff(
@@ -206,6 +223,20 @@ class LidarrService with ArrActivityMixin {
     return fetchListItems('track', {'albumId': albumId}, LidarrTrack.fromJson);
   }
 
+  /// Every track of every album of one artist: `GET /api/v1/track?artistId=`.
+  ///
+  /// A discography runs to thousands of tracks, so the body is mapped where
+  /// it is decoded (off the main thread), and a failure reaches the caller:
+  /// a finder that is told "no such track" over a server that did not answer
+  /// says what is false.
+  Future<List<LidarrTrack>> getArtistTracksOrThrow(int artistId) {
+    return fetchAllItemsOrThrow(
+      'track',
+      LidarrTrack.fromJson,
+      queryParameters: {'artistId': artistId},
+    );
+  }
+
   /// Triggers an automatic search for an artist.
   Future<void> searchArtist(int artistId) async {
     await client.post(
@@ -248,29 +279,250 @@ class LidarrService with ArrActivityMixin {
     await grabReleaseByGuid(guid: guid, indexerId: indexerId);
   }
 
-  /// Searches for artists by term using the lookup API.
+  /// Adds [lookupRow] (an `artist/lookup` row) to this Lidarr's library.
   ///
-  /// [cancelToken] aborts the request once the search that asked for it has
-  /// been superseded. See [ArrActivityMixin.lookupItems], which owns the
-  /// empty-term guard, the isolate mapping and the degrade-to-`[]` rule the
-  /// three arr lookups share.
-  Future<List<LidarrArtist>> lookupArtists(
+  /// The row is posted back as the identity Lidarr builds the artist from: its
+  /// MusicBrainz id ([LidarrArtist.foreignArtistId]) is what Lidarr keys the
+  /// new entry on, the name and the artwork let it show the artist before its
+  /// first metadata refresh, and what the lookup carried about who they are
+  /// (type, disambiguation, overview, links) rides along. What the person
+  /// chose goes beside it: where the artist is filed ([rootFolderPath]), the
+  /// two profiles, and what Lidarr looks for.
+  ///
+  /// [monitor] is Lidarr's `MonitorTypes` (`all`, `future`, `missing`,
+  /// `existing`, `first`, `latest`, `none`; see `LidarrMonitor`). The artist is
+  /// monitored unless it is `none`, and [monitorNewItems] (`all` or `none`)
+  /// says whether the albums Lidarr learns of later are monitored too.
+  /// `addOptions.searchForMissingAlbums` is the half that makes this an add
+  /// rather than a bookmark: without it nothing is looked for until a search
+  /// is asked.
+  ///
+  /// Lidarr answers with the new artist, whose albums it has not read yet:
+  /// they arrive a moment later.
+  ///
+  /// Throws on failure rather than degrading. Lidarr answers 400 for an artist
+  /// it already holds, and a caller that cannot tell that from a success would
+  /// report an add that never happened.
+  Future<LidarrArtist> addArtist(
+    LidarrArtist lookupRow, {
+    required int qualityProfileId,
+    required int metadataProfileId,
+    required String rootFolderPath,
+    required String monitor,
+    required String monitorNewItems,
+    required bool searchForMissingAlbums,
+  }) async {
+    final response = await client.post(
+      '/api/v1/artist',
+      data: {
+        'artistName': lookupRow.artistName,
+        // Lidarr keys the new entry on this, not on the name.
+        'foreignArtistId': lookupRow.foreignArtistId,
+        // Posted back so the artist has artwork before the first refresh.
+        'images': lookupRow.images,
+        'overview': ?lookupRow.overview,
+        'artistType': ?lookupRow.artistType,
+        'disambiguation': ?lookupRow.disambiguation,
+        'links': ?lookupRow.links,
+        'qualityProfileId': qualityProfileId,
+        'metadataProfileId': metadataProfileId,
+        'rootFolderPath': rootFolderPath,
+        'monitored': monitor != 'none',
+        'monitorNewItems': monitorNewItems,
+        'addOptions': {
+          'monitor': monitor,
+          'searchForMissingAlbums': searchForMissingAlbums,
+        },
+      },
+    );
+    final data = response.data;
+    if (data is! Map) {
+      throw const FormatException('Lidarr answered without an artist');
+    }
+    return LidarrArtist.fromJson(data.cast<String, dynamic>());
+  }
+
+  /// Lidarr's search: artists and albums together, from its online catalog
+  /// (`GET /api/v1/search?term=`), each row with the artist it is about.
+  ///
+  /// Throws rather than degrading, so a search that failed is never "found
+  /// nothing". A catalog that did not answer while Lidarr did is its own
+  /// failure, [LidarrCatalogUnavailable]: the library still works and the
+  /// person is told so. [cancelToken] aborts the request once the search that
+  /// asked for it has been superseded.
+  Future<List<LidarrSearchHit>> search(
     String term, {
     CancelToken? cancelToken,
-    bool reportFailure = false,
-  }) {
-    return lookupItems(
-      'artist/lookup',
-      term,
-      LidarrArtist.fromJson,
-      cancelToken: cancelToken,
-      reportFailure: reportFailure,
+  }) async {
+    if (term.trim().isEmpty) return const [];
+    final Response response;
+    try {
+      response = await client.get(
+        '/api/v1/search',
+        queryParameters: {'term': term},
+        cancelToken: cancelToken,
+      );
+    } catch (error) {
+      throw LidarrCatalogUnavailable.of(error) ?? error;
+    }
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Lidarr answered without search results');
+    }
+    return [
+      for (final row in data.whereType<Map>())
+        ?LidarrSearchHit.tryParse(row.cast<String, dynamic>()),
+    ];
+  }
+
+  /// Sets whether Lidarr monitors [albumIds] (`PUT /api/v1/album/monitor`).
+  /// Throws on failure.
+  Future<void> setAlbumsMonitored(List<int> albumIds, bool monitored) async {
+    await client.put(
+      '/api/v1/album/monitor',
+      data: {'albumIds': albumIds, 'monitored': monitored},
     );
+  }
+
+  /// Monitors [albumId] and has Lidarr look for it: the two halves of "get
+  /// this album" on an album the library holds and was told to leave alone.
+  /// Throws on failure, and the search is not started when the monitor was not
+  /// written. A search that failed after the monitor was written is a
+  /// [LidarrSearchNotStarted]: the album is monitored all the same.
+  Future<void> monitorAndSearchAlbum(int albumId) async {
+    await setAlbumsMonitored([albumId], true);
+    try {
+      await searchAlbums([albumId]);
+    } catch (error) {
+      throw LidarrSearchNotStarted(error);
+    }
+  }
+
+  /// Adds [hit]'s album (`POST /api/v1/album`), the way Lidarr's own front
+  /// end does: the album as the search described it, monitored, with
+  /// `addOptions.searchForNewAlbum`, and its artist inside.
+  ///
+  /// Where Lidarr does not hold the artist ([newArtist]), the artist is added
+  /// with it, under the folder and profiles chosen, and only this album is
+  /// monitored: `addOptions.monitor` is `none` and `albumsToMonitor` names the
+  /// album by its MusicBrainz id. Lidarr's `AlbumMonitoredService` sets every
+  /// album unmonitored under `none` and, when `albumsToMonitor` is not empty,
+  /// monitors exactly those and no other, whatever the metadata profile. The
+  /// rest of the artist's discography arrives unmonitored.
+  ///
+  /// Where it does ([libraryArtistId]), the artist goes with it as the library
+  /// holds it (read here, whole: its path and profiles are what Lidarr
+  /// validates the album against) and Lidarr adds the album under them. That is
+  /// the case of an album the artist's metadata profile leaves out.
+  ///
+  /// Answers the artist the album is under now, as the library holds them,
+  /// or null when the post succeeded and the artist could not be read after:
+  /// the album is added all the same, and a caller never reports a write that
+  /// went through as one that did not. Throws only when the post itself failed:
+  /// Lidarr answers 400 with its reason.
+  Future<LidarrArtist?> addAlbum(
+    LidarrAlbumHit hit, {
+    required bool searchForNewAlbum,
+    int? libraryArtistId,
+    LidarrNewArtistSetup? newArtist,
+  }) async {
+    assert(
+      (libraryArtistId == null) != (newArtist == null),
+      'the artist is in the library, or it is added with the album',
+    );
+    final body = Map<String, dynamic>.of(hit.raw);
+    LidarrArtist? held;
+    if (libraryArtistId != null) {
+      final record = await client.get('/api/v1/artist/$libraryArtistId');
+      if (record.data is! Map) {
+        throw const FormatException('Lidarr answered without the artist');
+      }
+      final json = (record.data as Map).cast<String, dynamic>();
+      body['artist'] = json;
+      held = LidarrArtist.fromJson(json);
+    } else {
+      final setup = newArtist!;
+      body['artist'] = {
+        ...?(body['artist'] as Map?)?.cast<String, dynamic>(),
+        'monitored': true,
+        'monitorNewItems': setup.monitorNewItems,
+        'qualityProfileId': setup.qualityProfileId,
+        'metadataProfileId': setup.metadataProfileId,
+        'rootFolderPath': setup.rootFolderPath,
+        'addOptions': {
+          'monitor': 'none',
+          'albumsToMonitor': [hit.album.foreignAlbumId],
+          'searchForMissingAlbums': false,
+        },
+        'tags': const <int>[],
+      };
+    }
+    body
+      ..['monitored'] = true
+      ..['addOptions'] = {'searchForNewAlbum': searchForNewAlbum};
+
+    final response = await client.post('/api/v1/album', data: body);
+    // The album is added. What follows only finds the artist to open, and
+    // nothing in it may read as a refusal.
+    try {
+      final data = response.data;
+      if (data is Map && data['artist'] is Map) {
+        final artist = LidarrArtist.fromJson(
+          (data['artist'] as Map).cast<String, dynamic>(),
+        );
+        if (artist.id > 0) return artist;
+      }
+      if (held != null) return held;
+      // The answer did not carry the artist as the library holds it: ask for
+      // it by its MusicBrainz id.
+      final byId = await client.get(
+        '/api/v1/artist',
+        queryParameters: {'mbId': hit.artist.foreignArtistId},
+      );
+      final found = byId.data;
+      if (found is List && found.firstOrNull is Map) {
+        final artist = LidarrArtist.fromJson(
+          (found.first as Map).cast<String, dynamic>(),
+        );
+        if (artist.id > 0) return artist;
+      }
+    } catch (_) {
+      // Added all the same.
+    }
+    return null;
   }
 
   /// Fetches all quality profiles.
   Future<List<Map<String, dynamic>>> getQualityProfiles() async {
     return fetchQualityProfiles();
+  }
+
+  /// The quality profiles, with a failed read allowed to reach the caller.
+  ///
+  /// [getQualityProfiles] answers `[]` when it cannot read, which on the add
+  /// sheet would say "no quality profile configured" of a Lidarr that did not
+  /// answer. Read beside [getRootFolders], which already travels.
+  Future<List<Map<String, dynamic>>> getQualityProfilesOrThrow() async {
+    final response = await client.get('/api/v1/qualityprofile');
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Lidarr answered without its profiles');
+    }
+    return data.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+  }
+
+  /// This Lidarr's metadata profiles: which kinds of release it keeps of an
+  /// artist. A failure travels, as [getRootFolders]'s does.
+  Future<List<LidarrMetadataProfile>> getMetadataProfiles() async {
+    final response = await client.get('/api/v1/metadataprofile');
+    final data = response.data;
+    if (data is! List) {
+      throw const FormatException('Lidarr answered without its profiles');
+    }
+    return [
+      for (final entry in data.whereType<Map>())
+        ?LidarrMetadataProfile.tryParse(entry.cast<String, dynamic>()),
+    ];
   }
 
   /// Fetches the root folders configured on this Lidarr.
@@ -293,6 +545,67 @@ class LidarrService with ArrActivityMixin {
   Future<void> updateArtistMonitorNewItems(int artistId, String value) =>
       updateItemFields('artist', artistId, {'monitorNewItems': value});
 
+  /// Sets [edit] on every artist of [artistIds]: `PUT /api/v1/artist/editor`.
+  ///
+  /// **The editor cannot say which artist it refused.** Lidarr's
+  /// `ArtistEditorController.SaveAll` validates every artist it was given
+  /// before it saves any, throws one `ValidationException` for the lot, and its
+  /// errors name a property (`QualityProfileId`, `RootFolderPath`), never an
+  /// artist. So one request for the whole set is asked first, which is what
+  /// nearly always happens and costs one write however many artists there are,
+  /// and a *refusal* of it (a 400, 409 or 422: nothing was saved) is followed
+  /// by one request per artist, a few at a time, each through the same editor
+  /// with its single id. Each of those is its own answer, so the artists in
+  /// [LidarrBulkResult.refused] are exactly those Lidarr turned down and the
+  /// rest were saved. Any other failure (nothing answered, the key was
+  /// refused, a 5xx) is not about any artist: it is thrown, and nothing is
+  /// reported as done.
+  Future<LidarrBulkResult> updateArtistsInBulk(
+    List<int> artistIds,
+    LidarrArtistEdit edit,
+  ) {
+    assert(!edit.isEmpty, 'an edit that sets nothing is not sent');
+    return bulkInOne(
+      artistIds,
+      (ids) => client.put(
+        '/api/v1/artist/editor',
+        data: {'artistIds': ids, ...edit.fields},
+      ),
+    );
+  }
+
+  /// Removes every artist of [artistIds] from Lidarr: `DELETE
+  /// /api/v1/artist/editor`, with [deleteFiles] and [addImportListExclusion]
+  /// as the single removal's.
+  ///
+  /// Asked and answered as [updateArtistsInBulk] is. Lidarr's delete is one
+  /// `DeleteMany` that reports nothing per artist, and an id it does not hold
+  /// is skipped without a word, so a refusal of the set is followed by one
+  /// request per artist for the same reason.
+  Future<LidarrBulkResult> removeArtistsInBulk(
+    List<int> artistIds, {
+    bool deleteFiles = false,
+    bool addImportListExclusion = false,
+  }) {
+    return bulkInOne(
+      artistIds,
+      (ids) => client.delete(
+        '/api/v1/artist/editor',
+        data: {
+          'artistIds': ids,
+          'deleteFiles': deleteFiles,
+          'addImportListExclusion': addImportListExclusion,
+        },
+      ),
+    );
+  }
+
+  /// Starts a search for every artist of [artistIds]: one `ArtistSearch`
+  /// command each, a few at a time. Lidarr's command takes one artist, so each
+  /// request is its own answer and the batch is only the loop.
+  Future<LidarrBulkResult> searchArtistsInBulk(List<int> artistIds) =>
+      bulkEachOf(artistIds, searchArtist);
+
   /// Deletes an artist from Lidarr.
   Future<void> deleteArtist(
     int artistId, {
@@ -307,4 +620,16 @@ class LidarrService with ArrActivityMixin {
       },
     );
   }
+}
+
+/// [LidarrService.monitorAndSearchAlbum] wrote the monitor and the search did
+/// not start: the album is monitored, and the failure is the search's
+/// ([cause]).
+class LidarrSearchNotStarted implements Exception {
+  const LidarrSearchNotStarted(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'Lidarr did not start the search: $cause';
 }

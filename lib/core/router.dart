@@ -60,6 +60,7 @@ import 'package:cupola/features/discover/presentation/discover_atrium.dart'
 import 'package:cupola/features/discover/presentation/calendar_page.dart';
 import 'package:cupola/features/discover/presentation/catalog_page.dart';
 import 'package:cupola/features/discover/presentation/discover_page.dart';
+import 'package:cupola/features/discover/presentation/more_from_your_artists_page.dart';
 import 'package:cupola/features/release_search/presentation/release_search_settings_screen.dart';
 import 'package:cupola/features/settings/presentation/widgets/settings_master_detail.dart';
 import 'package:cupola/features/settings/presentation/settings_appearance_screen.dart';
@@ -376,16 +377,19 @@ Page<void> _libraryDetailPage<T>(
   GoRouterState state, {
   required String heroPrefix,
   required String fallbackLocation,
+  bool positiveIdsOnly = false,
   required Widget Function(
     int id,
     String heroTag,
     T? initialItem,
     String? instanceId,
+    bool justAdded,
+    Map<String, String> query,
   )
   buildChild,
 }) {
   final id = RouteUtils.safeIntParam(state, 'id');
-  if (id == null) {
+  if (id == null || (positiveIdsOnly && id <= 0)) {
     return RouteUtils.redirectPage(
       key: state.pageKey,
       location: fallbackLocation,
@@ -398,7 +402,14 @@ Page<void> _libraryDetailPage<T>(
   // the query rather than in a path segment or in `extra`.
   return RouteUtils.cupertinoPage(
     key: state.pageKey,
-    child: buildChild(id, heroTag, item, state.uri.queryParameters['i']),
+    child: buildChild(
+      id,
+      heroTag,
+      item,
+      state.uri.queryParameters['i'],
+      state.uri.queryParameters[ServiceRoutes.justAddedParam] == '1',
+      state.uri.queryParameters,
+    ),
   );
 }
 
@@ -536,25 +547,42 @@ GoRoute _tail(String path, String Function(GoRouterState state) to) => GoRoute(
 /// another app tab and coming back returns to the title rather than to the top
 /// of the list, and the poster's Hero still flies, because the list it left and
 /// the page it lands on share one Navigator.
+///
+/// [positiveIdsOnly] is for a detail whose list can hold a row the service
+/// does not hold yet: a lookup row has id 0, which is no record, and its page
+/// would read and write `/…/0`. Such an id goes back to [fallbackLocation]
+/// like any other bad parameter.
+///
+/// `buildChild`'s fifth argument is whether the link says the title was added a
+/// moment ago (`?added=1`, [ServiceRoutes.justAddedParam]): a page that has
+/// something to say about that reads it; the others ignore it. The last is the
+/// link's whole query, for a page that takes a parameter of its own (an
+/// artist's page opens on `?album=`).
 GoRoute _libraryDetail<T>(
   String path, {
   required String heroPrefix,
   required String fallbackLocation,
+  bool positiveIdsOnly = false,
   required Widget Function(
     int id,
     String heroTag,
     T? initialItem,
     String? instanceId,
+    bool justAdded,
+    Map<String, String> query,
   )
   buildChild,
 }) => GoRoute(
   path: path,
-  redirect: (context, state) =>
-      RouteUtils.safeIntParam(state, 'id') == null ? fallbackLocation : null,
+  redirect: (context, state) {
+    final id = RouteUtils.safeIntParam(state, 'id');
+    return id == null || (positiveIdsOnly && id <= 0) ? fallbackLocation : null;
+  },
   pageBuilder: (context, state) => _libraryDetailPage<T>(
     state,
     heroPrefix: heroPrefix,
     fallbackLocation: fallbackLocation,
+    positiveIdsOnly: positiveIdsOnly,
     buildChild: buildChild,
   ),
 );
@@ -777,11 +805,12 @@ RouteBase _radarrRoutes() => _serviceRoutes(
         'movie/:id',
         heroPrefix: 'movie',
         fallbackLocation: ServiceRoutes.radarrLibrary,
-        buildChild: (id, heroTag, movie, instanceId) => ArrTitleOpener.radarr(
-          movieId: id,
-          heroTag: heroTag,
-          instanceId: instanceId,
-        ),
+        buildChild: (id, heroTag, movie, instanceId, _, _) =>
+            ArrTitleOpener.radarr(
+              movieId: id,
+              heroTag: heroTag,
+              instanceId: instanceId,
+            ),
       ),
     ],
   },
@@ -830,11 +859,12 @@ RouteBase _sonarrRoutes() => _serviceRoutes(
         'series/:id',
         heroPrefix: 'series',
         fallbackLocation: ServiceRoutes.sonarrLibrary,
-        buildChild: (id, heroTag, series, instanceId) => ArrTitleOpener.sonarr(
-          seriesId: id,
-          heroTag: heroTag,
-          instanceId: instanceId,
-        ),
+        buildChild: (id, heroTag, series, instanceId, _, _) =>
+            ArrTitleOpener.sonarr(
+              seriesId: id,
+              heroTag: heroTag,
+              instanceId: instanceId,
+            ),
       ),
     ],
   },
@@ -881,12 +911,18 @@ RouteBase _lidarrRoutes() => _serviceRoutes(
         'artist/:id',
         heroPrefix: 'artist',
         fallbackLocation: ServiceRoutes.lidarrLibrary,
-        buildChild: (id, heroTag, artist, instanceId) => ArtistPage(
-          artistId: id,
-          heroTag: heroTag,
-          initialArtist: artist,
-          instanceId: instanceId,
-        ),
+        // A lookup row the library does not hold has id 0: never a page.
+        positiveIdsOnly: true,
+        buildChild: (id, heroTag, artist, instanceId, justAdded, query) =>
+            ArtistPage(
+              artistId: id,
+              heroTag: heroTag,
+              initialArtist: artist,
+              instanceId: instanceId,
+              justAdded: justAdded,
+              // The album a link names: the page opens on its tracks.
+              openAlbumId: int.tryParse(query[ServiceRoutes.albumParam] ?? ''),
+            ),
       ),
     ],
   },
@@ -936,7 +972,7 @@ RouteBase _readarrRoutes() => _serviceRoutes(
         'author/:id',
         heroPrefix: 'author',
         fallbackLocation: ServiceRoutes.readarrLibrary,
-        buildChild: (id, heroTag, author, instanceId) => AuthorPage(
+        buildChild: (id, heroTag, author, instanceId, _, _) => AuthorPage(
           authorId: id,
           heroTag: heroTag,
           initialAuthor: author,
@@ -1922,6 +1958,9 @@ RouteBase _branchRootFor(NavTab tab) => switch (tab) {
     pageBuilder: (context, state) => _tabPage(state, const DiscoverPage()),
     routes: [
       _page('calendar', (state) => const CalendarPage()),
+      // The shelf `More from your artists`, whole: Lidarr's, so the
+      // operator's (`_audienceRedirect`).
+      _page('artists', (state) => const MoreFromYourArtistsPage()),
       _page(
         'browse/:index',
         (state) => DiscoverIndexPage(
@@ -2108,8 +2147,9 @@ String? _rewriteLegacyStackPath(Uri uri) {
 
 /// Where [audience] may not be: the requester's app has no control room, so
 /// Activity, Stack and every service's room, and the import flow, send her
-/// Home, and the operator's three settings pages (the trust store, release
-/// search and the code another device copies from) send her to Settings; the
+/// Home, the operator's album shelf in Discover sends her to Discover, and
+/// the operator's three settings pages (the trust store, release search and
+/// the code another device copies from) send her to Settings; the
 /// operator has no tab of the requester's own requests, so that one sends him
 /// to Seerr's, and no account page, so that one sends him to the
 /// connection's form. Null where [audience] may be.
@@ -2132,6 +2172,9 @@ String? _audienceRedirect(Uri uri, Audience audience) {
             under(ServiceRoutes.settingsBackgroundSearch) ||
             under(ServiceRoutes.settingsAnotherDevice) =>
       ServiceRoutes.settings,
+    // The album shelf reads a Lidarr she has no business with.
+    Audience.requester when under(ServiceRoutes.discoverMoreFromYourArtists) =>
+      ServiceRoutes.discover,
     Audience.operator when under(ServiceRoutes.requests) =>
       ServiceRoutes.seerrRequests,
     // His account is in the connection's form, among its address and key.

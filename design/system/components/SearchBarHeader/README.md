@@ -2,7 +2,7 @@
 
 The always-visible search field at the top of a browsable screen: a monochrome magnifier and a clear button once there is a query.
 
-Rendered from `lib/core/widgets/search_bar_header.dart` (a Material 3 `SearchBar`) by `test/design_catalog/search_bar_header_catalog_test.dart`. Hints are the callers' real strings: *Movies, series, people* (the Discover tab; *Movies and series* without Seerr, which is where people come from), *Search torrents* (qBittorrent), *Search movies* / *Search series* / *Search artists* (the library screens); the default is *Search*. No hint ends in an ellipsis.
+Rendered from `lib/core/widgets/search_bar_header.dart` (a Material 3 `SearchBar`) by `test/design_catalog/search_bar_header_catalog_test.dart`. Hints are the callers' real strings: *Movies, series, people* (the Discover tab; *Movies and series* without Seerr, which is where people come from), *Search torrents* (qBittorrent), *Movies* / *Series* / *Artists and albums* / *Authors* (the library walls: the field names what it finds, in the library first); the default is *Search*. No hint ends in an ellipsis.
 
 - Outer padding `AppSpacing.sm` top, `AppSpacing.lg` sides, `AppSpacing.lg` bottom.
 - Field: minimum height 52, `surfaceContainer` fill, 1px `outlineVariant` side, `AppRadius.borderRadiusMd` (14), the control radius; the theme's own text fields take the 16 field radius, elevation 0, horizontal padding `AppSpacing.sm`. Focused, the side is 1.5px `line.focus`, as every focused field's is, so the keyboard's place is never only a caret.
@@ -15,7 +15,7 @@ Rendered from `lib/core/widgets/search_bar_header.dart` (a Material 3 `SearchBar
 
 ## The consumer provides
 
-`onQueryChanged`, `hintText`, an optional `initialQuery`, `autofocus`, `debounceDuration`, a `focusNode` when the screen needs to know where the keyboard is (the Discover tab shows its recent searches while the field is focused and empty), and `onCancel`. No colour: the field is the same field whichever service it searches.
+`onQueryChanged`, `hintText`, an optional `initialQuery`, `autofocus`, `debounceDuration`, a `focusNode` when the screen needs to know where the keyboard is (the Discover tab shows its recent searches while the field is focused and empty), `onCancel` with `cancelLabel` (`Cancel`, or `Done` for a field opened to find one thing: the artist page's track finder), `label` (what a screen reader names the field before its hint, `Search` or `Find a track by Jan Morgenstern`) and `padding` (the gutter at both sides by default; a field inside a page's own column takes none at the sides). No colour: the field is the same field whichever service it searches.
 
 ## Semantics
 
