@@ -24,7 +24,7 @@ import 'package:cupola/features/discover/data/seerr_service.dart';
 import 'package:cupola/features/discover/data/seerr_session.dart';
 import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_refusal.dart';
-import 'package:cupola/features/discover/domain/seerr_write_reach.dart';
+import 'package:cupola/core/network/write_outcome.dart';
 import 'package:cupola/features/discover/domain/seerr_grant.dart'
     show SeerrAbility;
 import 'package:cupola/features/media/domain/media_report.dart';
@@ -165,7 +165,7 @@ class _ReportProblemSheetState extends ConsumerState<ReportProblemSheet> {
     } catch (error) {
       if (!mounted) return;
       var unsure = false;
-      if (seerrWriteMayHaveLanded(error)) {
+      if (writeMayHaveLanded(error)) {
         // Seerr takes no key that makes a second send harmless: what it holds
         // is read before the report is offered again.
         try {

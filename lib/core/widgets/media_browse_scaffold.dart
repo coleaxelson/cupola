@@ -13,7 +13,7 @@ import 'package:cupola/core/app_breakpoints.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/lifecycle/page_activity.dart';
-import 'package:cupola/core/network/connection_failure.dart';
+import 'package:cupola/core/network/write_outcome.dart';
 import 'package:cupola/core/providers/navigation_refresh_provider.dart';
 import 'package:cupola/core/service_theme.dart';
 import 'package:cupola/core/theme.dart';
@@ -829,7 +829,7 @@ class _MediaBrowseScaffoldState<T>
     setState(() => _running = null);
 
     if (thrown != null) {
-      final unknown = _mayHaveApplied(thrown);
+      final unknown = writeMayHaveLanded(thrown);
       // A write that may have gone through is read back, so the wall shows
       // what the server holds and a retry is for what is still to do.
       if (unknown && bulk != null) bulk.onChanged?.call(ref);
@@ -916,22 +916,6 @@ class _MediaBrowseScaffoldState<T>
       return;
     }
     setState(() => _failure = (message: message, error: error, retry: again));
-  }
-
-  /// Whether [error] leaves it unknown if the write was carried out: the
-  /// request was sent and nothing readable came back (a timeout after the
-  /// connection was made, a reply that broke off, a 5xx). A request that
-  /// certainly never arrived (refused, unresolved, not set up, refused by the
-  /// key or the address) changed nothing.
-  static bool _mayHaveApplied(Object error) {
-    if (unwrapFailure(error) is ServiceNotConfigured) return false;
-    return switch (classifyConnectionFailure(error)) {
-      ServiceFailureReason.timeout ||
-      ServiceFailureReason.serverError ||
-      ServiceFailureReason.invalidResponse ||
-      ServiceFailureReason.unknown => true,
-      _ => false,
-    };
   }
 
   /// Each refusal in the service's words, up to three, then how many more.

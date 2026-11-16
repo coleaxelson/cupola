@@ -31,7 +31,7 @@ import 'package:cupola/features/discover/data/seerr_session.dart';
 import 'package:cupola/features/discover/domain/models/seerr_issue.dart';
 import 'package:cupola/features/discover/domain/seerr_issue_words.dart';
 import 'package:cupola/features/discover/domain/seerr_refusal.dart';
-import 'package:cupola/features/discover/domain/seerr_write_reach.dart';
+import 'package:cupola/core/network/write_outcome.dart';
 import 'package:cupola/features/discover/presentation/widgets/seerr_not_set_up.dart';
 import 'package:cupola/features/media/domain/media_key.dart';
 import 'package:cupola/features/media/domain/media_report.dart';
@@ -650,7 +650,7 @@ class _SeerrIssueThreadScreenState
     } catch (error) {
       if (!mounted) return false;
       var line = failure;
-      if (alreadyThere != null && seerrWriteMayHaveLanded(error)) {
+      if (alreadyThere != null && writeMayHaveLanded(error)) {
         try {
           if (await alreadyThere(ref.read(seerrServiceForProvider(_id)))) {
             if (mounted) _readAgain(issue);
