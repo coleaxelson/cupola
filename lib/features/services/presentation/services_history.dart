@@ -97,14 +97,12 @@ class ArrHistoryEntry {
   /// The connection this record came off.
   ///
   /// A history record id and the media id in it are that server's: each
-  /// Radarr numbers from one, so "film 3" names a different film on each. The
-  /// manual import a failed record becomes has to open on this connection,
-  /// never on whatever the lens is on when the user taps Fix. Empty only for a
-  /// record built without one, which falls back to the lens.
+  /// Radarr numbers from one, so "movie 3" names a different movie on each.
+  /// Empty only for a record built without one.
   final String instanceId;
 
-  /// The history record's own id. Unique per connection, and what the decision
-  /// row is keyed on: a media id is not, since one film can fail twice.
+  /// The history record's own id. Unique per connection: a media id is not,
+  /// since one movie can fail twice.
   final int id;
 
   /// The library item this record is about, for the route. Zero when the record
@@ -132,12 +130,12 @@ class ArrHistoryEntry {
 /// One history page per arr, and which arrs answered for it.
 typedef ArrHistory = ({List<ArrHistoryEntry> entries, SourceCoverage coverage});
 
-/// One history page per arr, read once and shared by the two regions that need
-/// it.
+/// One history page per arr, read once and shared by the regions that need it.
 ///
-/// Recently added asks it what landed; the decisions region asks it what did
-/// not. One provider so the answer is one request, and so the two regions cannot
-/// disagree about the same record.
+/// Recently added asks it what landed; Activity > History tells what failed.
+/// A failed download is a fact, not a decision: the arr already blocklisted the
+/// release and searched again. One provider so the answer is one request, and
+/// so the regions cannot disagree about the same record.
 ///
 /// A dark arr still degrades to no records, and now also says so in
 /// [ArrHistory.coverage]: the rail can show what the others answered, but the
@@ -294,7 +292,7 @@ ArrHistoryEntry _historyEntryFrom(
     downloadId: stringOrNull(record['downloadId']),
     // `statusMessages` is where an \*arr puts the reason an import failed, and
     // `message` is where a failed *grab* puts it. Neither is always present, and
-    // a decision row with no reason still says what it is.
+    // a history line with no reason still says what it is.
     reason:
         stringOrNull(data?['statusMessages']) ?? stringOrNull(data?['message']),
   );
@@ -409,8 +407,7 @@ final servicesArrivalsProvider = FutureProvider.autoDispose<ArrHistory>(
 /// failures and the week's imports are one window and cannot drift.
 ///
 /// `downloadFailed` is asked for by name and checked again on each record: a
-/// server that ignores the filter, or a failed *import*, which is a decision
-/// of its own, is not a failed download and is dropped.
+/// server that ignores the filter is not trusted, and anything else is dropped.
 final servicesFailuresSinceProvider = FutureProvider.autoDispose<ArrHistory>(
   (ref) => _readHistorySince(
     ref,
@@ -430,10 +427,9 @@ final servicesFailuresSinceProvider = FutureProvider.autoDispose<ArrHistory>(
 ///
 /// [events] is the event type each arr is asked for, by name. A record is kept
 /// when it classifies as [keep], and, with [exactEvent], only when it is the
-/// very event asked for: an outcome can have more than one event
-/// (`importFailed` is a failure too), and a read that wants the one must not
-/// take the other. A connection that fails is named in the coverage and
-/// takes nobody else's records with it.
+/// very event asked for, so a server that ignores the filter cannot slip in
+/// another event of the same outcome. A connection that fails is named in the
+/// coverage and takes nobody else's records with it.
 Future<ArrHistory> _readHistorySince(
   Ref ref, {
   required Map<ServiceKey, String> events,

@@ -155,4 +155,28 @@ void main() {
       expect(formatWindowRemaining(const Duration(seconds: 30)), '30\u00A0s');
     });
   });
+
+  group('aboutSpan', () {
+    test('under an hour, the span as it is', () {
+      expect(
+        aboutSpan(const Duration(minutes: 57, seconds: 40)),
+        const Duration(minutes: 57, seconds: 40),
+      );
+    });
+
+    test('from an hour on, to the nearest ten minutes', () {
+      expect(
+        aboutSpan(const Duration(hours: 2, minutes: 57)),
+        const Duration(hours: 3),
+      );
+      expect(
+        aboutSpan(const Duration(hours: 2, minutes: 44)),
+        const Duration(hours: 2, minutes: 40),
+      );
+      expect(
+        aboutSpan(const Duration(hours: 1, minutes: 4)),
+        const Duration(hours: 1),
+      );
+    });
+  });
 }

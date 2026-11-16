@@ -111,15 +111,6 @@ final dashboardDecisionSourceProvider =
             ],
             coverage: inFlight.coverage,
           );
-        case DecisionSource.history:
-          final history = await ref.watch(servicesArrHistoryProvider.future);
-          return (
-            decisions: history.entries
-                .where((entry) => entry.outcome == ArrImportOutcome.failed)
-                .map(_failedImportDecision)
-                .toList(growable: false),
-            coverage: history.coverage,
-          );
         case DecisionSource.storage:
           final reads = await Future.wait([
             _decisionsOnEveryConnection(
@@ -859,9 +850,8 @@ DashboardDecision _queueFaultDecision(ServiceQueueItem item) {
       // Read in a sentence (`… needs a manual import`), so a pack is named
       // by its episodes, not by the row's count of them.
       title: item.subject ?? item.title,
-      // The shape `_failedImportDecision` prints, so the two import faults read
-      // alike. No client: the bytes are on disk, and the client is not where
-      // this is fixed. The connection is named when there are two.
+      // No client: the bytes are on disk, and the client is not where this is
+      // fixed. The connection is named when there are two.
       detail: joinDisplayParts([
         'Import blocked',
         serviceWithConnection(item.service, item.connectionName, joiner: ' '),
@@ -934,54 +924,3 @@ ServiceKey? _clientServiceFor(ServiceQueueItem item) {
     _ => null,
   };
 }
-
-DashboardDecision _failedImportDecision(ArrHistoryEntry entry) =>
-    DashboardDecision(
-      kind: DecisionKind.failedImport,
-      // With the connection: each arr numbers its history from one.
-      id: 'import-${entry.service.routeParam}-${entry.instanceId}-${entry.id}',
-      service: entry.service,
-      title: entry.title,
-      detail: joinDisplayParts([
-        'Import failed',
-        serviceWithConnection(entry.service, entry.connectionName, joiner: ' '),
-        entry.reason,
-      ]),
-      occurredAt: entry.at,
-      // The library item a manual import would be filed under. Zero (a failed
-      // grab of something the \*arr never added) leaves the wizard to ask.
-      actionId: entry.mediaId <= 0 ? null : entry.mediaId,
-      // The connection the record came off: the wizard files into that
-      // server's library, under that server's id for the film.
-      instanceId: entry.instanceId,
-      connectionName: entry.connectionName,
-      actionInstanceId: entry.instanceId,
-      posterUrl: entry.posterUrl,
-      route: entry.mediaId <= 0
-          ? ServiceRoutes.forService(entry.service)
-          : switch (entry.service) {
-              ServiceKey.radarr when (entry.tmdbId ?? 0) > 0 =>
-                ServiceRoutes.mediaRoot(
-                  MediaKey.movie(entry.tmdbId!),
-                  focus: entry.instanceId,
-                ),
-              ServiceKey.radarr => ServiceRoutes.radarrMovie(
-                entry.mediaId,
-                instanceId: entry.instanceId,
-              ),
-              ServiceKey.sonarr when (entry.tmdbId ?? 0) > 0 =>
-                ServiceRoutes.mediaRoot(
-                  MediaKey.tv(entry.tmdbId!),
-                  focus: entry.instanceId,
-                ),
-              ServiceKey.sonarr => ServiceRoutes.sonarrSeries(
-                entry.mediaId,
-                instanceId: entry.instanceId,
-              ),
-              ServiceKey.lidarr => ServiceRoutes.lidarrArtist(
-                entry.mediaId,
-                instanceId: entry.instanceId,
-              ),
-              _ => ServiceRoutes.forService(entry.service),
-            },
-    );

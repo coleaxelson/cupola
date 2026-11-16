@@ -152,7 +152,8 @@ String? downloadPaceLine(
       final starts = item.startsInSeconds;
       return starts == null || starts <= 0
           ? 'Waits its turn in ${clientName(item)}'
-          : 'Starts in about ${formatTimeSpan(Duration(seconds: starts))}';
+          : 'Starts in about '
+                '${formatTimeSpan(aboutSpan(Duration(seconds: starts)))}';
     case DownloadStand.stopped:
       return _arrivedLine(item);
     case DownloadStand.stuck:

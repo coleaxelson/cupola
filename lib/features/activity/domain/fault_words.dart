@@ -41,12 +41,6 @@ FaultWords faultWordsOf(DashboardDecision decision) {
       source: source,
       why: why == null || why.isEmpty ? null : sentence(why),
     ),
-    DecisionKind.failedImport => (
-      headline: '${decision.title} did not import',
-      explanation: '$source downloaded it and could not place the file.',
-      source: source,
-      why: why == null || why.isEmpty ? null : sentence(why),
-    ),
     DecisionKind.failingIndexer => (
       headline: '${decision.title} is failing',
       explanation: decision.detail.contains('disabled for now')

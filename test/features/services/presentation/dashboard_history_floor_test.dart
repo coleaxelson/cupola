@@ -1,11 +1,11 @@
-/// Needs you reads one page of history per connection, and a page that came
-/// back full is a window onto more of it.
+/// The Home reads one page of history per connection, and a page that came
+/// back full is a window onto more of it, which its coverage says.
 ///
-/// The failed imports Needs you counts after its lead were stated as every one
-/// there is. Past a full page are older failures nobody read, so the figure
-/// over it is a floor. Arrived reads no page: a week of imports comes in one
-/// answer per connection, so what it counts is every title there is, however
-/// busy the evening, and it never says a floor.
+/// Needs you reads no history: a failed download is the arr's to handle, so
+/// no page of it can make Needs you's count a floor. Arrived reads no page
+/// either: a week of imports comes in one answer per connection, so what it
+/// counts is every title there is, however busy the evening, and it never
+/// says a floor.
 library;
 
 import 'package:flutter/material.dart';
@@ -53,94 +53,101 @@ void main() {
     });
   });
 
-  testWidgets('P1, a busy HD Radarr: Needs you\'s count over its full page '
-      'is a floor, and Arrived\'s count over the whole week is not', (
-    tester,
-  ) async {
-    final handle = tester.ensureSemantics();
-    final harness = await ProfileHarness.start(Profiles.p1);
-    harness.network.on(
-      WorldIds.radarr,
-      'GET',
-      '/api/v3/history',
-      (r) => NetworkReply.json(
-        pagedEnvelope(r, _busyEvening(harness.network.now)),
-      ),
-    );
-    // The same evening as the week's read answers it: every record, with no
-    // page to run out.
-    harness.network.on(
-      WorldIds.radarr,
-      'GET',
-      '/api/v3/history/since',
-      (r) => NetworkReply.json(_busyEvening(harness.network.now)),
-    );
-    await tester.binding.setSurfaceSize(const Size(430, 6000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: harness.overrides,
-        child: MaterialApp(
-          theme: AppTheme.darkTheme(),
-          home: const HomeScreen(),
+  testWidgets(
+    'P1, a busy HD Radarr: Needs you reads no history, and Arrived\'s '
+    'count over the whole week is no floor',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      final harness = await ProfileHarness.start(Profiles.p1);
+      harness.network.on(
+        WorldIds.radarr,
+        'GET',
+        '/api/v3/history',
+        (r) => NetworkReply.json(
+          pagedEnvelope(r, _busyEvening(harness.network.now)),
         ),
-      ),
-    );
-    await harness.settle(tester);
-
-    // Twenty-five titles on the HD's answer and two on the 4K's: the week's
-    // total, which no page cut short. Sonarr's episode is of a series that
-    // was already there, and is not a title that arrived.
-    expect(
-      find.descendant(
-        of: find.byType(HomeArrivedModule),
-        matching: find.text('Last 7 days\u00A0· 27 new'),
-      ),
-      findsOne,
-    );
-    expect(
-      find.bySemanticsLabel(RegExp(r'^Arrived, Last 7 days, 27 new')),
-      findsOne,
-    );
-    expect(
-      find.descendant(
-        of: find.byType(HomeArrivedModule),
-        matching: find.textContaining(RegExp(r'\d\+')),
-      ),
-      findsNothing,
-      reason: 'Arrived reads no page, so it has no floor to say',
-    );
-    // Needs you read the same page for failed imports. The blocked imports
-    // it leads with come from the queue, read whole, so their eighteen is
-    // every one there is; what follows them counts the failed imports of
-    // that full page, and is the least there is.
-    expect(
-      find.descendant(
-        of: find.byType(NeedsYouLine),
-        matching: find.text('18 downloads need a manual import'),
-      ),
-      findsOne,
-    );
-    expect(
-      find.descendant(
-        of: find.byType(NeedsYouLine),
-        matching: find.textContaining(RegExp(r'^\d+\+ more$')),
-      ),
-      findsOne,
-    );
-    expect(
-      find.bySemanticsLabel(
-        RegExp(
-          r'^18 downloads need a manual import, and at least \d+ more '
-          r'things? needs? you\. Review$',
+      );
+      // The same evening as the week's read answers it: every record, with no
+      // page to run out.
+      harness.network.on(
+        WorldIds.radarr,
+        'GET',
+        '/api/v3/history/since',
+        (r) => NetworkReply.json(_busyEvening(harness.network.now)),
+      );
+      await tester.binding.setSurfaceSize(const Size(430, 6000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: harness.overrides,
+          child: MaterialApp(
+            theme: AppTheme.darkTheme(),
+            home: const HomeScreen(),
+          ),
         ),
-      ),
-      findsOne,
-    );
+      );
+      await harness.settle(tester);
 
-    handle.dispose();
-    await harness.unmount(tester);
-  });
+      // Twenty-five titles on the HD's answer and two on the 4K's: the week's
+      // total, which no page cut short. Sonarr's episode is of a series that
+      // was already there, and is not a title that arrived.
+      expect(
+        find.descendant(
+          of: find.byType(HomeArrivedModule),
+          matching: find.text('Last 7 days\u00A0· 27 new'),
+        ),
+        findsOne,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Arrived, Last 7 days, 27 new')),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(HomeArrivedModule),
+          matching: find.textContaining(RegExp(r'\d\+')),
+        ),
+        findsNothing,
+        reason: 'Arrived reads no page, so it has no floor to say',
+      );
+      // Needs you leads with the blocked imports of the queue, read whole, and
+      // counts P1's two other faults after them as every one there is: the
+      // full page of history behind it makes no floor (`2+ more`).
+      expect(
+        find.descendant(
+          of: find.byType(NeedsYouLine),
+          matching: find.text('18 downloads need a manual import'),
+        ),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(NeedsYouLine),
+          matching: find.text('+2'),
+        ),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(NeedsYouLine),
+          matching: find.textContaining(RegExp(r'more$')),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(
+            r'^18 downloads need a manual import, and 2 more things need '
+            r'you\. Review$',
+          ),
+        ),
+        findsOne,
+      );
+
+      handle.dispose();
+      await harness.unmount(tester);
+    },
+  );
 
   test('P1 as it is: no page is full, and nothing is a floor', () async {
     final harness = await ProfileHarness.start(Profiles.p1);

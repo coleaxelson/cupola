@@ -135,7 +135,8 @@ void retryDashboardServices(WidgetRef ref, Iterable<ServiceKey> services) {
   // sources that read anything else, each only when it reads one of these.
   bool reads(DecisionSource source) => source.services.any(asked.contains);
   if (reads(DecisionSource.queue)) ref.invalidate(servicesQueueProvider);
-  if (reads(DecisionSource.history)) {
+  // Recently added and Arrived read the \*arrs' history.
+  if (asked.any(_historyServices.contains)) {
     ref.invalidate(servicesArrHistoryProvider);
   }
   for (final source in DecisionSource.values) {
@@ -160,6 +161,13 @@ void retryDashboardServices(WidgetRef ref, Iterable<ServiceKey> services) {
     ref.invalidate(homeResumeProvider);
   }
 }
+
+/// The \*arrs whose history Recently added and Arrived read.
+const _historyServices = {
+  ServiceKey.radarr,
+  ServiceKey.sonarr,
+  ServiceKey.lidarr,
+};
 
 /// The libraries Arrived reads its week from.
 const _arrivalSources = {

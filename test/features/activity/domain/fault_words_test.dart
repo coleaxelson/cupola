@@ -70,11 +70,7 @@ void main() {
     );
   });
 
-  test('a failed import, an indexer and a stack say what happened', () {
-    expect(
-      faultWordsOf(_decision(DecisionKind.failedImport)).headline,
-      'Cosmos Laundromat did not import',
-    );
+  test('an indexer and a stack say what happened', () {
     final indexer = faultWordsOf(
       _decision(
         DecisionKind.failingIndexer,

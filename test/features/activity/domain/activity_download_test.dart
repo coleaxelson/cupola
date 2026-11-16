@@ -152,6 +152,24 @@ void main() {
       );
     });
 
+    test('hours ahead, to the nearest ten minutes: a delay profile\'s '
+        'release time is no estimate to the minute', () {
+      // 17:45 seen from 14:48.
+      expect(
+        queuedWords(const Duration(hours: 2, minutes: 57).inSeconds),
+        'Queued\u00A0· starts in about 3\u00A0h',
+      );
+      expect(
+        queuedWords(const Duration(hours: 2, minutes: 43).inSeconds),
+        'Queued\u00A0· starts in about 2\u00A0h 40\u00A0min',
+      );
+      // Under an hour it stays to the minute.
+      expect(
+        queuedWords(const Duration(minutes: 57).inSeconds),
+        'Queued\u00A0· starts in about 57\u00A0min',
+      );
+    });
+
     test('where it does not, or it already should have, just Queued', () {
       expect(queuedWords(null), 'Queued');
       expect(queuedWords(0), 'Queued');

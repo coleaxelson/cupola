@@ -885,6 +885,8 @@ ServiceQueueItem _joinedQueueItem(
   // is a figure neither source reported.
   final clientMeasured = client.totalBytes != null;
 
+  final joinedQueued = fault == null && !client.held && client.queued;
+
   return ServiceQueueItem(
     service: arr.service,
     id: arr.id,
@@ -919,8 +921,10 @@ ServiceQueueItem _joinedQueueItem(
     held: fault == null && client.held,
     // And on waiting its turn, as on progress: the arr's `queued` is its
     // minute-old reading of the same client.
-    queued: fault == null && !client.held && client.queued,
-    startsInSeconds: client.startsInSeconds,
+    queued: joinedQueued,
+    // The client's estimate, else the arr's, only while the row reads queued.
+    startsInSeconds:
+        client.startsInSeconds ?? (joinedQueued ? arr.startsInSeconds : null),
     rateBytesPerSecond: client.rateBytesPerSecond,
     tmdbId: arr.tmdbId,
     tvdbId: arr.tvdbId,
@@ -1365,6 +1369,7 @@ Future<_QueueRead> _loadServiceQueueItems(
     ServiceKey.tracearr => const ArrRecordPage(records: [], total: 0),
   };
   final records = page.records.whereType<Map>().map(stringKeyMap);
+  final now = ref.watch(stallClockProvider)();
   return (
     items: [
       for (final download in _groupQueueRecordsByDownload(records))
@@ -1373,6 +1378,7 @@ Future<_QueueRead> _loadServiceQueueItems(
           download,
           instanceId: id,
           connectionName: source.name,
+          now: now,
         ),
     ],
     cutShort: page.cutShort,
@@ -1419,11 +1425,35 @@ int _faultWeight(InFlightFault? fault) => switch (fault) {
   null => 0,
 };
 
+/// Seconds until a release held by the delay profile starts: every record of
+/// the download is `delay` and carries an `estimatedCompletionTime` still ahead
+/// of [now], the latest of them. Null otherwise, so the row says just `Queued`:
+/// a `queued` record (in line at its client) has no estimate from the arr, and
+/// `downloadClientUnavailable` or `fallback` are not a delay.
+int? _delayEndsInSeconds(List<Map<String, dynamic>> records, DateTime now) {
+  DateTime? latest;
+  for (final record in records) {
+    final status = record['status'];
+    if (status is! String || status.trim().toLowerCase() != 'delay') {
+      return null;
+    }
+    final at = parseAddedTimestamp(
+      stringOrNull(record['estimatedCompletionTime']),
+    );
+    if (at == null || !at.isAfter(now)) return null;
+    if (latest == null || at.isAfter(latest)) latest = at;
+  }
+  if (latest == null) return null;
+  final seconds = latest.difference(now).inSeconds;
+  return seconds > 0 ? seconds : null;
+}
+
 ServiceQueueItem _queueItemFromRecords(
   ServiceKey service,
   List<Map<String, dynamic>> records, {
   required String instanceId,
   String? connectionName,
+  required DateTime now,
 }) {
   // One download, so its figures are the first record's: every record of a
   // pack reports the pack's size, and summing them would multiply it.
@@ -1463,6 +1493,7 @@ ServiceQueueItem _queueItemFromRecords(
   final held =
       fault == null &&
       ArrQueueEntry.fromQueueItem(typedItem)?.pipeline == MediaPipeline.paused;
+  final queued = fault == null && !held && records.every(arrQueueIsQueued);
 
   return ServiceQueueItem(
     service: service,
@@ -1506,7 +1537,9 @@ ServiceQueueItem _queueItemFromRecords(
     held: held,
     // And of a wait: `queued` or `delay` on every record of the download,
     // standing until a client row says otherwise.
-    queued: fault == null && !held && records.every(arrQueueIsQueued),
+    queued: queued,
+    // When the delay profile lets go, where the arr says so.
+    startsInSeconds: queued ? _delayEndsInSeconds(records, now) : null,
     // The title's ids, as the record embeds the movie or the series.
     tmdbId: _embeddedId(typedItem, switch (service) {
       ServiceKey.radarr => 'movie',

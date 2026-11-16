@@ -1,10 +1,10 @@
 /// What an \*arr history record means to the Dashboard.
 ///
-/// Two regions read the same page of history and ask it different questions:
-/// *Recently added* asks what landed, and *Needs a decision* asks what did not.
-/// Classifying the `eventType` once, here, is what keeps those two from
-/// disagreeing about the same record, and keeps the vocabulary out of a widget,
-/// where the answer would be a switch nobody can test without pumping a frame.
+/// *Recently added* asks what landed; Activity > History tells what failed.
+/// Neither is a decision: a failed download is a fact the arr already handled
+/// (it blocklists the release and searches again). Classifying the `eventType`
+/// once, here, keeps the vocabulary out of a widget, where the answer would be
+/// a switch nobody can test without pumping a frame.
 ///
 /// ## The fetch, and where it deviates from the brief
 ///
@@ -18,8 +18,8 @@
 /// `downloadFolderImported` on Radarr and `seriesFolderImported` on Sonarr), and
 /// a string value is rejected outright by the controller's model binder. Sending
 /// it would empty the region on every real server. Worse, the filter cannot
-/// coexist with the other half of the brief: a *failed* import is a decision,
-/// and a query that returns only successful imports can never produce one.
+/// coexist with History's failures: a query that returns only successful
+/// imports can never show a failed download.
 ///
 /// So the read is unfiltered, one page, and the classification happens here.
 /// Same request count, same payload shape, both questions answered.
@@ -30,7 +30,8 @@ enum ArrImportOutcome {
   /// A file was imported into the library. This is the region's subject.
   imported,
 
-  /// A grab or an import failed. A **fault**, which is amber, and a decision.
+  /// A download failed; the arr already handled it (blocklist, search again):
+  /// a fact for History, not a decision.
   failed,
 
   /// Everything else (grabbed, renamed, deleted, ignored). Not this region's
@@ -51,17 +52,16 @@ const Set<String> arrImportedEvents = {
   'bookFileImported',
 };
 
-/// The failure events.
+/// The failure events: `downloadFailed` is the only one the arrs have.
+///
+/// Sonarr's `EpisodeHistoryEventType`, Radarr's `MovieHistoryEventType` and
+/// Lidarr's `EntityHistoryEventType` hold no import-failure event; a failed
+/// import lives in the queue (`importBlocked`), never in history.
 ///
 /// `downloadIgnored` is deliberately absent: ignoring a download is a decision
 /// the user already made, and the tone rule files a thing stopped on purpose
 /// under neutral rather than under faults.
-const Set<String> arrFailedEvents = {
-  'downloadFailed',
-  'importFailed',
-  'downloadFolderImportFailed',
-  'trackFileImportFailed',
-};
+const Set<String> arrFailedEvents = {'downloadFailed'};
 
 ArrImportOutcome classifyHistoryEvent(String? eventType) {
   final event = eventType?.trim() ?? '';

@@ -18,6 +18,7 @@ import 'package:cupola/features/home/domain/arrived.dart';
 import 'package:cupola/features/home/presentation/widgets/arrived_module.dart';
 import 'package:cupola/features/home/presentation/widgets/downloads_module.dart';
 import 'package:cupola/features/home/presentation/home_screen.dart';
+import 'package:cupola/features/services/domain/arr_import.dart';
 import 'package:cupola/features/services/domain/dashboard_decision.dart';
 import 'package:cupola/features/services/presentation/dashboard_sections.dart';
 import 'package:cupola/features/services/presentation/services_provider.dart';
@@ -30,23 +31,26 @@ import 'package:cupola/demo/world/service_fakes.dart';
 
 const _tall = Size(430, 6000);
 
-/// One failed import of Elephants Dream, film 1 on the 4K Radarr.
-Map<String, Object?> _failedImport(DateTime now) => {
+bool _isElephantsDream(DashboardDecision decision) =>
+    decision.title == 'Elephants Dream';
+
+/// One failed download of Elephants Dream, movie 1 on the 4K Radarr.
+Map<String, Object?> _failedDownload(DateTime now) => {
   'id': 41,
   'movieId': 1,
-  'eventType': 'importFailed',
+  'eventType': 'downloadFailed',
   'sourceTitle': 'Elephants.Dream.2006.2160p.UHD.BluRay',
   'date': now.subtract(const Duration(minutes: 20)).toUtc().toIso8601String(),
   'movie': {'id': 1, 'title': 'Elephants Dream', 'year': 2006},
   'data': {'message': 'Not a valid video file'},
 };
 
-void _scriptFailedImportOn4k(ProfileNetwork network) {
+void _scriptFailedDownloadOn4k(ProfileNetwork network) {
   network.on(
     WorldIds.radarr4k,
     'GET',
     '/api/v3/history',
-    (r) => NetworkReply.json(pagedEnvelope(r, [_failedImport(network.now)])),
+    (r) => NetworkReply.json(pagedEnvelope(r, [_failedDownload(network.now)])),
   );
   // The week's read asks for imports by name; a server that ignores that
   // still answers with the failure among its imports, and Arrived leaves it
@@ -56,7 +60,7 @@ void _scriptFailedImportOn4k(ProfileNetwork network) {
     'GET',
     '/api/v3/history/since',
     (r) => NetworkReply.json([
-      _failedImport(network.now),
+      _failedDownload(network.now),
       ...const RadarrFake().history(
         ServerContext(
           network: network,
@@ -113,7 +117,7 @@ void main() {
     final harness = await _pumpHome(
       tester,
       Profiles.p1,
-      before: _scriptFailedImportOn4k,
+      before: _scriptFailedDownloadOn4k,
     );
 
     // Downloads: the 4K's movie, named for its Radarr, with how far it is
@@ -161,7 +165,7 @@ void main() {
       findsOne,
     );
     // Arrived: the 4K's import is on the rail, and the card says which
-    // Radarr it came to. Its failed import is Needs you's, not a card.
+    // Radarr it came to. Its failed download is History's, not a card.
     expect(
       _within(HomeArrivedModule, find.text('2\u00A0h ago\u00A0· Radarr 4K')),
       findsOne,
@@ -176,45 +180,33 @@ void main() {
     await harness.unmount(tester);
   });
 
-  testWidgets('P1, lens on the HD: the 4K Radarr\'s failed import reaches '
-      'Needs you, and its row says which Radarr', (tester) async {
+  testWidgets('P1, lens on the HD: the 4K Radarr\'s failed download is no '
+      'row in Needs you: the arr already handled it', (tester) async {
     final harness = await ProfileHarness.start(Profiles.p1);
-    _scriptFailedImportOn4k(harness.network);
+    _scriptFailedDownloadOn4k(harness.network);
     await tester.binding.setSurfaceSize(_tall);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    // The row itself: the Home leads with one line and opens the place a
-    // fault is fixed, so the decision's row is mounted on its own.
     await tester.pumpWidget(
       ProviderScope(
         overrides: harness.overrides,
         child: MaterialApp(
           theme: AppTheme.darkTheme(),
-          home: Scaffold(
-            body: ProvidedDecisionRows(
-              where: (decision) => decision.kind == DecisionKind.failedImport,
-            ),
+          home: const Scaffold(
+            body: ProvidedDecisionRows(where: _isElephantsDream),
           ),
         ),
       ),
     );
     await harness.settle(tester);
 
-    expect(
-      find.descendant(
-        of: find.byType(DecisionRow),
-        matching: find.text(
-          'Import failed\u00A0· Radarr 4K\u00A0· Not a valid video file',
-        ),
-      ),
-      findsOne,
-    );
+    expect(find.byType(DecisionRow), findsNothing);
 
     await harness.unmount(tester);
   });
 
   test('P1: every row the 4K contributes is bound to the 4K', () async {
     final harness = await ProfileHarness.start(Profiles.p1);
-    _scriptFailedImportOn4k(harness.network);
+    _scriptFailedDownloadOn4k(harness.network);
     final container = harness.container(retry: (_, _) => null);
 
     // The queue rows: their route opens the 4K's film, under the 4K's id.
@@ -225,15 +217,12 @@ void main() {
     expect(elephants.instanceId, WorldIds.radarr4k);
     expect(Uri.parse(elephants.route!).queryParameters['i'], WorldIds.radarr4k);
 
-    // The failed import's Fix opens the wizard on the 4K, and its row the
-    // 4K's film.
-    final history = await container.read(
-      dashboardDecisionSourceProvider(DecisionSource.history).future,
+    // The failed download in History is the 4K's record.
+    final history = await container.read(servicesArrHistoryProvider.future);
+    final failed = history.entries.singleWhere(
+      (entry) => entry.outcome == ArrImportOutcome.failed,
     );
-    final fix = history.decisions.single;
-    expect(fix.instanceId, WorldIds.radarr4k);
-    expect(fix.actionInstanceId, WorldIds.radarr4k);
-    expect(Uri.parse(fix.route!).queryParameters['i'], WorldIds.radarr4k);
+    expect(failed.instanceId, WorldIds.radarr4k);
   });
 
   test('P1: two movies numbered 3, one on each Radarr, are two cards that '

@@ -17,9 +17,19 @@ void main() {
     }
   });
 
-  test('a failed grab and a failed import are both failures', () {
+  test('a failed download is the only failure an arr history has', () {
+    // Sonarr's `EpisodeHistoryEventType`, Radarr's `MovieHistoryEventType` and
+    // Lidarr's `EntityHistoryEventType` hold `downloadFailed` and no
+    // import-failure event: a failed import lives in the queue.
+    expect(arrFailedEvents, {'downloadFailed'});
     expect(classifyHistoryEvent('downloadFailed'), ArrImportOutcome.failed);
-    expect(classifyHistoryEvent('importFailed'), ArrImportOutcome.failed);
+    for (final invented in const [
+      'importFailed',
+      'downloadFolderImportFailed',
+      'trackFileImportFailed',
+    ]) {
+      expect(classifyHistoryEvent(invented), ArrImportOutcome.other);
+    }
   });
 
   test('a download stopped on purpose is not a fault', () {

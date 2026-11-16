@@ -379,15 +379,6 @@ Future<void> runDecision(
           instanceId: decision.instanceId,
         ),
       );
-    case DecisionKind.failedImport:
-      context.push(
-        manualImportLocation(
-          manualImportBrowsePath,
-          decision.service,
-          targetId: decision.actionId,
-          instanceId: decision.instanceId,
-        ),
-      );
     case DecisionKind.failingIndexer:
       // On the Prowlarr the indexer failed on: an indexer id is one
       // server's, and the lens's list would test another indexer, or none.

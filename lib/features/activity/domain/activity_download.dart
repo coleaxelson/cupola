@@ -44,11 +44,12 @@ String? nothingForWords(DateTime? since, {required DateTime now}) {
 }
 
 /// What a download waiting its turn says: `Queued · starts in about 6 min`
-/// where its client estimates it (SABnzbd), `Queued` elsewhere.
+/// where its client estimates it (SABnzbd) or an arr's delay profile holds it
+/// until a time (`about 3 h`, see [aboutSpan]), `Queued` elsewhere.
 String queuedWords(int? startsInSeconds) {
   if (startsInSeconds == null || startsInSeconds <= 0) return 'Queued';
   return 'Queued\u00A0· starts in about '
-      '${formatTimeSpan(Duration(seconds: startsInSeconds))}';
+      '${formatTimeSpan(aboutSpan(Duration(seconds: startsInSeconds)))}';
 }
 
 /// The household request that asked for [item], among [requests]: the same

@@ -283,12 +283,12 @@ void main() {
     test('Needs you says its faults in its own line, and no request', () {
       final notices = needsYouNotices([
         decision(DecisionKind.stalledDownload, 'Charge'),
-        decision(DecisionKind.failedImport, 'Spring'),
+        decision(DecisionKind.importBlocked, 'Spring'),
         decision(DecisionKind.pendingRequest, 'Sintel'),
       ], now: now);
       expect(notices.map((notice) => notice.body), [
         'Charge is stuck',
-        'Could not import Spring',
+        'Spring needs a manual import',
       ]);
       expect(notices.first.title, 'Needs you');
       expect(notices.first.route, '/activity');
