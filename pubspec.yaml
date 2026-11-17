@@ -139,7 +139,13 @@ dependencies:
 
   # Reads the other device's code in Copy from another device, on iOS and
   # Android only: a computer pastes the link. It asks for the camera itself.
-  mobile_scanner: ^7.4.2
+  #
+  # Our copy of mobile_scanner 7.4.2, not pub.dev's: on Android upstream reads
+  # codes with Google ML Kit, which is proprietary and reports usage to Google,
+  # and ours reads them with zxing-cpp. iOS and macOS are upstream's code,
+  # Apple Vision on the device. Why and what changed: its README.
+  mobile_scanner:
+    path: packages/mobile_scanner
 
   # The device's IANA time zone (`Europe/Rome`), which Tracearr cuts its Today
   # at. Dart names the zone only by its abbreviation (`CET`), and Tracearr
