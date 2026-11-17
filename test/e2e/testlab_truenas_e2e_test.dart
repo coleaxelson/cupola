@@ -42,7 +42,7 @@ import 'package:cupola/features/truenas/presentation/truenas_capability.dart';
 ///
 /// Then:
 ///
-///     export CUPOLA_TESTLAB_CREDENTIALS_FILE="$PWD/.ai/scratch/zz_testlab/state/credentials.env"
+///     export CUPOLA_TESTLAB_CREDENTIALS_FILE="$PWD/.ai/testlab/state/credentials.env"
 ///     flutter test test/e2e/testlab_truenas_e2e_test.dart --tags e2e --run-skipped
 ///
 /// The credentials file supplies the certificate fingerprint the app needs to
@@ -688,7 +688,7 @@ Map<String, String> _loadCredentials() {
   if (path == null || path.isEmpty) {
     fail(
       'CUPOLA_TESTLAB_CREDENTIALS_FILE must point to the bootstrap output '
-      '(.ai/scratch/zz_testlab/state/credentials.env)',
+      '(.ai/testlab/state/credentials.env)',
     );
   }
   final file = File(path);

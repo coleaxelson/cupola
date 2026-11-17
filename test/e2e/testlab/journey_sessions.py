@@ -96,7 +96,7 @@ class JourneyError(RuntimeError):
 
 def state_root() -> Path:
     override = os.environ.get("CUPOLA_TESTLAB_STATE_DIR")
-    return Path(override) if override else ROOT / ".ai" / "scratch" / "zz_testlab" / "state"
+    return Path(override) if override else ROOT / ".ai" / "testlab" / "state"
 
 
 def credentials() -> Path:

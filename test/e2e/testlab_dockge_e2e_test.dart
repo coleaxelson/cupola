@@ -474,7 +474,7 @@ Map<String, dynamic> _marker() {
 
 String _stateRoot() =>
     Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-    '${Directory.current.path}/.ai/scratch/zz_testlab/state';
+    '${Directory.current.path}/.ai/testlab/state';
 
 Map<String, String> _credentials() {
   final file = File('${_stateRoot()}/credentials.env');

@@ -2,7 +2,7 @@
 #
 # The host application talks to 127.0.0.1. Every bind mount and port in this
 # file is disposable and local to the current run. Keep the state directory
-# under .ai/scratch/zz_testlab (or pass CUPOLA_TESTLAB_STATE_DIR explicitly).
+# under .ai/testlab (or pass CUPOLA_TESTLAB_STATE_DIR explicitly).
 #
 # Start the complete lab with:
 #   docker compose -p "${CUPOLA_TESTLAB_PROJECT:-cupola-testlab}" \
@@ -23,7 +23,7 @@ services:
     ports:
       - "127.0.0.1:5055:5055"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/seerr:/app/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/seerr:/app/config"
     healthcheck:
       test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:5055/api/v1/status || exit 1"]
       interval: 5s
@@ -43,7 +43,7 @@ services:
     ports:
       - "127.0.0.1:5056:5055"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/seerr-sara:/app/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/seerr-sara:/app/config"
     healthcheck:
       test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:5055/api/v1/status || exit 1"]
       interval: 5s
@@ -62,9 +62,9 @@ services:
     ports:
       - "127.0.0.1:7878:7878"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/radarr:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/radarr:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS -H 'X-Api-Key: test-key' http://127.0.0.1:7878/api/v3/system/status >/dev/null || exit 1"]
       interval: 5s
@@ -80,9 +80,9 @@ services:
     ports:
       - "127.0.0.1:8989:8989"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/sonarr:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/sonarr:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS -H 'X-Api-Key: test-key' http://127.0.0.1:8989/api/v3/system/status >/dev/null || exit 1"]
       interval: 5s
@@ -98,9 +98,9 @@ services:
     ports:
       - "127.0.0.1:8686:8686"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/lidarr:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/lidarr:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS -H 'X-Api-Key: test-key' http://127.0.0.1:8686/api/v1/system/status >/dev/null || exit 1"]
       interval: 5s
@@ -116,9 +116,9 @@ services:
     ports:
       - "127.0.0.1:8787:8787"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/readarr:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/readarr:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS -H 'X-Api-Key: test-key' http://127.0.0.1:8787/api/v1/system/status >/dev/null || exit 1"]
       interval: 5s
@@ -134,7 +134,7 @@ services:
     ports:
       - "127.0.0.1:9696:9696"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/prowlarr:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/prowlarr:/config"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS -H 'X-Api-Key: test-key' http://127.0.0.1:9696/api/v1/system/status >/dev/null || exit 1"]
       interval: 5s
@@ -150,9 +150,9 @@ services:
     ports:
       - "127.0.0.1:6767:6767"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/bazarr:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/bazarr:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS -H 'X-API-KEY: test-key' http://127.0.0.1:6767/api/badges >/dev/null || exit 1"]
       interval: 5s
@@ -176,8 +176,8 @@ services:
       # and send that Host explicitly (seed_lab, queue_probe).
       - "127.0.0.1:18080:8080"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/qbittorrent:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/qbittorrent:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS http://127.0.0.1:8080 >/dev/null || exit 1"]
       interval: 5s
@@ -201,8 +201,8 @@ services:
       - "6881:6881"
       - "6881:6881/udp"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/qbittorrent-seed:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/seed-data:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/qbittorrent-seed:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/seed-data:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS http://127.0.0.1:8081 >/dev/null || exit 1"]
       interval: 5s
@@ -223,8 +223,8 @@ services:
     ports:
       - "127.0.0.1:9091:9091"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/transmission:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/transmission:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "auth=$$(printf '%s:%s' \"$$USER\" \"$$PASS\" | base64); code=$$(curl -sS -o /dev/null -w '%{http_code}' -H \"Authorization: Basic $$auth\" -X POST http://127.0.0.1:9091/transmission/rpc); test \"$$code\" = 200 || test \"$$code\" = 409"]
       interval: 5s
@@ -240,8 +240,8 @@ services:
     ports:
       - "127.0.0.1:8082:8080"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/sabnzbd:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/sabnzbd:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS 'http://127.0.0.1:8080/api?mode=version&output=json&apikey=test-key' >/dev/null || exit 1"]
       interval: 5s
@@ -260,8 +260,8 @@ services:
     ports:
       - "127.0.0.1:6789:6789"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/nzbget:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/nzbget:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     healthcheck:
       test: [CMD-SHELL, "auth=$$(printf '%s:%s' \"$$NZBGET_USER\" \"$$NZBGET_PASS\" | base64); curl -fsS -H \"Authorization: Basic $$auth\" http://127.0.0.1:6789/jsonrpc >/dev/null || exit 1"]
       interval: 5s
@@ -277,8 +277,8 @@ services:
     ports:
       - "127.0.0.1:8096:8096"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/jellyfin:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media:ro"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/jellyfin:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media:ro"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null || exit 1"]
       interval: 5s
@@ -301,8 +301,8 @@ services:
     ports:
       - "127.0.0.1:8097:8096"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/emby:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media:ro"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/emby:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media:ro"
     healthcheck:
       # Unauthenticated, and the one route that answers before the first-run
       # wizard has been walked. The image ships wget and no curl.
@@ -364,8 +364,8 @@ services:
     ports:
       - "127.0.0.1:32400:32400"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/plex:/config"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/media:/media:ro"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/plex:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/media:/media:ro"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS http://127.0.0.1:32400/identity >/dev/null || exit 1"]
       interval: 5s
@@ -415,8 +415,8 @@ services:
     ports:
       - "127.0.0.1:5001:5001"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/dockge:/app/data"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/stacks:/opt/stacks"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/dockge:/app/data"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/stacks:/opt/stacks"
     healthcheck:
       test: [CMD-SHELL, "node -e \"fetch('http://127.0.0.1:5001').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 5s
@@ -436,8 +436,8 @@ services:
       - "127.0.0.1:8088:80"
       - "127.0.0.1:8443:443"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/npm/data:/data"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/npm/letsencrypt:/etc/letsencrypt"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/npm/data:/data"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/npm/letsencrypt:/etc/letsencrypt"
     healthcheck:
       test: [CMD-SHELL, "curl -fsS http://127.0.0.1:81/api/ >/dev/null || exit 1"]
       interval: 5s
@@ -458,7 +458,7 @@ services:
       # The self-signed certificate test/e2e/testlab/truenas_cert.sh makes: the
       # app refuses a TrueNAS that is not https://. A directory, not two files,
       # so a certificate made again replaces what the mock reads.
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/truenas:/certs:ro"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/truenas:/certs:ro"
     ports:
       - "127.0.0.1:8460:8460"
     healthcheck:
@@ -492,9 +492,9 @@ services:
       context: test/e2e/testlab/forge
     profiles: [forge]
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/forge:/forge"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/seed-data:/seed-data"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/downloads:/downloads"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/forge:/forge"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/seed-data:/seed-data"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/downloads:/downloads"
     command:
       - --output-dir=/forge
       - --seed-dir=/seed-data
@@ -510,7 +510,7 @@ services:
     ports:
       - "127.0.0.1:8188:8088"
     volumes:
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/forge:/forge:ro"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/forge:/forge:ro"
     healthcheck:
       test: [CMD-SHELL, "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8088/healthz\", timeout=1)'"]
       interval: 5s
@@ -584,9 +584,9 @@ services:
     volumes:
       # The configuration the lab writes, and the CA that issues: both in the
       # lab's state, and the CA's files are Caddy's own 0600.
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/caddy:/etc/caddy:ro"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/caddy/data:/data"
-      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/scratch/zz_testlab/state}/caddy/config:/config"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/caddy:/etc/caddy:ro"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/caddy/data:/data"
+      - "${CUPOLA_TESTLAB_STATE_DIR:-.ai/testlab/state}/caddy/config:/config"
     healthcheck:
       # The name is what the client sends as SNI, and the certificate belongs
       # to it: the edge answers on that name only.

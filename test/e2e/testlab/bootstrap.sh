@@ -3,7 +3,7 @@
 # Bootstrap the complete disposable macOS/OrbStack laboratory.
 #
 # The script deliberately keeps generated state and credentials outside Git.
-# It copies tracked seeds into .ai/scratch before starting containers; vendor
+# It copies tracked seeds into .ai/testlab before starting containers; vendor
 # services are therefore free to rewrite their own config and databases.
 
 set -euo pipefail
@@ -12,13 +12,13 @@ script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
 repo_root="$(cd -- "$script_dir/../../.." && pwd)"
 compose_file="$repo_root/docker-compose.testlab.yml"
 project="${CUPOLA_TESTLAB_PROJECT:-cupola-testlab}"
-state_dir="${CUPOLA_TESTLAB_STATE_DIR:-$repo_root/.ai/scratch/zz_testlab/state}"
+state_dir="${CUPOLA_TESTLAB_STATE_DIR:-$repo_root/.ai/testlab/state}"
 
 if [[ "$state_dir" != /* ]]; then
   state_dir="$repo_root/$state_dir"
 fi
 
-safe_state_root="$repo_root/.ai/scratch/zz_testlab"
+safe_state_root="$repo_root/.ai/testlab"
 case "$state_dir" in
   "$safe_state_root"/*) ;;
   *)

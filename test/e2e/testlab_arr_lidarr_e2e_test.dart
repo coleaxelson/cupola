@@ -103,8 +103,7 @@ void main() {
       reason: 'the removal did not leave the import list exclusion',
     );
     final state =
-        Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-        '.ai/scratch/zz_testlab/state';
+        Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ?? '.ai/testlab/state';
     expect(
       Directory('$state/media/music/James Cupola').existsSync(),
       isFalse,

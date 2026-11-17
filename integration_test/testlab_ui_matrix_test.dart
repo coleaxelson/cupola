@@ -94,7 +94,7 @@ void main() {
         ? null
         : (Directory(
             Platform.environment['CUPOLA_TESTLAB_SCREENSHOT_DIR'] ??
-                '.ai/scratch/zz_testlab/screenshots',
+                '.ai/testlab/screenshots',
           )..createSync(recursive: true));
     debugPrint(
       '[testlab] scenario=$scenario capture=$capture cwd=${Directory.current.path} '

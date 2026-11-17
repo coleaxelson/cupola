@@ -26,7 +26,7 @@ are never printed. That file is the truth the e2e test signs in with; the API
 key is not copied there, it stays in the container's own settings.json.
 
 Usage:
-  python3 test/e2e/testlab/seerr_sara.py --state-dir .ai/scratch/zz_testlab/state
+  python3 test/e2e/testlab/seerr_sara.py --state-dir .ai/testlab/state
   python3 test/e2e/testlab/seerr_sara.py --check    # verify, write nothing new
 """
 
@@ -845,7 +845,7 @@ def main() -> int:
     parser.add_argument(
         "--state-dir",
         default=os.environ.get(
-            "CUPOLA_TESTLAB_STATE_DIR", ".ai/scratch/zz_testlab/state"
+            "CUPOLA_TESTLAB_STATE_DIR", ".ai/testlab/state"
         ),
         help="the lab's disposable state directory",
     )

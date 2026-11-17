@@ -486,5 +486,4 @@ String _isoDate(DateTime value) =>
     '${value.day.toString().padLeft(2, '0')}';
 
 String _stateDir() =>
-    Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-    '.ai/scratch/zz_testlab/state';
+    Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ?? '.ai/testlab/state';

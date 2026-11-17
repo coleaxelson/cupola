@@ -21,7 +21,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[3]
 STATE_ROOT = Path(
     os.environ.get(
-        "CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai/scratch/zz_testlab/state"
+        "CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai/testlab/state"
     )
 )
 if not STATE_ROOT.is_absolute():

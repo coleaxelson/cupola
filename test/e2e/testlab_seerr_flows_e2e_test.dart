@@ -44,7 +44,7 @@ import 'package:cupola/features/settings/domain/service_key.dart';
 /// * G-23 the watchlist, put on and taken off.
 ///
 /// The world is `test/e2e/testlab/seerr_world.py`, which is idempotent and
-/// writes `.ai/scratch/zz_testlab/state/seerr-world.json` (both under
+/// writes `.ai/testlab/state/seerr-world.json` (both under
 /// `CUPOLA_TESTLAB_STATE_DIR`). Its format is the contract the tests read:
 /// the two members with their permissions and quotas, the Jellyfin account
 /// Seerr imported, seven requests, one per state, and one open issue. The
@@ -854,8 +854,7 @@ class _World {
   /// Runs the seed, which is idempotent, and reads what it wrote.
   static Future<_World> load() async {
     final stateDir =
-        Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-        '.ai/scratch/zz_testlab/state';
+        Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ?? '.ai/testlab/state';
     final seed = File('test/e2e/testlab/seerr_world.py');
     if (seed.existsSync()) {
       final applied = await Process.run('python3', [

@@ -21,7 +21,7 @@
 # The state directory is CUPOLA_TESTLAB_STATE_DIR, or the lab's default under
 # this checkout. A worktree may name another checkout's lab (the running lab is
 # one per machine), so only the shape of the path is checked: it must sit under
-# a .ai/scratch/zz_testlab directory. Nothing here removes anything.
+# a .ai/testlab directory. Nothing here removes anything.
 #
 # The certificate and its key never leave that directory and are never
 # committed. The mock reads them for every connection, so a certificate made
@@ -31,7 +31,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
 repo_root="$(cd -- "$script_dir/../../.." && pwd)"
-state_dir="${CUPOLA_TESTLAB_STATE_DIR:-$repo_root/.ai/scratch/zz_testlab/state}"
+state_dir="${CUPOLA_TESTLAB_STATE_DIR:-$repo_root/.ai/testlab/state}"
 action=ensure
 
 while [[ $# -gt 0 ]]; do
@@ -64,9 +64,9 @@ case "$state_dir" in
     printf 'Refusing a state directory with dot segments: %s\n' "$state_dir" >&2
     exit 2
     ;;
-  */.ai/scratch/zz_testlab/*) ;;
+  */.ai/testlab/*) ;;
   *)
-    printf 'Refusing a state directory outside a .ai/scratch/zz_testlab: %s\n' "$state_dir" >&2
+    printf 'Refusing a state directory outside a .ai/testlab: %s\n' "$state_dir" >&2
     exit 2
     ;;
 esac

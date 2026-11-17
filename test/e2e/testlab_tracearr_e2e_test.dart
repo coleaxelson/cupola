@@ -374,7 +374,7 @@ class _Lab {
   factory _Lab.load() {
     final named = Platform.environment['CUPOLA_TESTLAB_CREDENTIALS_FILE'];
     final path = named == null || named.isEmpty
-        ? '.ai/scratch/zz_testlab/state/credentials.env'
+        ? '.ai/testlab/state/credentials.env'
         : named;
     final file = File(path);
     if (!file.existsSync()) {

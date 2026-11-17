@@ -379,7 +379,7 @@ Future<void> _scenario(String action, String name) async {
 Map<String, String> _credentials() {
   final path =
       Platform.environment['CUPOLA_TESTLAB_CREDENTIALS_FILE'] ??
-      '${Directory.current.path}/.ai/scratch/zz_testlab/state/credentials.env';
+      '${Directory.current.path}/.ai/testlab/state/credentials.env';
   final file = File(path);
   if (!file.existsSync()) {
     fail('CUPOLA_TESTLAB_CREDENTIALS_FILE is not set and $path is missing');

@@ -411,8 +411,7 @@ class _Lab {
 
   factory _Lab.load() {
     final stateDir =
-        Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-        '.ai/scratch/zz_testlab/state';
+        Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ?? '.ai/testlab/state';
     final stateFile = File('$stateDir/npm-lab.json');
     if (!stateFile.existsSync()) {
       fail(

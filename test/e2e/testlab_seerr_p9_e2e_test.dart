@@ -230,13 +230,13 @@ class _Lab {
   factory _Lab.load() {
     final credentials = _readEnv(
       Platform.environment['CUPOLA_TESTLAB_CREDENTIALS_FILE'] ??
-          '.ai/scratch/zz_testlab/state/credentials.env',
+          '.ai/testlab/state/credentials.env',
       'run test/e2e/testlab/bootstrap.sh, or point '
       'CUPOLA_TESTLAB_CREDENTIALS_FILE at its credentials file',
     );
     final named = Platform.environment['CUPOLA_TESTLAB_SEERR_SARA_FILE'];
     final path = named == null || named.isEmpty
-        ? '.ai/scratch/zz_testlab/state/seerr-sara.json'
+        ? '.ai/testlab/state/seerr-sara.json'
         : named;
     final file = File(path);
     if (!file.existsSync()) {

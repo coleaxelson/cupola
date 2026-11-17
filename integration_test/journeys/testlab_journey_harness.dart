@@ -201,8 +201,7 @@ class LabCredentials {
   }
 
   /// The file the bootstrap writes, in the checkout that started the lab.
-  static const defaultCredentialsPath =
-      '.ai/scratch/zz_testlab/state/credentials.env';
+  static const defaultCredentialsPath = '.ai/testlab/state/credentials.env';
 
   static List<File> _candidateFiles() {
     final files = <File>[];
@@ -220,7 +219,7 @@ class LabCredentials {
   ///
   /// A checkout or worktree elsewhere names the lab's state with
   /// `CUPOLA_TESTLAB_STATE_DIR` (the main checkout's
-  /// `.ai/scratch/zz_testlab/state`). A run on the host reads it from the
+  /// `.ai/testlab/state`). A run on the host reads it from the
   /// environment; a run on a simulator cannot see the host's environment, so
   /// it passes the same value with `--dart-define`.
   static List<String> _candidateStateDirs() {
@@ -233,8 +232,8 @@ class LabCredentials {
     for (final entry in checkouts.listSync()) {
       if (entry is! Directory) continue;
       for (final shape in [
-        '${entry.path}/.ai/scratch/zz_testlab/state',
-        '${entry.path}/testlab/.ai/scratch/zz_testlab/state',
+        '${entry.path}/.ai/testlab/state',
+        '${entry.path}/testlab/.ai/testlab/state',
       ]) {
         if (File('$shape/credentials.env').existsSync()) dirs.add(shape);
       }
@@ -314,7 +313,7 @@ class LabWorld {
     final files = <File>[];
     final named = LabCredentials._namedStateDir();
     if (named != null) files.add(File('$named/seerr-world.json'));
-    files.add(File('.ai/scratch/zz_testlab/state/seerr-world.json'));
+    files.add(File('.ai/testlab/state/seerr-world.json'));
     for (final state in LabCredentials._candidateStateDirs()) {
       files.add(File('$state/seerr-world.json'));
     }

@@ -41,7 +41,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai" / "scratch" / "zz_testlab" / "state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai" / "testlab" / "state")
 ).resolve()
 FIXTURES = REPO_ROOT / "test" / "fixtures" / "truenas"
 URL = urllib.parse.urlparse(
