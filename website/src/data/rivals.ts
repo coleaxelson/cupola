@@ -109,7 +109,7 @@ export const rivals: Rival[] = [
       {
         label: 'Data collected by the app',
         them: 'Usage data for analytics and crash data, not linked to you (App Store privacy label)',
-        cupola: 'None on iPhone, iPad and Mac. On Android, the code scanner (Google ML Kit) sends Google diagnostic and usage data; we collect nothing ourselves',
+        cupola: 'None: we collect nothing, and the code scanner runs on the device',
       },
       {
         label: 'Media and requests',
