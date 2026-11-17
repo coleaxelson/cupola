@@ -22,9 +22,11 @@ const platforms = [
     icon: 'android',
     name: 'Android',
     how: 'APK from GitHub releases',
-    href: d.apk,
+    // The 64-bit APK first, as nearly every phone takes it; the universal one
+    // stays one link away.
+    href: d.apkArm64 ?? d.apk,
     action: 'Download the APK',
-    alt: null,
+    alt: d.apkArm64 && d.apk ? { href: d.apk, label: 'Or the universal APK, for 32-bit phones too' } : null,
   },
   {
     id: 'mac',

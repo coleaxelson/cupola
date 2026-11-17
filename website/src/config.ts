@@ -26,6 +26,10 @@ export const site = {
   // an asset of the release above.
   downloads: {
     testflight: 'https://testflight.apple.com/join/tqmwnCMj' as string | null,
+    // Two APKs with the same signature and version: arm64-v8a for 64-bit phones
+    // (nearly all of them, and less than half the size), the universal one for
+    // every device, older 32-bit phones included.
+    apkArm64: asset('-arm64-v8a.apk') as string | null,
     apk: asset('.apk') as string | null,
     macos: asset('.dmg') as string | null,
     ipa: asset('.ipa') as string | null,

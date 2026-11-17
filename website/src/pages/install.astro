@@ -33,7 +33,9 @@ import { site } from '../config';
   )}
 
   <h2 id="android">Android</h2>
-  {site.downloads.apk ? (
+  {site.downloads.apkArm64 && site.downloads.apk ? (
+    <p><a href={site.downloads.apkArm64} rel="noopener">Download the <code>.apk</code> for 64-bit phones</a>, which is nearly all of them and less than half the size, or <a href={site.downloads.apk} rel="noopener">the one for every device</a>, older 32-bit phones included. Both carry the same signature and version, so a phone can move from one to the other without uninstalling. Open it: Android asks once to allow installs from your browser, and new versions install over the old one. To have them arrive on their own, add <code>{site.repo.replace('https://', '')}</code> to Obtainium; if it asks which file to install, pick the <code>arm64-v8a</code> one.</p>
+  ) : site.downloads.apk ? (
     <p><a href={site.downloads.apk} rel="noopener">Download the <code>.apk</code></a> and open it. Android asks once to allow installs from your browser. New versions install over the old one. To have them arrive on their own, add <code>{site.repo.replace('https://', '')}</code> to Obtainium.</p>
   ) : (
     <p>The Android <code>.apk</code> comes with the first release on GitHub. It is not out yet: <a href={site.watch} rel="noopener">watch releases</a> to hear when it is.</p>

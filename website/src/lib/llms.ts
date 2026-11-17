@@ -65,7 +65,7 @@ ${rows}
 ## Install
 
 - iPhone and iPad: TestFlight beta${d.testflight ? ` (${d.testflight})` : ' (not open yet)'}${d.ipa ? `, or an unsigned .ipa to sideload (${d.ipa})` : ''}.
-- Android: APK from GitHub releases${d.apk ? ` (${d.apk})` : ' (not out yet)'}.
+- Android: APK from GitHub releases${d.apkArm64 ? `, for 64-bit phones (${d.apkArm64}) or` : ''}${d.apk ? ` for every device (${d.apk})` : ' (not out yet)'}.
 - Mac: ${d.testflight ? 'TestFlight beta' : 'TestFlight beta (not open yet)'}${d.macos ? `, or a signed and notarized .dmg for Apple silicon (${d.macos})` : ''}.
 - Windows and Linux: x64 builds in every GitHub release${d.windows && d.linux ? ` (${d.windows}, ${d.linux})` : ' (from the first one, not out yet)'}, not yet tested on real machines.
 - From source: Flutter; see the repository.
