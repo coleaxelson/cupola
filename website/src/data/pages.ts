@@ -52,7 +52,7 @@ export const pages = {
     name: 'Privacy',
     title: 'Privacy and security · Cupola',
     heading: 'Your data stays with you.',
-    description: 'Cupola talks straight to your own services. How it stores keys, pins self-signed certificates, which other hosts it contacts, and what reaches Google on Android.',
+    description: 'Cupola talks straight to your own services. How it stores keys, pins self-signed certificates, which other hosts it contacts, and why the code scanner sends nothing.',
     light: 'lamp',
   },
   faq: {
