@@ -1,0 +1,12 @@
+# Upstream includes package:very_good_analysis, which Cupola does not depend
+# on. The root analysis_options.yaml excludes this folder from analysis, so
+# this file is read only by `dart format`.
+analyzer:
+  errors:
+    # The library itself should be able to use deprecated members, for backwards support reasons.
+    deprecated_member_use_from_same_package: ignore
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - macos/**

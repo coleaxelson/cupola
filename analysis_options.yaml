@@ -10,6 +10,9 @@
 # repo already claimed, not a house style nobody agreed to.
 analyzer:
   exclude:
+    # Our copy of mobile_scanner keeps upstream's Dart as it is, under its own
+    # lint set (very_good_analysis), which this project does not depend on.
+    - packages/mobile_scanner/**
     - build/**
     - android/**
     - ios/**

@@ -2,7 +2,7 @@ Cupola is one app for the media stack you run at home: the services that find, d
 
 Cupola provides no content, no catalog and no media of its own. It connects only to servers you own and run, and shows and manages what is already on them, as their own web pages do.
 
-There is no Cupola server and no account. The app talks straight to the addresses of your own services, and their keys and passwords stay in the device's secure storage. One exception on Android: the scanner that reads the code in "Copy from another device" is Google's ML Kit, which sends Google diagnostic and usage data. We plan to replace it.
+There is no Cupola server and no account. The app talks straight to the addresses of your own services, and their keys and passwords stay in the device's secure storage. The scanner that reads the code in "Copy from another device" is zxing-cpp, free software that runs on the phone and sends nothing.
 
 WHAT IT CONNECTS TO
 Nineteen self-hosted services, each with its own screens:

@@ -150,6 +150,16 @@ if [[ "$TARGET" == "web" ]]; then
   cp -R build/web "$DIST_DIR/web"
 fi
 
+# Android ships no Google library (ML Kit, Play services, Firebase): every
+# Android package of this release is checked, whichever block above built it.
+if [[ "$TARGET" == "android" || "$TARGET" == "all" ]]; then
+  printf '==> Checking Android packages for Google libraries...\n'
+  shopt -s nullglob
+  android_packages=("$DIST_DIR"/*.apk "$DIST_DIR"/*.aab)
+  shopt -u nullglob
+  bash "$ROOT_DIR/scripts/verify_android_google_free.sh" "${android_packages[@]}"
+fi
+
 if [[ "$TARGET" == "windows" || "$TARGET" == "all" ]]; then
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) windows_host=true ;;

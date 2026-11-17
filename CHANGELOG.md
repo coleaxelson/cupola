@@ -9,6 +9,13 @@
   seconds while you look at it. An Unraid whose API is too old to know them shows
   neither row, rather than a dash that never fills in.
 
+### Changed
+
+- **On Android, the code scanner no longer reports to Google.** *Copy from another
+  device* now reads the other device's code with zxing-cpp, free software that runs
+  on the phone and sends nothing, instead of Google's ML Kit, which sent Google
+  usage data with no way to turn it off. Nothing changes on iPhone, iPad or Mac.
+
 ### Fixed
 
 - **Unraid shows its containers and figures again on Unraid 7.2 and later** (#14).

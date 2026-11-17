@@ -41,6 +41,16 @@ Font License, Version 1.1:
 Each licence text accompanies its font, and the app registers each one with
 Flutter's licence registry so it also reaches the shipped binaries.
 
+packages/mobile_scanner is a modified copy of mobile_scanner 7.4.2
+(https://github.com/juliansteenbakker/mobile_scanner), Copyright (c) 2022
+Julian Steenbakker, licensed under the BSD 3-Clause License; licence text in
+packages/mobile_scanner/LICENSE, changes listed in its README.md.
+
+On Android, that copy reads codes with zxing-cpp
+(https://github.com/zxing-cpp/zxing-cpp), Copyright Axel Waggershauser and the
+zxing-cpp contributors, licensed under the Apache License, Version 2.0, and
+fetched from Maven Central as io.github.zxing-cpp:android.
+
 Cupola communicates with third-party services (Seerr, the *arr applications,
 download clients, media servers and infrastructure tools). Their names and marks
 belong to their respective owners and are used only to identify what the app

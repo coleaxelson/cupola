@@ -38,9 +38,8 @@ about all of them.
   Nginx Proxy Manager, each with its own screens.
 - **No Cupola server.** No relay, no sign-up, and no telemetry of ours. The app
   speaks directly to the hosts you own, and credentials live in the device keychain.
-  Two exceptions, explained under [Security & privacy](#security--privacy):
-  background search hands a request to the OS, API key included, so it ships off;
-  and on Android the code scanner is Google's, which reports usage to Google.
+  One exception, explained under [Security & privacy](#security--privacy):
+  background search hands a request to the OS, API key included, so it ships off.
 - **Built for home labs.** Self-signed certificates, services behind a reverse
   proxy, boxes that are asleep or out of reach: Cupola handles them as everyday
   states.
@@ -439,13 +438,10 @@ Cupola has no server of its own, so it has nowhere to send your data.
   own sign-in, once, and Cupola keeps none of the token it gets. Everything else,
   metadata included, comes from your own instances. A link you tap (a trailer, a
   rating) opens in its own app or in the browser, outside Cupola.
-- **On Android, a third: the code scanner reports to Google.** To read the code in
-  *Copy from another device*, Cupola for Android uses Google's ML Kit, which sends
-  Google diagnostic and usage data: the device model and Android version, the app's
-  name and version, an identifier for this installation, and how the scanner ran
-  (speed, image settings, errors). Google offers no way to turn it off, so we plan
-  to replace it with a scanner that sends nothing. On iPhone and iPad the scanner is
-  Apple's and runs on the device; on a Mac you paste a link instead.
+- **The code scanner runs on the device.** *Copy from another device* reads the
+  other device's code with Apple's Vision on iPhone and iPad and with zxing-cpp,
+  free software built into the app, on Android. Neither sends anything anywhere.
+  On a Mac you paste a link instead.
 - **Secrets stay on the device.** API keys, tokens and passwords go into
   `flutter_secure_storage`: Keychain on Apple platforms, Keystore-backed on
   Android. Plaintext settings from older versions are migrated on first launch.
@@ -603,9 +599,8 @@ Setup notes, conventions and PR expectations: [**CONTRIBUTING.md**](CONTRIBUTING
 <br/>
 No. It talks straight to your instances over LAN, VPN or a reverse proxy. There is
 no Cupola backend, so there is nothing to sign up for and nothing reporting back to
-us. What leaves your network is artwork from TMDB's image CDN, plex.tv when you
-sign in to Seerr with Plex, and on Android the usage reports of Google's code scanner:
-see [Security & privacy](#security--privacy).
+us. What leaves your network is artwork from TMDB's image CDN and plex.tv when you
+sign in to Seerr with Plex: see [Security & privacy](#security--privacy).
 </details>
 
 <details>

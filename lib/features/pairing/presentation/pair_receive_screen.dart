@@ -33,10 +33,11 @@ import 'package:cupola/features/shell/domain/shell_audience.dart';
 /// Outside the shell, at `/welcome/pair`, framed as the sign-in with an
 /// account is: opened by the Welcome's and the Home at zero's *Copy from
 /// another device*, by Settings' row of the same name, and by the other
-/// device's code scanned with the camera (the system camera opens
-/// `cupola://pair`, which the router takes off the location and holds for
-/// [pairReceiveProvider]; on a phone *Scan code* reads it here,
-/// [PairScanScreen]). A link pasted into the field starts the same fetch.
+/// device's code scanned with the camera (on iPhone and iPad the system
+/// camera opens `cupola://pair`, which the router takes off the location and
+/// holds for [pairReceiveProvider]; on a phone *Scan code* reads it here,
+/// [PairScanScreen], the only way on Android, which registers no such link).
+/// A link pasted into the field starts the same fetch.
 ///
 /// **The key never stays in the field**: a link, whole or not, is taken out of
 /// it the moment it is read, and the screen says only what the link is for.
