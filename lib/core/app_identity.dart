@@ -34,7 +34,7 @@ const String kAppName = 'Cupola';
 /// order two uploads of the same release, and a settings footer reading
 /// "Cupola 1.0.0+1" prints an increment that means nothing to the person
 /// reading it.
-const String kAppVersion = '1.1.0';
+const String kAppVersion = '1.2.0';
 
 /// The prerelease this build is, without its dash (`beta`), or empty for a
 /// stable release.
