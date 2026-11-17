@@ -34,7 +34,7 @@ from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai/scratch/zz_testlab/state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai/testlab/state")
 ).resolve()
 CADDY_DIR = STATE_ROOT / "caddy"
 CADDYFILE = CADDY_DIR / "Caddyfile"

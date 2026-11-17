@@ -27,7 +27,7 @@ from pathlib import Path
 import process_ownership
 
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", ".ai/scratch/zz_testlab/state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", ".ai/testlab/state")
 ).resolve()
 PID_FILE = STATE_ROOT / "gateway-lab.pid"
 PORT = int(os.environ.get("CUPOLA_TESTLAB_GATEWAY_PORT", "8466"))

@@ -30,7 +30,7 @@ import '../test_helpers/settings_scope.dart';
 /// `setUpAll` applies the scenario and runs the playback spike itself, so the
 /// file is repeatable on its own; the scenario is idempotent and the spike
 /// ends the session it made. The two contract files under
-/// `.ai/scratch/zz_testlab/state/` are what the assertions read ids from:
+/// `.ai/testlab/state/` are what the assertions read ids from:
 /// `plex-media.json` (libraries, the watched rows, on deck) and
 /// `plex-play.json` (the session shape and what the server answered to a
 /// terminate call).
@@ -415,7 +415,7 @@ class _Lab {
   factory _Lab.load() {
     final named = Platform.environment['CUPOLA_TESTLAB_CREDENTIALS_FILE'];
     final path = named == null || named.isEmpty
-        ? '.ai/scratch/zz_testlab/state/credentials.env'
+        ? '.ai/testlab/state/credentials.env'
         : named;
     final file = File(path);
     if (!file.existsSync()) {

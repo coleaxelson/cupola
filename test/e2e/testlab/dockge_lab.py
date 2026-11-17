@@ -54,9 +54,9 @@ import websockets
 
 TESTLAB_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTLAB_DIR.parents[2]
-SCRATCH_ROOT = REPO_ROOT / ".ai" / "scratch" / "zz_testlab"
+LAB_ROOT = REPO_ROOT / ".ai" / "testlab"
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", SCRATCH_ROOT / "state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", LAB_ROOT / "state")
 ).resolve()
 CREDENTIALS = STATE_ROOT / "credentials.env"
 STACKS_DIR = TESTLAB_DIR / "dind_stacks"

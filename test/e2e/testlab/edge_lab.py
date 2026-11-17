@@ -26,7 +26,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai/scratch/zz_testlab/state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai/testlab/state")
 ).resolve()
 EDGE_DIR = STATE_ROOT / "edge"
 CERT = EDGE_DIR / "cert.pem"

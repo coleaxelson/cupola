@@ -49,16 +49,16 @@ if __name__ == "__main__":
     sys.modules.setdefault("testlab", sys.modules[__name__])
 
 COMPOSE_FILE = REPO_ROOT / "docker-compose.testlab.yml"
-SCRATCH_ROOT = (REPO_ROOT / ".ai" / "scratch" / "zz_testlab").resolve()
+LAB_ROOT = (REPO_ROOT / ".ai" / "testlab").resolve()
 _state_setting = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", SCRATCH_ROOT / "state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", LAB_ROOT / "state")
 )
 if not _state_setting.is_absolute():
     _state_setting = REPO_ROOT / _state_setting
 STATE_ROOT = _state_setting.resolve()
-SNAPSHOT_ROOT = (SCRATCH_ROOT / "snapshots").resolve()
+SNAPSHOT_ROOT = (LAB_ROOT / "snapshots").resolve()
 CREDENTIALS = STATE_ROOT / "credentials.env"
-PORTS_FILE = SCRATCH_ROOT / "ports.json"
+PORTS_FILE = LAB_ROOT / "ports.json"
 PROJECT = os.environ.get("CUPOLA_TESTLAB_PROJECT", "cupola-testlab")
 PROFILES = ("core", "downloads", "media", "infra", "protocol-mocks")
 TOXIPROXY_URL = os.environ.get(
@@ -159,7 +159,7 @@ def ensure_docker() -> None:
 def ensure_state() -> None:
     require_safe_state_root()
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
-    SCRATCH_ROOT.mkdir(parents=True, exist_ok=True)
+    LAB_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def compose_up(extra_profiles: Iterable[str] = ()) -> None:
@@ -517,15 +517,15 @@ def _overlaps(a: Path, b: Path) -> bool:
 
 
 def require_safe_state_root() -> None:
-    """Refuse a state root outside the disposable scratch or over a snapshot.
+    """Refuse a state root outside the lab's own directory or over a snapshot.
 
     ``CUPOLA_TESTLAB_STATE_DIR`` is read before anything runs. A path that
-    resolves outside ``.ai/scratch/zz_testlab``, or that is (or contains) the
+    resolves outside ``.ai/testlab``, or that is (or contains) the
     snapshot root, could make a reset delete work that is not the lab's.
     """
-    if not _is_within(STATE_ROOT, SCRATCH_ROOT) or STATE_ROOT == SCRATCH_ROOT:
+    if not _is_within(STATE_ROOT, LAB_ROOT) or STATE_ROOT == LAB_ROOT:
         raise LabError(
-            f"refusing state directory outside {SCRATCH_ROOT}: {STATE_ROOT}"
+            f"refusing state directory outside {LAB_ROOT}: {STATE_ROOT}"
         )
     if _overlaps(STATE_ROOT, SNAPSHOT_ROOT):
         raise LabError(
@@ -679,8 +679,8 @@ def reset(name: str = "golden") -> dict[str, Any]:
     require_safe_tree(STATE_ROOT, label="the state directory")
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
-    staging = SCRATCH_ROOT / f".restore-{token}"
-    backup = SCRATCH_ROOT / f".restore-backup-{token}"
+    staging = LAB_ROOT / f".restore-{token}"
+    backup = LAB_ROOT / f".restore-backup-{token}"
 
     # Stage first: a broken snapshot fails with the old state untouched and
     # the containers still up.

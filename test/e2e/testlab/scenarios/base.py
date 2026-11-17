@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-SCRATCH_ROOT = REPO_ROOT / ".ai" / "scratch" / "zz_testlab"
+LAB_ROOT = REPO_ROOT / ".ai" / "testlab"
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", SCRATCH_ROOT / "state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", LAB_ROOT / "state")
 ).resolve()
 CREDENTIALS = STATE_ROOT / "credentials.env"
 

@@ -415,8 +415,7 @@ Future<_App> _readWithTheApp(Map<String, dynamic> document) async {
 /// Where the lab keeps its state.
 String _statePath(String relative) {
   final root =
-      Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-      '.ai/scratch/zz_testlab/state';
+      Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ?? '.ai/testlab/state';
   return '$root/$relative';
 }
 

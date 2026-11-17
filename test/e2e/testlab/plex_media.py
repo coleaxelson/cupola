@@ -70,7 +70,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRATCH_ROOT = REPO_ROOT / ".ai" / "scratch" / "zz_testlab"
+LAB_ROOT = REPO_ROOT / ".ai" / "testlab"
 
 PLEX_URL = os.environ.get("CUPOLA_TESTLAB_PLEX_URL", "http://127.0.0.1:32400")
 CONTRACT_NAME = "plex-media.json"
@@ -109,7 +109,7 @@ SECTION_SPECS: tuple[dict[str, Any], ...] = (
 FOLDER_NAMES = {"movie": "movies", "show": "series", "artist": "music"}
 
 # The forge's spike folder: the very files the synthetic media were made from.
-FORGE_SPIKE = SCRATCH_ROOT / "state" / "downloads" / "spike"
+FORGE_SPIKE = LAB_ROOT / "state" / "downloads" / "spike"
 
 # The two episodes and the album are copied from the forge to these names.
 # The layout is the one the Jellyfin block also writes (same file names, same
@@ -135,7 +135,7 @@ class PlexError(RuntimeError):
 
 def state_root() -> Path:
     return Path(
-        os.environ.get("CUPOLA_TESTLAB_STATE_DIR", SCRATCH_ROOT / "state")
+        os.environ.get("CUPOLA_TESTLAB_STATE_DIR", LAB_ROOT / "state")
     ).resolve()
 
 

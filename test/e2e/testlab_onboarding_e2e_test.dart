@@ -305,8 +305,7 @@ Future<void> _requireGateway() async {
 
 /// Where the lab keeps its state.
 String _stateDir() =>
-    Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ??
-    '.ai/scratch/zz_testlab/state';
+    Platform.environment['CUPOLA_TESTLAB_STATE_DIR'] ?? '.ai/testlab/state';
 
 /// The lab's Seerr as the world file holds it: the address, and the
 /// operator's key. Read from the state directory at run time, never from the

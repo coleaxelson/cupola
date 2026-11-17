@@ -16,7 +16,7 @@ import 'dart:io';
 
 import 'package:cupola/demo/world/world.dart';
 
-const String defaultOutputPath = '.ai/scratch/zz_testlab/world.json';
+const String defaultOutputPath = '.ai/testlab/world.json';
 
 String worldJson() {
   final document = <String, Object?>{

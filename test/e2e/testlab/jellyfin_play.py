@@ -64,7 +64,7 @@ JELLYFIN = os.environ.get("CUPOLA_TESTLAB_JELLYFIN_URL", "http://127.0.0.1:8096"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 STATE_ROOT = Path(
-    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai" / "scratch" / "zz_testlab" / "state")
+    os.environ.get("CUPOLA_TESTLAB_STATE_DIR", REPO_ROOT / ".ai" / "testlab" / "state")
 ).resolve()
 CREDENTIALS = STATE_ROOT / "credentials.env"
 PLAY_STATE = STATE_ROOT / "jellyfin-play"

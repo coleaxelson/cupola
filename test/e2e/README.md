@@ -46,7 +46,7 @@ test/e2e/testlab/bootstrap.sh
 ~~~
 
 The script pins vendor images by digest, copies tracked seeds into
-.ai/scratch/zz_testlab/state, waits for all healthchecks, bootstraps Jellyfin,
+.ai/testlab/state, waits for all healthchecks, bootstraps Jellyfin,
 Emby (its first-run wizard, then an API key named Cupola), Tracearr (its owner and
 its public key), Seerr and the first Dockge account, and writes generated credentials to a
 chmod-600 file. `--reset` includes every Compose profile, so it really stops
@@ -55,7 +55,7 @@ containers running. Run the full Dart transport harness without putting
 credentials in the command line:
 
 ~~~bash
-export CUPOLA_TESTLAB_CREDENTIALS_FILE="$PWD/.ai/scratch/zz_testlab/state/credentials.env"
+export CUPOLA_TESTLAB_CREDENTIALS_FILE="$PWD/.ai/testlab/state/credentials.env"
 flutter test test/e2e/testlab_transport_e2e_test.dart \
   --tags e2e --run-skipped
 ~~~
@@ -94,7 +94,7 @@ python3 test/e2e/testlab/testlab.py doctor
 ~~~
 
 A snapshot stops the containers, archives every bind-mounted state directory
-under `.ai/scratch/zz_testlab/state`, starts them again, and leaves out only
+under `.ai/testlab/state`, starts them again, and leaves out only
 Dockge's disposable `docker:dind` store. A reset restores the archive, checks
 it byte for byte before starting anything, and brings the lab back. A full
 round trip is under a minute on this Mac.
@@ -119,7 +119,7 @@ python3 test/e2e/testlab/testlab.py scenario teardown smoke
 The app reaches services through their Toxiproxy ports; the direct ports stay
 for the transport harness, which must not depend on the fault layer. The
 control plane creates one proxy per service and writes the map to
-`.ai/scratch/zz_testlab/ports.json`.
+`.ai/testlab/ports.json`.
 
 | Service | App port | Direct port |
 |---|---|---|
@@ -646,7 +646,7 @@ profilo P1–P10 nello stato del laboratorio, nel formato che l'app legge: gli
 indirizzi, i nomi e la rosa delle connessioni nelle `SharedPreferences`, le
 chiavi, le password, i token e le sessioni nella memoria sicura, con le chiavi
 che `SettingsService` deriva dall'id di ogni connessione. Il file sta in
-`.ai/scratch/zz_testlab/state/app/<profilo>.json` con mode 600, accanto agli
+`.ai/testlab/state/app/<profilo>.json` con mode 600, accanto agli
 altri segreti usa e getta, e mai nel repository.
 
 ~~~bash
@@ -765,7 +765,7 @@ existed gets the certificate, the credentials entry and a mock that serves it
 without a reset (the other credentials are left as they are):
 
 ~~~bash
-export CUPOLA_TESTLAB_STATE_DIR="$PWD/.ai/scratch/zz_testlab/state"
+export CUPOLA_TESTLAB_STATE_DIR="$PWD/.ai/testlab/state"
 test/e2e/testlab/truenas_cert.sh credentials
 docker compose -p cupola-testlab -f docker-compose.testlab.yml \
   --profile core up -d --build --wait truenas-mock
@@ -826,7 +826,7 @@ flutter test --tags e2e --run-skipped test/e2e/testlab_requester_e2e_test.dart
 ~~~
 
 The test reads `CUPOLA_TESTLAB_CREDENTIALS_FILE` like the other lab tests, and
-falls back to .ai/scratch/zz_testlab/state/credentials.env under the working
+falls back to .ai/testlab/state/credentials.env under the working
 directory. Asking for a movie needs the lab's Seerr to reach TMDB, so that
 step needs the internet. What it proves:
 
@@ -873,7 +873,7 @@ by hand on a macOS build of Cupola:
 2. Start a second Seerr on its own port and state directory, from the image
    the Compose file pins:
    `docker run -d --name cupola-testlab-seerr-plex -p 127.0.0.1:5056:5055
-   -v "$PWD/.ai/scratch/zz_testlab/state/seerr-plex:/app/config" <image>`.
+   -v "$PWD/.ai/testlab/state/seerr-plex:/app/config" <image>`.
 3. Open http://127.0.0.1:5056 in a browser, sign in with Plex, choose the
    lab's Plex server and finish the setup. To sign in as a household member
    rather than the owner, share the server with a second plex.tv account.
@@ -923,7 +923,7 @@ Docker endpoint cannot be mistaken for a UI placeholder:
    by route, state, width and theme. Phone landscape is out of contract.
    Include onboarding, deep links, retry/refresh, semantics and long text.
 9. Cleanup and ledger: keep only aggregate results and screenshots under
-   disposable .ai/scratch/zz_ paths, run Compose down -v --remove-orphans, and
+   .ai/testlab, run Compose down -v --remove-orphans, and
    record branch, image digests, commands, failures and fixes in the ledger.
 
 The existing integration_test/cupola_native_smoke_test.dart covers the real
@@ -944,7 +944,7 @@ Prowlarr, Dockge, Jellyfin, Emby, Plex and TrueNAS. Each route is drawn at all t
 sizes and both themes. The test also checks for a Flutter exception immediately
 after every viewport resize, before the next route is opened; this keeps an
 overflow attributed to the screen that caused it. It writes PNG evidence to
-.ai/scratch/zz_testlab/screenshots:
+.ai/testlab/screenshots:
 
 The native runner is sandboxed away from the checkout. Use `flutter drive` with
 the host-side driver below: the app process renders the PNG in memory and the
@@ -957,7 +957,7 @@ set -a
 . "$CUPOLA_TESTLAB_CREDENTIALS_FILE"
 set +a
 export CUPOLA_TESTLAB_DRIVER_SCREENSHOTS=true
-export CUPOLA_TESTLAB_SCREENSHOT_DIR="$PWD/.ai/scratch/zz_testlab/screenshots"
+export CUPOLA_TESTLAB_SCREENSHOT_DIR="$PWD/.ai/testlab/screenshots"
 flutter drive -d macos \
   --target=integration_test/testlab_ui_matrix_test.dart \
   --driver=test_driver/testlab_ui_matrix_driver.dart \
@@ -988,7 +988,7 @@ route x 3 sizes x 2 themes), for example:
 ~~~bash
 export CUPOLA_TESTLAB_ROUTE_OFFSET=108
 export CUPOLA_TESTLAB_ROUTE_LIMIT=8
-export CUPOLA_TESTLAB_SCREENSHOT_DIR="$PWD/.ai/scratch/zz_testlab/screenshots"
+export CUPOLA_TESTLAB_SCREENSHOT_DIR="$PWD/.ai/testlab/screenshots"
 flutter drive -d macos \
   --target=integration_test/testlab_ui_matrix_test.dart \
   --driver=test_driver/testlab_ui_matrix_driver.dart \
@@ -1024,7 +1024,7 @@ The write-safe mutation tier is separate from the read-only transport and UI
 passes:
 
 ~~~bash
-export CUPOLA_TESTLAB_CREDENTIALS_FILE="$PWD/.ai/scratch/zz_testlab/state/credentials.env"
+export CUPOLA_TESTLAB_CREDENTIALS_FILE="$PWD/.ai/testlab/state/credentials.env"
 flutter test test/e2e/testlab_mutation_e2e_test.dart \
   --tags e2e --run-skipped
 ~~~
@@ -1045,5 +1045,5 @@ docker compose -p "$CUPOLA_TESTLAB_PROJECT" \
 ~~~
 
 The bootstrap's --reset performs the same project cleanup and removes only the
-validated .ai/scratch/zz_testlab/state directory. Never use the personal Docker
+validated .ai/testlab/state directory. Never use the personal Docker
 socket or a broad recursive cleanup for this lab.

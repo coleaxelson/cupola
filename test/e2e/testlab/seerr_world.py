@@ -112,7 +112,7 @@ The world has two deliberate limits, both imposed by the lab:
   Sonarr hold eleven series.
 
 Usage:
-  python3 test/e2e/testlab/seerr_world.py --state-dir .ai/scratch/zz_testlab/state
+  python3 test/e2e/testlab/seerr_world.py --state-dir .ai/testlab/state
   python3 test/e2e/testlab/seerr_world.py --state-dir ... --check  # verify only
 """
 
@@ -1676,7 +1676,7 @@ def main() -> int:
     parser.add_argument(
         "--state-dir",
         default=os.environ.get(
-            "CUPOLA_TESTLAB_STATE_DIR", ".ai/scratch/zz_testlab/state"
+            "CUPOLA_TESTLAB_STATE_DIR", ".ai/testlab/state"
         ),
         help="the lab's disposable state directory",
     )

@@ -41,7 +41,7 @@ import '../test_helpers/settings_scope.dart';
 /// fakes answer as Seerr does. The bootstrap seeds the two accounts it signs
 /// in as, each with REQUEST alone, and writes their generated passwords to
 /// the lab's credentials file (`CUPOLA_TESTLAB_CREDENTIALS_FILE`, or
-/// `.ai/scratch/zz_testlab/state/credentials.env` under the working
+/// `.ai/testlab/state/credentials.env` under the working
 /// directory). Asking for a title needs the lab's Seerr to reach TMDB.
 ///
 /// The CSRF group restarts the Seerr container twice, to turn the protection
@@ -550,7 +550,7 @@ class _Lab {
   factory _Lab.load() {
     final named = Platform.environment['CUPOLA_TESTLAB_CREDENTIALS_FILE'];
     final path = named == null || named.isEmpty
-        ? '.ai/scratch/zz_testlab/state/credentials.env'
+        ? '.ai/testlab/state/credentials.env'
         : named;
     final file = File(path);
     if (!file.existsSync()) {
