@@ -581,74 +581,81 @@ class _PortalFloor extends StatelessWidget {
           opacity: visibility,
           child: NotificationListener<ScrollNotification>(
             onNotification: _onScroll,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // The stretch above the matrix, where the receded card
-                  // shows through, is a real child, not padding: a tap there
-                  // goes back, a drag there scrolls. (The scrollable is opaque
-                  // to hits, so the card's own tap can't be reached anymore.)
-                  //
-                  // Named for a screen reader, which reaches it first: it is
-                  // the one way back that is on the floor itself, and on iOS
-                  // there is no back button to reach for instead.
-                  Semantics(
-                    container: true,
-                    button: true,
-                    label: 'Close the Portal',
-                    onTap: controller.closeFromUi,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: controller.closeFromUi,
-                      excludeFromSemantics: true,
-                      child: SizedBox(height: spacerHeight),
-                    ),
-                  ),
-                  // The matrix rides its own panel: a soft-fading top edge
-                  // and a near-opaque surface fill that scroll WITH the
-                  // cells, so when the list travels over the frozen card it
-                  // brings its own contrast along. Deliberately no backdrop
-                  // blur: this panel scrolls every frame.
-                  Container(
-                    height: 56,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [panelColor.withValues(alpha: 0), panelColor],
-                      ),
-                    ),
-                  ),
-                  Container(
-                    color: panelColor,
-                    padding: EdgeInsets.only(
-                      left: AppSpacing.lg,
-                      right: AppSpacing.lg,
-                      bottom: FloatingNavBarMetrics.getScrollViewBottomPadding(
-                        context,
-                      ),
-                    ),
-                    // Picker, not readout: this floor exists to be tapped,
-                    // and a folded cell would reach the service while hiding
-                    // every connection but the one the lens already points at.
+            // Clear of the side insets, over a backdrop that runs under them
+            // ([AmbientBackground.sideSafe]): the matrix is content.
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // The stretch above the matrix, where the receded card
+                    // shows through, is a real child, not padding: a tap there
+                    // goes back, a drag there scrolls. (The scrollable is opaque
+                    // to hits, so the card's own tap can't be reached anymore.)
                     //
-                    // Wrapped so a cell can close the Portal on the ACT of
-                    // being tapped. The shell's route hook closes it when the
-                    // content under the card moves, which is a different
-                    // question and misses the tap that moves nothing; see
-                    // [PortalDismissScope].
-                    child: PortalDismissScope(
-                      onDismiss: controller.closeFromUi,
-                      child: const ServiceMatrix(
-                        role: ServiceMatrixRole.picker,
+                    // Named for a screen reader, which reaches it first: it is
+                    // the one way back that is on the floor itself, and on iOS
+                    // there is no back button to reach for instead.
+                    Semantics(
+                      container: true,
+                      button: true,
+                      label: 'Close the Portal',
+                      onTap: controller.closeFromUi,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: controller.closeFromUi,
+                        excludeFromSemantics: true,
+                        child: SizedBox(height: spacerHeight),
                       ),
                     ),
-                  ),
-                ],
+                    // The matrix rides its own panel: a soft-fading top edge
+                    // and a near-opaque surface fill that scroll WITH the
+                    // cells, so when the list travels over the frozen card it
+                    // brings its own contrast along. Deliberately no backdrop
+                    // blur: this panel scrolls every frame.
+                    Container(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [panelColor.withValues(alpha: 0), panelColor],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      color: panelColor,
+                      padding: EdgeInsets.only(
+                        left: AppSpacing.lg,
+                        right: AppSpacing.lg,
+                        bottom:
+                            FloatingNavBarMetrics.getScrollViewBottomPadding(
+                              context,
+                            ),
+                      ),
+                      // Picker, not readout: this floor exists to be tapped,
+                      // and a folded cell would reach the service while hiding
+                      // every connection but the one the lens already points at.
+                      //
+                      // Wrapped so a cell can close the Portal on the ACT of
+                      // being tapped. The shell's route hook closes it when the
+                      // content under the card moves, which is a different
+                      // question and misses the tap that moves nothing; see
+                      // [PortalDismissScope].
+                      child: PortalDismissScope(
+                        onDismiss: controller.closeFromUi,
+                        child: const ServiceMatrix(
+                          role: ServiceMatrixRole.picker,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

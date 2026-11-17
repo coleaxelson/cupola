@@ -82,6 +82,13 @@ class FloatingNavRail extends StatelessWidget {
     return wanted > _item ? wanted.ceilToDouble() : _item;
   }
 
+  /// How wide the rail draws with [destinations], edge to edge: what a
+  /// layout that floats it over the page keeps clear for it.
+  static double widthOf(
+    BuildContext context,
+    List<FloatingNavDestination> destinations,
+  ) => _itemWidthOf(context, destinations) + _inset * 2 + _edge * 2;
+
   static double _itemHeightOf(BuildContext context) {
     final style = _labelStyle(context, lit: true);
     final line =

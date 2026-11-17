@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:cupola/core/widgets/side_bleed.dart';
 import 'package:cupola/core/app_spacing.dart';
 import 'package:cupola/core/lifecycle/page_activity.dart';
 import 'package:cupola/core/lifecycle/poll_clock.dart';
@@ -124,20 +125,23 @@ class StackScreen extends ConsumerWidget {
                 children: [
                   RefreshIndicator(
                     onRefresh: () => _refreshStack(ref),
-                    child: ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: EdgeInsets.only(bottom: bottomPadding),
-                      //  * the header is one line of StackHealth under the
-                      //    title, and it is neutral when clear: no permanent
-                      //    green
-                      //  * the band is absent unless something stopped
-                      //    answering
-                      //  * the stack is the instrument and the launcher
-                      children: const [
-                        _StackHeadline(),
-                        ServicesAlertBand(),
-                        ServiceMatrix(),
-                      ],
+                    child: SideBleed(
+                      child: ListView(
+                        clipBehavior: Clip.none,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.only(bottom: bottomPadding),
+                        //  * the header is one line of StackHealth under the
+                        //    title, and it is neutral when clear: no permanent
+                        //    green
+                        //  * the band is absent unless something stopped
+                        //    answering
+                        //  * the stack is the instrument and the launcher
+                        children: const [
+                          _StackHeadline(),
+                          ServicesAlertBand(),
+                          ServiceMatrix(),
+                        ],
+                      ),
                     ),
                   ),
                   // The fleet passes under the clock, as Activity's rows do,

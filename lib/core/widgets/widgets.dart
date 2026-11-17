@@ -7,6 +7,7 @@ library;
 export 'beside_or_below.dart';
 export 'desktop_content_well.dart';
 export 'shimmer_placeholder.dart';
+export 'side_bleed.dart';
 export 'app_skeleton.dart';
 export 'list_rows_shimmer.dart';
 export 'staggered_entrance.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:cupola/core/app_breakpoints.dart';
 import 'package:cupola/core/app_spacing.dart';
+import 'package:cupola/core/fold.dart';
 import 'package:cupola/core/theme.dart';
 
 /// "Hide what I have": one switch for the whole of Discover, on a catalogue
@@ -66,8 +67,11 @@ class HideOwnedSwitch extends StatelessWidget {
     );
     return Align(
       alignment: AlignmentDirectional.centerStart,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppBreakpoints.splitList),
+      // Short of a foldable's crease, too: opened, the phone's column
+      // reaches past the middle of the screen, and the switch at its end
+      // landed on the fold.
+      child: ClearOfFold(
+        maxWidth: AppBreakpoints.splitList,
         child: value == null
             ? ExcludeSemantics(child: row)
             : MergeSemantics(

@@ -113,5 +113,47 @@ void main() {
       await tester.pumpAndSettle();
       expect(_paintedAccent(tester), brand);
     });
+
+    // The iPhone Duo's sensor column: 84pt on the trailing side of both its
+    // screens, the whole height.
+    group('a side inset', () {
+      Future<void> pumpInset(WidgetTester tester, {bool sideSafe = true}) =>
+          tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.darkTheme(),
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(466, 678),
+                  padding: EdgeInsets.only(top: 20, right: 84),
+                ),
+                child: AmbientBackground(
+                  sideSafe: sideSafe,
+                  child: const SizedBox.expand(key: Key('content')),
+                ),
+              ),
+            ),
+          );
+
+      testWidgets('runs the room under it and keeps the content clear', (
+        tester,
+      ) async {
+        await pumpInset(tester);
+        expect(tester.getRect(find.byType(AmbientRoom)).right, 800);
+        final content = find.byKey(const Key('content'));
+        expect(tester.getRect(content).right, 800 - 84);
+        expect(
+          MediaQuery.paddingOf(tester.element(content)),
+          const EdgeInsets.only(top: 20),
+          reason: 'the side is taken once; the top stays the page\'s own',
+        );
+      });
+
+      testWidgets('is left to a room that lays out its own sides', (
+        tester,
+      ) async {
+        await pumpInset(tester, sideSafe: false);
+        expect(tester.getRect(find.byKey(const Key('content'))).right, 800);
+      });
+    });
   });
 }
