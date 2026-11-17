@@ -17,7 +17,6 @@ import 'package:cupola/core/utils/a11y_announce.dart';
 import 'package:cupola/core/widgets/front_room.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/library_selection.dart';
-import 'package:cupola/core/widgets/ambient_background.dart';
 import 'package:cupola/core/widgets/floating_nav_rail.dart';
 import 'package:cupola/features/release_search/presentation/release_search_lifecycle.dart';
 import 'package:cupola/features/settings/data/settings_provider.dart';
@@ -232,6 +231,17 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
     // coach mark, no demo bounce.
     final portalOn = !accessibleNav && audience == Audience.operator;
 
+    // A window that grows past the rail while the Portal is up (a foldable
+    // opened, a split view widened) takes the bar and the stage off the screen,
+    // and the Portal would stay open with nothing drawing it, to be found open
+    // again over a moved-on page when the window narrows. It closes instead:
+    // the room under it is the page the rail now shows. Post-frame, as below.
+    if (!_portalDrawn(context) && _portal.isOpenOrEngaged) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _portal.closeFromUi();
+      });
+    }
+
     // Any change to what sits under the card closes an open Portal and drops
     // the stale snapshot. Post-frame: starting animations inside build is not
     // allowed.
@@ -333,30 +343,47 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
 
     final Widget touchShell = useRail
         ? Scaffold(
-            // The room's own light under the rail, so the strip it floats in
-            // continues the page beside it instead of framing it: the page's
-            // glow is centred near this same corner, and the two meet at the
-            // page's edge within a shade.
-            body: AmbientBackground(
-              child: Row(
-                children: [
-                  // SafeArea on the rail side only: on a tablet held on its
-                  // side the camera housing and the rounded corner sit on the
-                  // leading edge, and the rail was laid out underneath them.
-                  // The content keeps its own insets. Only tablets reach this
-                  // branch on touch: the phone is portrait-only and never
-                  // 840pt wide, but tablets still rotate, so the inset is
-                  // real.
-                  SafeArea(
-                    right: false,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: FloatingNavRail.margin,
+            // The page runs under the rail, room and all, so the rail floats
+            // on the page's own light instead of a strip of the shell's: two
+            // rooms side by side met in a seam wherever the page was lit. The
+            // page is told the rail is there as a leading inset, which its
+            // room keeps its content clear of (`AmbientBackground.sideSafe`)
+            // as it does the opened iPhone Duo's sensor column on the other
+            // side.
+            body: Builder(
+              builder: (context) {
+                final media = MediaQuery.of(context);
+                final railLeft = media.padding.left + FloatingNavRail.margin;
+                final railFootprint =
+                    railLeft +
+                    FloatingNavRail.widthOf(context, destinations) +
+                    FloatingNavRail.margin;
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    MediaQuery(
+                      data: media.copyWith(
+                        padding: media.padding.copyWith(left: railFootprint),
+                        viewPadding: media.viewPadding.copyWith(
+                          left: railFootprint,
+                        ),
                       ),
-                      // The phone's bar on its side, floating at the middle of
-                      // the edge where a thumb holding the tablet reaches it.
-                      child: Align(
-                        widthFactor: 1,
+                      // A title opened here is drawn beside the page it came
+                      // from once the window is wide enough.
+                      child: MediaSplitLayout(
+                        location: GoRouterState.of(context).uri,
+                        child: widget.navigationShell,
+                      ),
+                    ),
+                    // The phone's bar on its side, floating at the middle of
+                    // the edge where a thumb holding the tablet reaches it,
+                    // clear of a camera housing or rounded corner on that
+                    // edge.
+                    Positioned(
+                      left: railLeft,
+                      top: media.padding.top,
+                      bottom: media.padding.bottom,
+                      child: Center(
                         child: FloatingNavRail(
                           selectedIndex: selectedIndex,
                           destinations: destinations,
@@ -364,17 +391,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
                         ),
                       ),
                     ),
-                  ),
-                  // A title opened here is drawn beside the page it came
-                  // from once the window is wide enough.
-                  Expanded(
-                    child: MediaSplitLayout(
-                      location: GoRouterState.of(context).uri,
-                      child: widget.navigationShell,
-                    ),
-                  ),
-                ],
-              ),
+                  ],
+                );
+              },
             ),
           )
         // The phone layout is the only one the Portal exists in, so it is the
@@ -416,17 +435,25 @@ class _ShellScreenState extends ConsumerState<ShellScreen>
                       ),
                   // Steps down while a library selects, and its own bar takes
                   // the place: tabs cannot be switched until it is done.
-                  bottomNavigationBar: LibrarySelectionNavSlot(
-                    child: FloatingBottomNavBar(
-                      selectedIndex: selectedIndex,
-                      onDestinationSelected: select,
-                      destinations: [
-                        for (final (index, destination) in destinations.indexed)
-                          barTabs[index] == NavTab.stack
-                              ? _withPortalAction(destination)
-                              : destination,
-                      ],
-                      verticalDragDelegate: portalOn ? _portal : null,
+                  // The bar floats on the page's room and stops at the side
+                  // insets, as the page's content does: the folded iPhone
+                  // Duo's sensor column runs down to it.
+                  bottomNavigationBar: SafeArea(
+                    top: false,
+                    bottom: false,
+                    child: LibrarySelectionNavSlot(
+                      child: FloatingBottomNavBar(
+                        selectedIndex: selectedIndex,
+                        onDestinationSelected: select,
+                        destinations: [
+                          for (final (index, destination)
+                              in destinations.indexed)
+                            barTabs[index] == NavTab.stack
+                                ? _withPortalAction(destination)
+                                : destination,
+                        ],
+                        verticalDragDelegate: portalOn ? _portal : null,
+                      ),
                     ),
                   ),
                 ),

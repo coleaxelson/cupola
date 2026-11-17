@@ -373,3 +373,112 @@ private final class LocalNetworkProbe {
     return false
   }
 }
+
+/// Flutter's scene delegate, plus the fold of a foldable screen.
+///
+/// Flutter's iOS embedder reports no display features, so a page laid across
+/// the opened iPhone Duo cannot know where its screen folds. This adds a probe
+/// to the Flutter view that does (`FoldProbeView`) and hands the answer to Dart
+/// on `cupola/fold`, where it becomes a `DisplayFeature` like Android's own.
+class SceneDelegate: FlutterSceneDelegate {
+  private var foldProbe: UIView?
+
+  override func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    super.scene(scene, willConnectTo: session, options: connectionOptions)
+    guard #available(iOS 27.1, *),
+      let controller = window?.rootViewController as? FlutterViewController
+    else { return }
+    let probe = FoldProbeView(messenger: controller.binaryMessenger)
+    probe.frame = controller.view.bounds
+    probe.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    controller.view.addSubview(probe)
+    foldProbe = probe
+  }
+}
+
+/// An invisible view the size of the Flutter view that watches the hinge.
+///
+/// It reports where the screen folds, in the Flutter view's own points: the
+/// middle of the screen's long side, the only place a fold can be, converted
+/// from the screen's coordinates so a window that does not fill the screen
+/// still gets the fold where it really is (or none, when it lies outside).
+/// It reports again on every hinge update and every layout, which is where a
+/// rotation or a resized window arrives. Nil while the device is closed, has
+/// no hinge, or the fold misses the window.
+@available(iOS 27.1, *)
+private final class FoldProbeView: UIView {
+  private let channel: FlutterMethodChannel
+  private var hinge: UIHinge?
+  private var lastSent: [String: Any]?
+  private var sentOnce = false
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "cupola/fold", binaryMessenger: messenger)
+    super.init(frame: .zero)
+    isUserInteractionEnabled = false
+    isHidden = true
+    addInteraction(
+      UIHingeInteraction { [weak self] _, update in
+        self?.hinge = update.hinge
+        self?.report()
+      })
+    // Dart asks once it is listening, so an answer sent before the engine ran
+    // its first frame is not lost.
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "current" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(self?.fold())
+    }
+  }
+
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    report()
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    report()
+  }
+
+  private func report() {
+    let current = fold()
+    let same = (current as NSDictionary?)?.isEqual(lastSent) ?? (lastSent == nil)
+    if sentOnce && same { return }
+    sentOnce = true
+    lastSent = current
+    channel.invokeMethod("changed", arguments: current)
+  }
+
+  private func fold() -> [String: Any]? {
+    guard let hinge, hinge.status != .closed, hinge.status != .unknown,
+      let screen = window?.windowScene?.screen
+    else { return nil }
+    let bounds = screen.bounds
+    let vertical = bounds.width >= bounds.height
+    let line =
+      vertical
+      ? (CGPoint(x: bounds.midX, y: bounds.minY), CGPoint(x: bounds.midX, y: bounds.maxY))
+      : (CGPoint(x: bounds.minX, y: bounds.midY), CGPoint(x: bounds.maxX, y: bounds.midY))
+    let start = convert(line.0, from: screen.coordinateSpace)
+    let end = convert(line.1, from: screen.coordinateSpace)
+    let at = vertical ? start.x : start.y
+    let extent = vertical ? self.bounds.width : self.bounds.height
+    guard at > 0, at < extent else { return nil }
+    return [
+      "axis": vertical ? "vertical" : "horizontal",
+      "at": Double(at),
+      "from": Double(vertical ? min(start.y, end.y) : min(start.x, end.x)),
+      "to": Double(vertical ? max(start.y, end.y) : max(start.x, end.x)),
+      "flat": hinge.status == .fullyOpen,
+    ]
+  }
+}

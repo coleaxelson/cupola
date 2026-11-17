@@ -274,9 +274,21 @@ class MediaSplitLayout extends StatelessWidget {
         builder: (context, box) => Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              width: target == null ? box.maxWidth : AppBreakpoints.splitList,
-              child: child,
+            // The list keeps a phone's column clear of whatever floats over
+            // its leading side (the rail, which the shell lays over the page so
+            // the page's room runs under it), and leaves the trailing inset to
+            // the title beside it. Wrapped either way, so the navigator keeps
+            // its place in the tree as the pane opens and closes.
+            MediaQuery.removePadding(
+              context: context,
+              removeRight: target != null,
+              child: SizedBox(
+                width: target == null
+                    ? box.maxWidth
+                    : AppBreakpoints.splitList +
+                          MediaQuery.paddingOf(context).left,
+                child: child,
+              ),
             ),
             Expanded(
               child: target == null
@@ -297,10 +309,14 @@ class MediaSplitLayout extends StatelessWidget {
                           child: child,
                         ),
                       ),
-                      child: _Pane(
+                      child: MediaQuery.removePadding(
                         key: ValueKey(target.identity),
-                        page: target,
-                        location: location.toString(),
+                        context: context,
+                        removeLeft: true,
+                        child: _Pane(
+                          page: target,
+                          location: location.toString(),
+                        ),
                       ),
                     ),
             ),
@@ -313,7 +329,7 @@ class MediaSplitLayout extends StatelessWidget {
 
 /// One page in the pane.
 class _Pane extends StatelessWidget {
-  const _Pane({super.key, required this.page, required this.location});
+  const _Pane({required this.page, required this.location});
 
   final MediaPanePage page;
 

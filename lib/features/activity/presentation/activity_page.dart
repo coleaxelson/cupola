@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:cupola/core/widgets/side_bleed.dart';
 import 'package:cupola/core/title_light.dart';
 import 'package:cupola/core/app_animation.dart';
 import 'package:cupola/core/app_breakpoints.dart';
@@ -184,32 +185,35 @@ class ActivityPage extends ConsumerWidget {
                           builder: (context) {
                             Widget column(Widget child) =>
                                 HomeWell.column(context, child);
-                            return ListView(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: EdgeInsets.only(bottom: bottomPadding),
-                              children: [
-                                column(const _ActivityHeader()),
-                                column(
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      AppSpacing.gutter,
-                                      AppSpacing.md,
-                                      AppSpacing.gutter,
-                                      0,
-                                    ),
-                                    child: PageTabs<ActivityTab>(
-                                      values: ActivityTab.values,
-                                      selected: tab,
-                                      labelBuilder: (tab) => tab.label,
-                                      onSelected: (tab) =>
-                                          context.go(tab.location),
+                            return SideBleed(
+                              child: ListView(
+                                clipBehavior: Clip.none,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: EdgeInsets.only(bottom: bottomPadding),
+                                children: [
+                                  column(const _ActivityHeader()),
+                                  column(
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        AppSpacing.gutter,
+                                        AppSpacing.md,
+                                        AppSpacing.gutter,
+                                        0,
+                                      ),
+                                      child: PageTabs<ActivityTab>(
+                                        values: ActivityTab.values,
+                                        selected: tab,
+                                        labelBuilder: (tab) => tab.label,
+                                        onSelected: (tab) =>
+                                            context.go(tab.location),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                for (final section in _sectionsOf(tab))
-                                  column(section),
-                                const SizedBox(height: AppSpacing.lg),
-                              ],
+                                  for (final section in _sectionsOf(tab))
+                                    column(section),
+                                  const SizedBox(height: AppSpacing.lg),
+                                ],
+                              ),
                             );
                           },
                         ),

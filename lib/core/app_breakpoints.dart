@@ -19,8 +19,9 @@ import 'package:cupola/core/generated/design_tokens.g.dart';
 /// Width alone cannot tell those two apart, and the shell that tried ended up
 /// putting a caption bar on an iPad. The phone used to be the second half of
 /// that argument, at roughly 850pt on its side; it is portrait-only now (The
-/// Portrait Rule, DESIGN.md) and never reaches those widths at all, which
-/// removes an example and none of the reasoning.
+/// Portrait Rule, DESIGN.md), which removes an example and none of the
+/// reasoning. A foldable is the exception the rule cannot reach: the iPhone
+/// Duo opened is a 951x669 screen whatever the phone's orientation lock says.
 abstract final class AppBreakpoints {
   /// Width at or above which a *touch* shell moves its navigation from the
   /// bottom bar to a side rail.
@@ -28,15 +29,16 @@ abstract final class AppBreakpoints {
   /// 840 rather than 600, and the reason has changed shape. It was 840 because
   /// at 600 a phone on its side (roughly 850pt on a modern iPhone) also got
   /// the rail, replacing a thumb-reachable bottom bar on a device held in one
-  /// hand. The phone is portrait-only now (The Portrait Rule, DESIGN.md) and
-  /// tops out near 440pt, so it can no longer cross either number and the
-  /// original argument is moot.
+  /// hand. The phone is portrait-only now (The Portrait Rule, DESIGN.md), so
+  /// held in one hand it never crosses either number and the original
+  /// argument is moot.
   ///
   /// The number stays, on the other half of its justification: 840 is
   /// Material's expanded-window breakpoint, which is where a touch surface
-  /// stops being one-handed: a tablet, an unfolded foldable. Tablets are a
-  /// supported layout now: the rail here, and from [touchSplit] a title
-  /// opened beside the page it came from.
+  /// stops being one-handed: a tablet, an unfolded foldable. Both get the
+  /// rail here: the iPhone Duo's inner screen (951pt) has it, its cover
+  /// screen (466pt) keeps the bar; and from [touchSplit] a tablet opens a
+  /// title beside the page it came from.
   static const double touchRail = DesignTokens.breakpointTouchRail;
 
   /// Width at or above which a *touch* build opens a title beside the page it

@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart'
     show getApplicationCacheDirectory, getTemporaryDirectory;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:cupola/core/fold.dart';
 import 'package:cupola/core/app_identity.dart';
 import 'package:cupola/core/last_known/last_known_store.dart';
 import 'package:cupola/core/network/artwork_cache_migration.dart';
@@ -307,7 +308,9 @@ class CupolaApp extends ConsumerWidget {
                   applyHeightToFirstAscent: false,
                   applyHeightToLastDescent: false,
                 ),
-                child: child ?? const SizedBox.shrink(),
+                // Where a foldable's screen creases, for the dialogs and
+                // controls that keep off it (`fold.dart`).
+                child: FoldHost(child: child ?? const SizedBox.shrink()),
               ),
             ),
           ),

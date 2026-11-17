@@ -43,6 +43,20 @@ class AmbientBackground extends StatelessWidget {
   /// The picture of the room's light, when a title leads it.
   final RoomArt? art;
 
+  /// Whether [child] is kept clear of the screen's side insets while the
+  /// room itself runs under them.
+  ///
+  /// The iPhone Duo keeps its camera, clock and status icons in a column on
+  /// the trailing side of both its screens, 84pt deep, the whole height. The
+  /// room is what continues under it; the page's content stops at its edge.
+  /// The room is where that split is made because the room is the one thing
+  /// every page paints full-bleed: the shell cannot, since a page's light is
+  /// the page's own and the navigator clips whatever leaves its bounds.
+  /// A room nested in another finds the insets taken and pads nothing.
+  ///
+  /// False for a room that lays out its own side insets, as the rail's does.
+  final bool sideSafe;
+
   /// How long the light takes to drift to a new [accent]. A room lit by a
   /// title's artwork takes [AppAnimation.light], as the title's own page
   /// does.
@@ -54,6 +68,7 @@ class AmbientBackground extends StatelessWidget {
     this.accent,
     this.art,
     this.accentDuration = AppAnimation.durationMd,
+    this.sideSafe = true,
   });
 
   @override
@@ -76,11 +91,21 @@ class AmbientBackground extends StatelessWidget {
     // it is ([FrontRoomReporter]). The lamp casts none.
     return FrontRoomReporter(
       light: target == AppColors.lamp ? null : target,
-      child: _drifting(context, target, art),
+      child: _drifting(
+        context,
+        target,
+        art,
+        sideSafe ? SafeArea(top: false, bottom: false, child: child) : child,
+      ),
     );
   }
 
-  Widget _drifting(BuildContext context, Color target, RoomArt? art) {
+  Widget _drifting(
+    BuildContext context,
+    Color target,
+    RoomArt? art,
+    Widget child,
+  ) {
     if (MediaQuery.disableAnimationsOf(context)) {
       return _Room(accent: target, art: art, child: child);
     }

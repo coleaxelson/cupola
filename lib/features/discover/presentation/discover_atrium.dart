@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:cupola/core/widgets/side_bleed.dart';
 import 'package:cupola/core/app_breakpoints.dart';
 import 'package:cupola/core/app_radius.dart';
 import 'package:cupola/core/app_spacing.dart';
@@ -152,14 +153,17 @@ class _DiscoverAtriumState extends ConsumerState<DiscoverAtrium> {
     // top (`ShellScreen`).
     return RefreshIndicator(
       onRefresh: () async => DiscoverAtrium.invalidate(ref),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(bottom: widget.bottomPadding),
-        children: [
-          ?widget.head,
-          const SizedBox(height: AppSpacing.sm),
-          ...children,
-        ],
+      child: SideBleed(
+        child: ListView(
+          clipBehavior: Clip.none,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.only(bottom: widget.bottomPadding),
+          children: [
+            ?widget.head,
+            const SizedBox(height: AppSpacing.sm),
+            ...children,
+          ],
+        ),
       ),
     );
   }

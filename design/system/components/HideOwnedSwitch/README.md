@@ -7,7 +7,7 @@ Rendered from `lib/features/discover/presentation/widgets/hide_owned_switch.dart
 ## Anatomy
 
 - One row at least 48 tall (`HideOwnedSwitch.minHeight`), `AppSpacing.lg` on each side: the words in `AppType.row` at 500 in the ink, the theme's `Switch` at the end, off in `on-surface-variant` (thumb and track edge) so it shows in the dark room too. The whole row is the control: a tap anywhere on it turns the switch.
-- The row is a phone's at most (`AppBreakpoints.splitList`), at the start of a wider page: across a tablet or a desktop window the switch would sit a thousand points from the words that say what it does.
+- The row is a phone's at most (`AppBreakpoints.splitList`), at the start of a wider page: across a tablet or a desktop window the switch would sit a thousand points from the words that say what it does. On a foldable opened flat it also stops `Fold.clearance` (16) short of the crease (`ClearOfFold`), so the switch never lands on the fold.
 - Before the choice is known (`value: null`) the row keeps its words and its height, and the real switch is laid out in its place but not drawn or live, so the words and the row do not move by a pixel on any platform's theme when it comes when the switch comes, and a switch that flipped on its own after being drawn would say what the page had not yet decided. The row takes no tap meanwhile and says nothing to a screen reader.
 
 ## What it holds

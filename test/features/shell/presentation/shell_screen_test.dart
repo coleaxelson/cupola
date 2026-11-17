@@ -789,6 +789,82 @@ void main() {
     });
   });
 
+  // A foldable resizes the window the app is running in. The iPhone Duo's
+  // cover screen (466 x 678) draws the bar and its Portal; opened, its inner
+  // screen (951 x 669) is past the rail, which has no Portal to draw.
+  group('the Portal on a foldable', () {
+    testWidgets('unfolding closes the Portal the rail cannot draw', (
+      tester,
+    ) async {
+      final harness = await _pumpShell(
+        tester,
+        initialLocation: '/stack/radarr/movie/42',
+        overrides: await _lensOverrides(),
+        viewport: const Size(466 * 3, 678 * 3),
+        devicePixelRatio: 3,
+      );
+
+      await _openPortal(tester);
+      expect(find.byType(ServiceMatrix), findsOneWidget);
+
+      tester.view.physicalSize = const Size(951 * 3, 669 * 3);
+      await tester.pumpAndSettle();
+      expect(find.byType(FloatingBottomNavBar), findsNothing);
+      expect(find.text('MovieDetailPage'), findsOneWidget);
+
+      tester.view.physicalSize = const Size(466 * 3, 678 * 3);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(ServiceMatrix),
+        findsNothing,
+        reason: 'folding back finds the room, not a Portal left open',
+      );
+      expect(harness.router.state.uri.path, '/stack/radarr/movie/42');
+      expect(find.text('MovieDetailPage'), findsOneWidget);
+    });
+
+    // Both screens keep the sensor column on the trailing side: an 84pt
+    // inset the whole height, with nothing at the top.
+    testWidgets(
+      'the bar keeps clear of the side inset, the page runs under it',
+      (tester) async {
+        await _pumpShell(
+          tester,
+          initialLocation: '/stack/radarr/movie/42',
+          viewport: const Size(466 * 3, 678 * 3),
+          devicePixelRatio: 3,
+        );
+        tester.view.padding = const FakeViewPadding(
+          right: 84 * 3,
+          bottom: 34 * 3,
+        );
+        addTearDown(tester.view.resetPadding);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(find.byType(FloatingBottomNavBar)).right,
+          lessThanOrEqualTo(466 - 84),
+        );
+        expect(
+          tester.getRect(find.byType(PortalStage)).right,
+          466,
+          reason:
+              'the page runs under it: its own room keeps its content clear',
+        );
+
+        tester.view.physicalSize = const Size(951 * 3, 669 * 3);
+        await tester.pumpAndSettle();
+        expect(find.byType(FloatingBottomNavBar), findsNothing);
+        final page = tester.element(find.text('MovieDetailPage'));
+        expect(
+          MediaQuery.paddingOf(page).right,
+          84,
+          reason: 'the trailing inset is left for the page\'s room to take',
+        );
+      },
+    );
+  });
+
   // A screen reader cannot drag, so the drag is off under one and the tab bar
   // carries the Portal as an action instead. Opening it, either way, says
   // once what the floor holds.

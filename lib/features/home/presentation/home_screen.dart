@@ -17,6 +17,7 @@ import 'package:cupola/core/widgets/ambient_scaffold.dart';
 import 'package:cupola/core/widgets/floating_bottom_nav_bar.dart';
 import 'package:cupola/core/widgets/glass_app_bar.dart';
 import 'package:cupola/core/widgets/pressable_scale.dart';
+import 'package:cupola/core/widgets/side_bleed.dart';
 import 'package:cupola/features/discover/presentation/catalog_providers.dart';
 import 'package:cupola/features/discover/presentation/discover_provider.dart';
 import 'package:cupola/features/discover/presentation/widgets/discover_carousel.dart';
@@ -141,29 +142,35 @@ class HomeScreen extends ConsumerWidget {
                             builder: (context) {
                               Widget column(Widget child) =>
                                   HomeWell.column(context, child);
-                              return ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                padding: EdgeInsets.only(bottom: bottomPadding),
-                                children: [
-                                  column(
-                                    HomeHeader(
-                                      showsHealth: !requester,
-                                      trailing: requester
-                                          ? const _AccountButton()
-                                          : null,
-                                    ),
+                              return SideBleed(
+                                child: ListView(
+                                  clipBehavior: Clip.none,
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  padding: EdgeInsets.only(
+                                    bottom: bottomPadding,
                                   ),
-                                  column(const HomeAsOfLine()),
-                                  if (requester)
-                                    column(const _RequesterFailureLine()),
-                                  for (final row in homeRowsOf(
-                                    layout.shown,
-                                    mode,
-                                  ))
-                                    _homeRow(row, column),
-                                  if (!requester) column(const EditHomeRow()),
-                                  const SizedBox(height: AppSpacing.lg),
-                                ],
+                                  children: [
+                                    column(
+                                      HomeHeader(
+                                        showsHealth: !requester,
+                                        trailing: requester
+                                            ? const _AccountButton()
+                                            : null,
+                                      ),
+                                    ),
+                                    column(const HomeAsOfLine()),
+                                    if (requester)
+                                      column(const _RequesterFailureLine()),
+                                    for (final row in homeRowsOf(
+                                      layout.shown,
+                                      mode,
+                                    ))
+                                      _homeRow(row, column),
+                                    if (!requester) column(const EditHomeRow()),
+                                    const SizedBox(height: AppSpacing.lg),
+                                  ],
+                                ),
                               );
                             },
                           ),
