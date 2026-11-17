@@ -1,0 +1,33 @@
+Cupola is one app for the media stack you run at home: the services that find, download, sort and stream your library, and the server they run on.
+
+Cupola provides no content, no catalog and no media of its own. It connects only to servers you own and run, and shows and manages what is already on them, as their own web pages do.
+
+There is no Cupola server and no account. The app talks straight to the addresses of your own services, and their keys and passwords stay in the device's secure storage. One exception on Android: the scanner that reads the code in "Copy from another device" is Google's ML Kit, which sends Google diagnostic and usage data. We plan to replace it.
+
+WHAT IT CONNECTS TO
+Nineteen self-hosted services, each with its own screens:
+- Requests and library: Seerr (Overseerr, Jellyseerr), Radarr, Sonarr, Lidarr, Readarr, Bazarr
+- Downloads and indexers: qBittorrent, Transmission, SABnzbd, NZBGet, Prowlarr
+- Streaming: Jellyfin, Plex, Emby, and Tracearr watching over them
+- The server underneath: TrueNAS, Unraid, Dockge, Nginx Proxy Manager
+Set up only what you run.
+
+WHAT YOU CAN DO
+- Home: what arrived, what is coming up, what is downloading and what needs you, on one screen.
+- Discover through your Seerr: trending titles, calendar, people and collections, and requests that follow through to Radarr and Sonarr.
+- Manage movies, series, music and books: monitor, search, pick a release by hand, import, delete.
+- Watch the queue: pause, resume or remove downloads, and see why one is stuck.
+- See who is watching on Jellyfin, Plex and Emby, and stop a session.
+- Look after the server: disks, containers, stacks and proxy hosts.
+- Household: invite members with a QR code to request through Seerr with their own sign-in.
+- Home-screen widgets and local notifications, read from your own servers in the background.
+
+BUILT FOR HOME LABS
+Self-signed certificates are trusted on first use and pinned. Services behind a reverse proxy, Cloudflare Access or a password prompt are supported, and a connection can have a second address for when you are away. A server that is asleep or out of reach is an everyday state, not a crash.
+
+TRY IT WITHOUT A SERVER
+Choose "Explore a demo home" on the Welcome screen: a fictional household with every service, no sign-in, nothing saved. The artwork in the demo comes from the open movies of the Blender Studio (CC BY 4.0).
+
+Free and open source under the Apache 2.0 license.
+
+Cupola is an independent project, not affiliated with or endorsed by the makers of the services it connects to. All product names are trademarks of their respective owners.

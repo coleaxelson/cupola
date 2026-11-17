@@ -284,8 +284,9 @@ class Exporter:
         self.write_text(f"{res}/drawable/cupola_icon_bg_gradient.xml", ground_xml("light"))
         self.write_text(f"{res}/drawable-night/cupola_icon_bg_gradient.xml", ground_xml("dark"))
 
-        # Play Console listing art; not a build input, but it belongs to the mark.
-        self.emit("icon-dark", 512, "android/app/src/main/cupola_icon-playstore.png")
+        # The store listing's icon (Google Play, F-Droid, IzzyOnDroid read it
+        # from fastlane/); not a build input, but it belongs to the mark.
+        self.emit("icon-dark", 512, "fastlane/metadata/android/en-US/images/icon.png")
 
     def desktop_and_web(self):
         for size in (16, 32, 48, 64, 128, 256):

@@ -147,9 +147,15 @@ re-signed copy may not get. TestFlight is the way we recommend.
 <summary><b>Android</b></summary>
 <br/>
 
-Download `cupola-<version>.apk` from Releases and install it. You may need to allow
-installs from unknown sources for your browser or file manager. One file covers every
-device.
+Download an `.apk` from Releases and install it. You may need to allow installs from
+unknown sources for your browser or file manager.
+
+- `cupola-<version>-arm64-v8a.apk` is for 64-bit phones, which is nearly all of them,
+  and less than half the size.
+- `cupola-<version>.apk` covers every device, older 32-bit phones included.
+
+Both carry the same signature and version number, so a phone can move from one to the
+other without uninstalling.
 
 To get updates without checking this page, add this repository's URL to
 [**Obtainium**](https://obtainium.imranr.dev/): it installs the `.apk` from each new
