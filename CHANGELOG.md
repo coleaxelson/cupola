@@ -104,9 +104,6 @@ updates 1.1.0-beta in place: your connections stay.
 - **Tracearr** needs version 2.7.0 or newer. History has no filter by library,
   because Tracearr's history does not offer one, and Live has no filters yet.
 - **Authors find in your library only**: Readarr no longer offers a lookup to ask.
-- **Tried on our demo, not yet on real servers**: adding and selecting music, problem
-  reports, Needs you's failed downloads and Unraid 7.2's figures follow each service's
-  documented answers. If something reads wrong on yours, please open an issue.
 - **The new Android code scanner** has been tried on an emulator, not yet on a phone.
 
 ## 1.1.0-beta
