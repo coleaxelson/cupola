@@ -45,9 +45,11 @@ if [[ "$RELEASE" == *-* && "$STATE" != *" true" ]]; then
   exit 1
 fi
 
+# Both APKs, the iPhone and the Mac packages. The Android .aab beside them in
+# dist/ is Google Play's alone and never goes to GitHub.
 PACKAGES=()
-for ext in apk ipa dmg; do
-  file="$DIST_DIR/${APP_SLUG}-${RELEASE}.${ext}"
+for suffix in .apk -arm64-v8a.apk .ipa .dmg; do
+  file="$DIST_DIR/${APP_SLUG}-${RELEASE}${suffix}"
   if [[ -f "$file" ]]; then
     PACKAGES+=("$file")
   else

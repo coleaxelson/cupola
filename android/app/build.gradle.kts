@@ -46,14 +46,36 @@ val wantsRelease = gradle.startParameter.taskNames.any {
     it.contains("Release", ignoreCase = true)
 }
 
+// The ABIs this build was asked for (`flutter build apk --target-platform …`,
+// which Flutter hands over as `-Ptarget-platform`). Flutter compiles its own
+// code for those alone but lets plugins bring native libraries for every ABI it
+// supports, so an APK built for arm64 would still carry armeabi-v7a folders: a
+// 32-bit phone would install it and crash without Flutter's engine. The filter
+// below keeps every package to the ABIs it was built for.
+val flutterPlatformAbis = mapOf(
+    "android-arm" to "armeabi-v7a",
+    "android-arm64" to "arm64-v8a",
+    "android-x64" to "x86_64",
+    "android-x86" to "x86",
+)
+val targetAbis = (findProperty("target-platform") as String?)
+    ?.split(",")
+    ?.mapNotNull { flutterPlatformAbis[it.trim()] }
+    .orEmpty()
+
+// A release is signed when android/key.properties exists, and then the file
+// must be complete. Without it the release is built unsigned: that is how a
+// rebuild from source runs (an app store's build server, a reproducibility
+// check), which signs on its own or compares against our signed package.
+// scripts/release.sh refuses to ship an unsigned package, so a missing file
+// cannot reach a release.
 if (wantsRelease) {
     if (!hasKeystoreProperties) {
-        throw GradleException(
-            "Missing release signing config: android/key.properties. Copy android/key.properties.example and fill in real values.",
+        logger.warn(
+            "android/key.properties not found: building an unsigned release. " +
+                "Copy android/key.properties.example to sign.",
         )
-    }
-
-    if (!hasCompleteReleaseSigning) {
+    } else if (!hasCompleteReleaseSigning) {
         throw GradleException(
             "android/key.properties is missing required values: ${missingReleaseSigningKeys.joinToString(", ")}",
         )
@@ -147,6 +169,15 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Replaces the Flutter plugin's list (every ABI Flutter supports) with
+        // the ones asked for: see `targetAbis` above.
+        if (targetAbis.isNotEmpty()) {
+            ndk {
+                abiFilters.clear()
+                abiFilters.addAll(targetAbis)
+            }
+        }
     }
 
     signingConfigs {
@@ -158,6 +189,16 @@ android {
                 storePassword = keystoreProperties.getProperty("storePassword")
             }
         }
+    }
+
+    // The Android Gradle plugin writes the dependency list into the APK's
+    // signing block, encrypted with a key only Google holds. Nobody else can
+    // read it, an app store that rebuilds from source flags it, and it stands
+    // between our APK and a byte-for-byte rebuild. Play reads the same list from
+    // the App Bundle, which keeps it.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = true
     }
 
     buildTypes {

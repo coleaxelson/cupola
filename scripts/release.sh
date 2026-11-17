@@ -91,9 +91,52 @@ printf '==> Verifying platform icons...\n'
 bash "$ROOT_DIR/scripts/verify_icons.sh"
 
 if [[ "$TARGET" == "android" || "$TARGET" == "all" ]]; then
-  printf '==> Building Android APK...\n'
-  flutter build apk --release
-  cp build/app/outputs/flutter-apk/app-release.apk "$DIST_DIR/${APP_SLUG}-${RELEASE}.apk"
+  # One build for every channel (scripts/build_android.sh): GitHub takes both
+  # APKs, Google Play the bundle. The .aab never goes to GitHub.
+  bash "$ROOT_DIR/scripts/build_android.sh" all
+  APK_ALL="$DIST_DIR/${APP_SLUG}-${RELEASE}.apk"
+  APK_ARM64="$DIST_DIR/${APP_SLUG}-${RELEASE}-arm64-v8a.apk"
+  AAB="$DIST_DIR/${APP_SLUG}-${RELEASE}.aab"
+  cp build/android/universal.apk "$APK_ALL"
+  cp build/android/arm64-v8a.apk "$APK_ARM64"
+  cp build/android/bundle.aab "$AAB"
+
+  # A phone moves between the APKs and Play only when all three carry our key
+  # and the same versionCode, and a rebuild without android/key.properties is
+  # unsigned: it stops here instead of reaching a release.
+  printf '==> Verifying Android packages...\n'
+  BUILD_TOOLS=$(ls -d "${ANDROID_HOME:-$HOME/Library/Android/sdk}"/build-tools/* | sort -V | tail -1)
+  BUILD_NUMBER=$(sed -n 's/^version: *[^+]*+\([0-9][0-9]*\).*/\1/p' pubspec.yaml)
+  # Every reader below reads its input to the end: under pipefail, a reader
+  # that stops early would turn the writer's SIGPIPE into a failed check.
+  digest() { tr -d ':' | tr '[:upper:]' '[:lower:]'; }
+  KEY=$(keytool -printcert -jarfile "$AAB" | awk '/SHA256:/ && !k { k = $2 } END { print k }' | digest)
+  if [[ -z "$KEY" ]]; then
+    printf '%s is not signed: is android/key.properties there?\n' "$(basename "$AAB")" >&2
+    exit 1
+  fi
+  for apk in "$APK_ALL" "$APK_ARM64"; do
+    signer=$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk" \
+      | awk -F': ' '/Signer #1 certificate SHA-256 digest/ && !k { k = $2 } END { print k }' | digest)
+    code=$("$BUILD_TOOLS/aapt2" dump badging "$apk" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+    if [[ "$signer" != "$KEY" ]]; then
+      printf '%s is not signed with the key of the bundle\n' "$(basename "$apk")" >&2
+      exit 1
+    fi
+    if [[ "$code" != "$BUILD_NUMBER" ]]; then
+      printf '%s has versionCode %s, pubspec.yaml says %s\n' "$(basename "$apk")" "${code:-none}" "$BUILD_NUMBER" >&2
+      exit 1
+    fi
+  done
+  ABIS=$(unzip -Z1 "$APK_ARM64" 'lib/*' | cut -d/ -f2 | sort -u | tr '\n' ' ')
+  if [[ "$ABIS" != "arm64-v8a " ]]; then
+    printf '%s carries native code for: %s\n' "$(basename "$APK_ARM64")" "$ABIS" >&2
+    exit 1
+  fi
+  if unzip -p "$AAB" 'base/dex/*.dex' | LC_ALL=C grep -c 'com/android/billingclient' > /dev/null; then
+    printf 'Play Billing is back in the Android build\n' >&2
+    exit 1
+  fi
 fi
 
 # `web` is a compile check, not a shipped target: the README says there is no
