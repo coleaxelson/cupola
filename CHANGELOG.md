@@ -1,9 +1,69 @@
 # Changelog
 
-## Unreleased
+## 1.2.0-beta
+
+Problem reports through Seerr, a music library you can grow and walk from Cupola, and
+selection on every library wall, with the fixes our testers and issues asked for. It
+updates 1.1.0-beta in place: your connections stay.
 
 ### Added
 
+- **Report a problem with a title, and follow it up** (#12). A title Seerr has on the
+  server now has *Report a problem*: say what is wrong (Video, Audio, Subtitles or
+  Other, each with an example), for a series the season and the episode, and in your
+  own words. The report goes into Seerr's own issues, so it is the same report on the
+  web. An episode's sheet reports a problem with that episode.
+  - A household member finds their reports under their requests (*Your reports*), with
+    who replied, and can reply, mark one as resolved, reopen it, or delete it while
+    nobody has answered.
+  - Whoever runs the server reads every open report in *Needs you*, on Seerr's Overview
+    (*Open problems*) and on the title's page, with the files it could be about and a
+    way to search a new release. They can reply, resolve, reopen or delete it, or open
+    it in Seerr. Seerr's Issues tab shows each report's poster, episode and words, and
+    opens it.
+  - Every control follows Seerr's own permissions: one an account may not use stays
+    in place, dimmed, and says why.
+- **Add artists and albums to Lidarr from Cupola.** A search result that is not in your
+  library opens a sheet that adds the artist with your root folder's defaults, then
+  lands on the artist's page while Lidarr reads its albums. An album can be added on
+  its own: Lidarr adds its artist too and monitors only that album.
+- **Find in your library, on every wall.** Music, Movies, Series and Authors have a
+  field that finds as you type in what the wall already holds (blind to case and
+  accents). A second scope asks the service itself: Lidarr for artists and albums,
+  Radarr and Sonarr for titles, each with the plus that adds what you do not have.
+- **Select several titles and act on them together.** A long press, or *Select*, turns
+  a library wall into a selection: Search, Monitor, a profile, or Remove, with the
+  actions each service's editor accepts. On a phone the selection bar takes the place
+  of the navigation bar. When a service refuses part of the set, the notice names who
+  was refused, in the service's words, and Retry acts on those alone. Remove acts only
+  on the selected titles the current filter shows, and a Search over more than fifty
+  titles asks first, because the service searches them one by one and cannot be
+  stopped.
+- **A big music library is easier to walk.** On Lidarr's wall *Wanted* takes the place
+  of *Missing*: the artists with at least one album released, monitored and not on
+  disk, each saying how many. Every wall sorted by title gets an A–Z index on its
+  right edge.
+- **An artist's page sorts albums by kind and finds a track.** An artist with more than
+  one kind of release gets pills (Albums, EPs, Singles, Concerts, Compilations,
+  Soundtracks and more, each with its count), and *Find a track* searches the tracks of
+  every album and opens the album the track is on.
+- **More from your artists, and music in Discover's search.** Discover shows the albums
+  Lidarr knows from artists you have and nobody monitors, and its search finds music
+  too when Lidarr is set up: held albums in your library's words, the rest with the
+  plus that adds them.
+- **Filter Requests by state and by who asked.** Activity's Requests and Seerr's Requests
+  tab get two filters, and the heading reads *41 of 348* while one narrows the list.
+- **Hide what I have, on Discover's first page.** The switch now sits on the atrium too,
+  and Trending, Coming soon and Because you watched leave out what is already on the
+  server. Until you flip it, it starts from Seerr's own *Hide available media*
+  setting.
+- **Ready for the foldable iPhone Duo.** Cupola follows the Duo from the outer screen to
+  the inner one while it runs, keeps its content clear of the sensor column, and opens
+  dialogs in one half, away from the fold.
+- **A smaller Android package for 64-bit phones.** Each release now carries
+  `cupola-<version>-arm64-v8a.apk`, less than half the size, beside the universal
+  `cupola-<version>.apk`. Both have the same signature and version, so a phone can move
+  from one to the other without uninstalling.
 - **CPU and memory on the Unraid Overview.** The System section now opens with the
   server's CPU load and memory in use (*41% · 26.4 of 64.0 GB*), read again every few
   seconds while you look at it. An Unraid whose API is too old to know them shows
@@ -15,6 +75,9 @@
   device* now reads the other device's code with zxing-cpp, free software that runs
   on the phone and sends nothing, instead of Google's ML Kit, which sent Google
   usage data with no way to turn it off. Nothing changes on iPhone, iPad or Mac.
+- **A long title takes two lines** beside *Request*, so titles that share a long
+  beginning can be told apart. A collection's legend appears only when something is on
+  its way or waiting, instead of repeating the headline.
 
 ### Fixed
 
@@ -24,6 +87,27 @@
   other readout figures all disappeared. We now ask the way the current API answers,
   and the figures no longer disappear together: if the containers cannot be read, the
   array's figures stay, and the other way round.
+- **A failed download no longer asks you to fix an import** (#15). *Needs you* read every
+  failed download in the arrs' history as *Could not import*, with a notification and a
+  Fix that opened a manual import with nothing in it. When a download fails, Radarr,
+  Sonarr and Lidarr have already set that release aside and are looking for another,
+  so there is nothing to ask of you; History still says *Download failed*. A release a
+  delay profile holds back now says when it starts (*Queued · starts in about 3 h*).
+- **Seerr's Issues tab names its titles.** Every row read *Unknown media* on a real
+  server, because Seerr's issue list carries no title. People are named by their Seerr
+  display name, so a Jellyfin or Emby account no longer shows its email.
+- **A switch that is off can be seen** in both themes.
+- **An artist with no picture** on Lidarr's Overview shows a person, not a movie.
+
+### Known limits
+
+- **Tracearr** needs version 2.7.0 or newer. History has no filter by library,
+  because Tracearr's history does not offer one, and Live has no filters yet.
+- **Authors find in your library only**: Readarr no longer offers a lookup to ask.
+- **Tried on our demo, not yet on real servers**: adding and selecting music, problem
+  reports, Needs you's failed downloads and Unraid 7.2's figures follow each service's
+  documented answers. If something reads wrong on yours, please open an issue.
+- **The new Android code scanner** has been tried on an emulator, not yet on a phone.
 
 ## 1.1.0-beta
 

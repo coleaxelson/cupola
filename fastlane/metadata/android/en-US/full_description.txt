@@ -14,8 +14,8 @@ Set up only what you run.
 
 WHAT YOU CAN DO
 - Home: what arrived, what is coming up, what is downloading and what needs you, on one screen.
-- Discover through your Seerr: trending titles, calendar, people and collections, and requests that follow through to Radarr and Sonarr.
-- Manage movies, series, music and books: monitor, search, pick a release by hand, import, delete.
+- Discover through your Seerr: trending titles, calendar, people and collections, and requests that follow through to Radarr and Sonarr. Report a problem with a title and follow it up.
+- Manage movies, series, music and books: add, find, select several at once, monitor, search, pick a release by hand, import, delete.
 - Watch the queue: pause, resume or remove downloads, and see why one is stuck.
 - See who is watching on Jellyfin, Plex and Emby, and stop a session.
 - Look after the server: disks, containers, stacks and proxy hosts.
